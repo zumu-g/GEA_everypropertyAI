@@ -66,7 +66,9 @@ propertyiq/
 │   │   │   ├── extractor.ts                 # OpenRouter/Anthropic LLM + regex fallback
 │   │   │   ├── merger.ts                    # Multi-source data merger with confidence
 │   │   │   ├── schemas.ts                   # Zod validation schemas
-│   │   │   └── prompts.ts                   # LLM extraction prompts
+│   │   │   └── prompts.ts                   # LLM extraction prompts (target-address aware)
+│   │   ├── estimation/
+│   │   │   └── price-estimator.ts           # Growth-adjusted price estimation with confidence
 │   │   ├── enrichment/
 │   │   │   ├── planning.ts                  # VicPlan zoning/overlays (ArcGIS)
 │   │   │   ├── schools.ts                   # Nearby schools (Nominatim)
@@ -89,6 +91,45 @@ propertyiq/
 └── .env.local                               # API keys (not committed)
 ```
 
+## Price Estimation
+
+Two-phase estimation with growth adjustment and confidence scoring:
+
+**Phase 1 (instant):** Quick estimate from merged extraction data at page load.
+
+**Phase 2 (after enrichment):** Growth-adjusted estimate using suburb market data from CoreLogic.
+
+### Priority Cascade
+
+| Priority | Condition | Method | Band | Confidence |
+|---|---|---|---|---|
+| 1 | Active listing with price range | Use listing guide directly | ±3% | High |
+| 2 | Active listing with single price | Use listing price | ±3% | High |
+| 3 | Sale <6 months ago | Growth-adjust using suburb annual growth | ±8% | High |
+| 4 | Sale 6-24 months ago | Growth-adjust | ±12% | Medium |
+| 5 | Sale 2-5 years ago | Growth-adjust | ±18% | Medium |
+| 6 | Sale 5+ years ago | Growth-adjust, capped at 3x | ±25% | Low |
+| 7 | Rental history only | Rental yield implied value | ±20% | Low |
+| 8 | No history | Suburb median ± bedroom/land adjustment | ±20% | Low |
+
+Growth formula: `adjustedPrice = salePrice × (1 + annualGrowth/100)^years`
+
+Cross-validated against rental yield where available. Confidence badge (high/medium/low) and methodology explanation shown in UI.
+
+## Data Quality
+
+### Target-Address Filtering
+
+The LLM extraction prompt includes the target property address and instructs the model to extract data ONLY for that specific property. This prevents data pollution from multi-property pages (e.g., suburb sold listings). Post-extraction address validation provides a second layer of protection.
+
+### Sale History
+
+Each sale record includes: date, price, sale type, agency, agent name, days on market, listing price, settlement date, and source portal. Records are deduplicated across sources by date+price, with richer fields merged from duplicates.
+
+### Rental History
+
+Rental records include: date, weekly rent, bond, agency, agent/manager, days on market, and lease term. Oldlistings provides both buy and rent history via separate URL endpoints.
+
 ## Data Sources
 
 ### Portal Sources
@@ -97,8 +138,9 @@ propertyiq/
 |---|---|---|
 | realestate.com.au | **Active** | Listings, photos, features, prices, sale history |
 | domain.com.au | **Active** | Listings, photos, suburb data |
-| oldlistings.com.au | **Active** | 18 years historical listings, 15M+ records |
-| homely.com.au | **Active** | Sold data, suburb reviews |
+| oldlistings.com.au (buy) | **Active** | 18 years historical listing prices, 15M+ records |
+| oldlistings.com.au (rent) | **Active** | 18 years historical rental listings |
+| homely.com.au | **Active** | Property-specific sold data (property URL, suburb fallback) |
 | homehound.com.au | **Active** | Listings via Renet CRM |
 | view.com.au | Disabled | Datadome captcha |
 | ratemyagent.com.au | Disabled | DataDome captcha |

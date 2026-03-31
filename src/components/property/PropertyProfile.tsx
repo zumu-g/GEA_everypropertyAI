@@ -19,6 +19,7 @@ import {
 import Link from "next/link";
 import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
+import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
 
 interface EnrichmentData {
   coordinates: { lat: number; lng: number } | null;
@@ -107,6 +108,7 @@ interface PropertyProfileProps {
 export function PropertyProfile({ address }: PropertyProfileProps) {
   const [property, setProperty] = useState<MergedPropertyProfile | null>(null);
   const [enrichment, setEnrichment] = useState<EnrichmentData | null>(null);
+  const [enrichedEstimate, setEnrichedEstimate] = useState<PriceEstimateResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +190,55 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       if (res.ok) {
         const data = await res.json();
         setEnrichment(data);
+
+        // Calculate enriched price estimate when market data is available
+        if (data?.marketData && property) {
+          const pd = property.data;
+          const sh =
+            (pd.saleHistory as Array<{
+              price?: number;
+              date?: string;
+              type?: string;
+              agency?: string;
+              agentName?: string;
+              daysOnMarket?: number;
+              listingPrice?: number;
+              isConfidential?: boolean;
+              description?: string;
+              settlementDate?: string;
+              source?: string;
+            }>) ?? [];
+          const rh =
+            (pd.rentalHistory as Array<{
+              date?: string;
+              weeklyRent?: number;
+              bond?: number;
+              agency?: string;
+              agentName?: string;
+              daysOnMarket?: number;
+              leaseTerm?: string;
+              description?: string;
+            }>) ?? [];
+          const estimate = calculateEnrichedPriceEstimate(
+            {
+              propertyType: pd.propertyType as string,
+              bedrooms: pd.bedrooms as number | undefined,
+              bathrooms: pd.bathrooms as number | undefined,
+              carSpaces: pd.carSpaces as number | undefined,
+              landAreaSqm: (pd.landArea ?? pd.landAreaSqm) as number | undefined,
+              priceNumeric: pd.priceNumeric as number | undefined,
+              priceFrom: pd.priceFrom as number | undefined,
+              priceTo: pd.priceTo as number | undefined,
+              saleHistory: sh,
+              rentalHistory: rh,
+              listingStatus: pd.listingStatus as string | undefined,
+              currentPrice: pd.currentPrice as number | undefined,
+              estimatedValue: pd.estimatedValue as number | undefined,
+            },
+            data.marketData
+          );
+          setEnrichedEstimate(estimate);
+        }
       }
     } catch (err) {
       console.warn("[PropertyProfile] Enrichment failed:", err);
@@ -291,13 +342,33 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       price?: number;
       date?: string;
       type?: string;
+      agency?: string;
+      agentName?: string;
+      daysOnMarket?: number;
+      listingPrice?: number;
+      isConfidential?: boolean;
+      description?: string;
+      settlementDate?: string;
+      source?: string;
+    }>) ?? [];
+  const rentalHistory =
+    (d.rentalHistory as Array<{
+      date?: string;
+      weeklyRent?: number;
+      bond?: number;
+      agency?: string;
+      agentName?: string;
+      daysOnMarket?: number;
+      leaseTerm?: string;
+      description?: string;
     }>) ?? [];
   const features = (d.features as string[]) ?? [];
-  const priceLabel = d.priceLabel != null ? String(d.priceLabel) : null;
+  const priceLabel = d.priceLabel != null ? String(d.priceLabel) : d.priceText != null ? String(d.priceText) : null;
   const priceLow = d.priceLow != null ? Number(d.priceLow) : null;
   const priceMid = d.priceMid != null ? Number(d.priceMid) : null;
   const priceHigh = d.priceHigh != null ? Number(d.priceHigh) : null;
-  const currentPrice = d.currentPrice != null ? Number(d.currentPrice) : null;
+  const currentPrice = d.currentPrice != null ? Number(d.currentPrice) : d.priceNumeric != null ? Number(d.priceNumeric) : null;
+  const priceSource = d.priceSource != null ? String(d.priceSource) : null;
 
   const fmtCurrency = (n: number) =>
     new Intl.NumberFormat("en-AU", {
@@ -305,6 +376,20 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       currency: "AUD",
       maximumFractionDigits: 0,
     }).format(n);
+
+  const formatDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString("en-AU", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-10 px-6 py-10">
@@ -377,47 +462,120 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         </section>
 
         {/* ─── Estimated Price Range ─── */}
-        {(priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
+        {(enrichedEstimate || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
           <section>
-            <SectionTitle icon={TrendingUp} title="Estimated Price Range" />
-            <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-              {(priceLow != null && priceHigh != null) ? (
-                <div>
-                  <div className="flex items-end gap-4 mb-4">
-                    <div className="text-center flex-1">
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Low</p>
-                      <p className="text-xl font-bold text-gray-500">{fmtCurrency(priceLow)}</p>
-                    </div>
-                    <div className="text-center flex-1">
-                      <p className="text-xs font-medium text-brand-500 uppercase tracking-wide">Estimated</p>
-                      <p className="text-3xl font-extrabold text-brand-600">{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
-                    </div>
-                    <div className="text-center flex-1">
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">High</p>
-                      <p className="text-xl font-bold text-gray-500">{fmtCurrency(priceHigh)}</p>
-                    </div>
+            {enrichedEstimate ? (
+              <>
+                <div className="mb-6 flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50">
+                    <TrendingUp className="h-4 w-4 text-brand-600" />
                   </div>
-                  <div className="relative h-3 rounded-full bg-gray-100 overflow-hidden">
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-brand-500 to-gray-300" />
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-brand-600 shadow-md" />
+                  <h2 className="text-2xl font-bold text-gray-900">
+                    {enrichedEstimate.priceSource === 'listing-guide' ? 'Price Guide' :
+                     enrichedEstimate.priceSource === 'listing-price' ? 'Listing Price' :
+                     enrichedEstimate.priceSource === 'recent-sale' ? 'Estimated Value' :
+                     enrichedEstimate.priceSource === 'sale-adjusted' || enrichedEstimate.priceSource === 'old-sale-adjusted' ? 'Estimated Value' :
+                     enrichedEstimate.priceSource === 'rental-yield' ? 'Estimated Value (Rental)' :
+                     enrichedEstimate.priceSource === 'suburb-median' ? 'Estimated Value (Suburb)' :
+                     'Estimated Price Range'}
+                  </h2>
+                  <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    enrichedEstimate.confidenceLevel === 'high' ? 'bg-green-100 text-green-700' :
+                    enrichedEstimate.confidenceLevel === 'medium' ? 'bg-amber-100 text-amber-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {enrichedEstimate.confidenceLevel} confidence
+                  </span>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+                  <div>
+                    <div className="flex items-end gap-4 mb-4">
+                      <div className="text-center flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Low</p>
+                        <p className="text-xl font-bold text-gray-500">{fmtCurrency(enrichedEstimate.priceLow)}</p>
+                      </div>
+                      <div className="text-center flex-1">
+                        <p className="text-xs font-medium text-brand-500 uppercase tracking-wide">Estimated</p>
+                        <p className="text-3xl font-extrabold text-brand-600">{fmtCurrency(enrichedEstimate.priceMid)}</p>
+                      </div>
+                      <div className="text-center flex-1">
+                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">High</p>
+                        <p className="text-xl font-bold text-gray-500">{fmtCurrency(enrichedEstimate.priceHigh)}</p>
+                      </div>
+                    </div>
+                    <div className="relative h-3 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-brand-500 to-gray-300" />
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-brand-600 shadow-md" />
+                    </div>
+                    {enrichedEstimate.growthAdjustment && (
+                      <p className="mt-3 text-xs text-gray-500 text-center">
+                        Last sold: {fmtCurrency(enrichedEstimate.growthAdjustment.originalPrice)}
+                        {enrichedEstimate.growthAdjustment.originalDate && ` (${formatDate(enrichedEstimate.growthAdjustment.originalDate)})`}
+                        {' → adjusted to '}
+                        {fmtCurrency(enrichedEstimate.growthAdjustment.adjustedPrice)}
+                      </p>
+                    )}
+                    <p className="mt-3 text-xs text-gray-400 text-center leading-relaxed">
+                      {enrichedEstimate.methodology}
+                    </p>
                   </div>
-                  {priceLabel && (
-                    <p className="mt-3 text-sm text-gray-500 text-center">{priceLabel}</p>
-                  )}
                 </div>
-              ) : currentPrice != null ? (
-                <div className="text-center">
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Guide Price</p>
-                  <p className="text-3xl font-extrabold text-brand-600">{fmtCurrency(currentPrice)}</p>
-                  {priceLabel && <p className="mt-2 text-sm text-gray-500">{priceLabel}</p>}
+              </>
+            ) : (
+              <>
+                <SectionTitle icon={TrendingUp} title={
+                  priceSource === 'listing-guide' ? 'Price Guide' :
+                  priceSource === 'listing-price' ? 'Listing Price' :
+                  priceSource === 'last-sale' ? 'Estimated Value' :
+                  'Estimated Price Range'
+                } />
+                <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+                  {(priceLow != null && priceHigh != null) ? (
+                    <div>
+                      <div className="flex items-end gap-4 mb-4">
+                        <div className="text-center flex-1">
+                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Low</p>
+                          <p className="text-xl font-bold text-gray-500">{fmtCurrency(priceLow)}</p>
+                        </div>
+                        <div className="text-center flex-1">
+                          <p className="text-xs font-medium text-brand-500 uppercase tracking-wide">
+                            {priceSource === 'listing-guide' ? 'Guide' : priceSource === 'listing-price' ? 'Listed' : 'Estimated'}
+                          </p>
+                          <p className="text-3xl font-extrabold text-brand-600">{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
+                        </div>
+                        <div className="text-center flex-1">
+                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">High</p>
+                          <p className="text-xl font-bold text-gray-500">{fmtCurrency(priceHigh)}</p>
+                        </div>
+                      </div>
+                      <div className="relative h-3 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-brand-500 to-gray-300" />
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-brand-600 shadow-md" />
+                      </div>
+                      <p className="mt-3 text-sm text-gray-400 text-center">
+                        {priceSource === 'listing-guide' ? 'Based on listing price guide' :
+                         priceSource === 'listing-price' ? 'Based on listing price' :
+                         priceSource === 'last-sale' ? 'Based on most recent sale' :
+                         priceLabel ? priceLabel : 'Estimated from available data'}
+                      </p>
+                    </div>
+                  ) : currentPrice != null ? (
+                    <div className="text-center">
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
+                        {priceSource === 'listing-price' ? 'Listing Price' : 'Guide Price'}
+                      </p>
+                      <p className="text-3xl font-extrabold text-brand-600">{fmtCurrency(currentPrice)}</p>
+                      {priceLabel && <p className="mt-2 text-sm text-gray-500">{priceLabel}</p>}
+                    </div>
+                  ) : priceLabel ? (
+                    <div className="text-center">
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Price Guide</p>
+                      <p className="text-2xl font-bold text-gray-900">{priceLabel}</p>
+                    </div>
+                  ) : null}
                 </div>
-              ) : priceLabel ? (
-                <div className="text-center">
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Price Guide</p>
-                  <p className="text-2xl font-bold text-gray-900">{priceLabel}</p>
-                </div>
-              ) : null}
-            </div>
+              </>
+            )}
           </section>
         )}
 
@@ -575,27 +733,139 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               {saleHistory.map((sale, i) => (
                 <div
                   key={i}
-                  className="flex items-start gap-4 rounded-xl border border-gray-100 bg-white p-5 shadow-sm"
+                  className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm"
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <span className="text-lg font-bold text-gray-900">
-                        {sale.price != null
-                          ? fmtCurrency(sale.price)
-                          : "Confidential"}
-                      </span>
-                      {sale.date && (
-                        <span className="text-sm text-gray-500">
-                          {sale.date}
-                        </span>
-                      )}
-                    </div>
-                    {sale.type && (
-                      <span className="mt-1 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-                        {sale.type}
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="text-lg font-bold text-gray-900">
+                      {sale.price != null
+                        ? fmtCurrency(sale.price)
+                        : "Price Withheld"}
+                    </span>
+                    {sale.date && (
+                      <span className="text-sm text-gray-500">
+                        {formatDate(sale.date)}
                       </span>
                     )}
                   </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {sale.type && (
+                      <span className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
+                        {sale.type}
+                      </span>
+                    )}
+                    {sale.daysOnMarket != null && (
+                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                        {sale.daysOnMarket} days on market
+                      </span>
+                    )}
+                    {sale.isConfidential && (
+                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+                        Confidential
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                    {sale.agency && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-400">Agency</span>
+                        <span className="font-medium text-gray-700">{sale.agency}</span>
+                      </div>
+                    )}
+                    {sale.agentName && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-400">Agent</span>
+                        <span className="font-medium text-gray-700">{sale.agentName}</span>
+                      </div>
+                    )}
+                    {sale.listingPrice != null && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-400">Listed at</span>
+                        <span className="font-medium text-gray-700">{fmtCurrency(sale.listingPrice)}</span>
+                      </div>
+                    )}
+                    {sale.settlementDate && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-400">Settled</span>
+                        <span className="font-medium text-gray-700">{formatDate(sale.settlementDate)}</span>
+                      </div>
+                    )}
+                    {sale.source && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-400">Source</span>
+                        <span className="font-medium text-gray-700">{sale.source}</span>
+                      </div>
+                    )}
+                  </div>
+                  {sale.description && (
+                    <p className="mt-2 text-sm text-gray-500 italic line-clamp-2">
+                      {sale.description}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ─── Rental History ─── */}
+        {rentalHistory.length > 0 && (
+          <section>
+            <SectionTitle title="Rental History" />
+            <div className="space-y-3">
+              {rentalHistory.map((rental, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm"
+                >
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="text-lg font-bold text-gray-900">
+                      {rental.weeklyRent != null
+                        ? `${fmtCurrency(rental.weeklyRent)}/wk`
+                        : "Rent N/A"}
+                    </span>
+                    {rental.date && (
+                      <span className="text-sm text-gray-500">
+                        {formatDate(rental.date)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {rental.leaseTerm && (
+                      <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                        {rental.leaseTerm}
+                      </span>
+                    )}
+                    {rental.daysOnMarket != null && (
+                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
+                        {rental.daysOnMarket} days on market
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                    {rental.agency && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-400">Agency</span>
+                        <span className="font-medium text-gray-700">{rental.agency}</span>
+                      </div>
+                    )}
+                    {rental.agentName && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-400">Manager</span>
+                        <span className="font-medium text-gray-700">{rental.agentName}</span>
+                      </div>
+                    )}
+                    {rental.bond != null && (
+                      <div className="flex gap-2">
+                        <span className="text-gray-400">Bond</span>
+                        <span className="font-medium text-gray-700">{fmtCurrency(rental.bond)}</span>
+                      </div>
+                    )}
+                  </div>
+                  {rental.description && (
+                    <p className="mt-2 text-sm text-gray-500 italic line-clamp-2">
+                      {rental.description}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

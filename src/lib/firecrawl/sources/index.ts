@@ -3,7 +3,7 @@ import type { StructuredAddress } from '@/types/property';
 import { realestateSource } from './realestate';
 import { domainSource } from './domain';
 import { viewSource } from './view';
-import { oldlistingsSource } from './oldlistings';
+import { oldlistingsSource, oldlistingsRentSource } from './oldlistings';
 import { homelySource } from './homely';
 import { ratemyagentSource } from './ratemyagent';
 import { homehoundSource } from './homehound';
@@ -18,6 +18,7 @@ export const sourceRegistry: Record<string, SourceConfig> = {
   [domainSource.name]: domainSource,
   [viewSource.name]: viewSource,
   [oldlistingsSource.name]: oldlistingsSource,
+  [oldlistingsRentSource.name]: oldlistingsRentSource,
   [homelySource.name]: homelySource,
   [ratemyagentSource.name]: ratemyagentSource,
   [homehoundSource.name]: homehoundSource,
@@ -56,6 +57,7 @@ export {
   domainSource,
   viewSource,
   oldlistingsSource,
+  oldlistingsRentSource,
   homelySource,
   ratemyagentSource,
   homehoundSource,

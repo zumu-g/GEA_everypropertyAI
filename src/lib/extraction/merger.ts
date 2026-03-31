@@ -29,6 +29,18 @@ const SCALAR_FIELDS = [
   'listingAgent',
   'listingAgency',
   'floorPlanUrl',
+  'priceNumeric',
+  'priceFrom',
+  'priceTo',
+  'estimatedValueLow',
+  'estimatedValueHigh',
+  'description',
+  'agencyName',
+  'agentName',
+  'agentPhone',
+  'daysOnMarket',
+  'listingStatus',
+  'headline',
 ] as const;
 
 /** Address sub-fields. */
@@ -140,6 +152,9 @@ export function mergePropertyData(
     confidenceValues.length > 0
       ? Math.round(confidenceValues.reduce((a, b) => a + b, 0) / confidenceValues.length)
       : 0;
+
+  // Post-merge: populate price estimate if missing
+  calculatePriceEstimate(mergedData);
 
   return {
     data: mergedData,
@@ -270,19 +285,26 @@ function collectArrayValues<T>(
 
 /**
  * Deduplicate sale history entries by date + price.
+ * When duplicates are found, merge extra fields from the richer entry.
  */
 function deduplicateSales(sales: SaleHistoryEntry[]): SaleHistoryEntry[] {
-  const seen = new Set<string>();
-  const result: SaleHistoryEntry[] = [];
+  const map = new Map<string, SaleHistoryEntry>();
   for (const sale of sales) {
     const key = `${sale.date ?? ''}_${sale.price ?? 'null'}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(sale);
+    const existing = map.get(key);
+    if (existing) {
+      // Merge: fill in any missing fields from this duplicate
+      for (const [k, v] of Object.entries(sale)) {
+        if (v != null && v !== '' && (existing as Record<string, unknown>)[k] == null) {
+          (existing as Record<string, unknown>)[k] = v;
+        }
+      }
+    } else {
+      map.set(key, { ...sale });
     }
   }
   // Sort by date descending (most recent first)
-  return result.sort((a, b) => {
+  return [...map.values()].sort((a, b) => {
     if (!a.date) return 1;
     if (!b.date) return -1;
     return b.date.localeCompare(a.date);
@@ -291,21 +313,79 @@ function deduplicateSales(sales: SaleHistoryEntry[]): SaleHistoryEntry[] {
 
 /**
  * Generic deduplication by a set of keys.
+ * When duplicates are found, merge extra fields from the richer entry.
  */
 function deduplicateByKeys<T extends Record<string, unknown>>(
   items: T[],
   keys: string[]
 ): T[] {
-  const seen = new Set<string>();
-  const result: T[] = [];
+  const map = new Map<string, T>();
   for (const item of items) {
     const key = keys.map((k) => JSON.stringify(item[k] ?? '')).join('_');
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(item);
+    const existing = map.get(key);
+    if (existing) {
+      for (const [k, v] of Object.entries(item)) {
+        if (v != null && v !== '' && existing[k] == null) {
+          (existing as Record<string, unknown>)[k] = v;
+        }
+      }
+    } else {
+      map.set(key, { ...item });
     }
   }
-  return result;
+  return [...map.values()];
+}
+
+/**
+ * Populate priceLow / priceMid / priceHigh / priceSource using a priority
+ * cascade. Always runs — any pre-existing priceLow/priceHigh from extraction
+ * are overwritten because the cascade produces more reliable estimates.
+ */
+function calculatePriceEstimate(data: Record<string, unknown>): void {
+  // Priority 1: Listing price range (priceFrom/priceTo)
+  const priceFrom = data.priceFrom as number | undefined;
+  const priceTo = data.priceTo as number | undefined;
+  if (priceFrom && priceTo) {
+    data.priceLow = Math.min(priceFrom, priceTo);
+    data.priceHigh = Math.max(priceFrom, priceTo);
+    data.priceMid = Math.round(((data.priceLow as number) + (data.priceHigh as number)) / 2);
+    data.priceSource = 'listing-guide';
+    return;
+  }
+
+  // Priority 2: Single listing price (priceNumeric) — build ±5% band
+  const priceNumeric = data.priceNumeric as number | undefined;
+  if (priceNumeric && priceNumeric > 100000) {
+    data.priceLow = Math.round(priceNumeric * 0.95);
+    data.priceMid = priceNumeric;
+    data.priceHigh = Math.round(priceNumeric * 1.05);
+    data.priceSource = 'listing-price';
+    return;
+  }
+
+  // Priority 3: Most recent sale price — build ±10% band
+  const sales = data.saleHistory as Array<{ price?: number; date?: string }> | undefined;
+  if (sales && sales.length > 0) {
+    // Find most recent sale with a price
+    const recentSale = sales.find(s => s.price && s.price > 50000);
+    if (recentSale?.price) {
+      data.priceLow = Math.round(recentSale.price * 0.90);
+      data.priceMid = recentSale.price;
+      data.priceHigh = Math.round(recentSale.price * 1.10);
+      data.priceSource = 'last-sale';
+      return;
+    }
+  }
+
+  // Priority 4: currentPrice (legacy field from regex) — build ±10% band
+  const currentPrice = data.currentPrice as number | undefined;
+  if (currentPrice && currentPrice > 100000) {
+    data.priceLow = Math.round(currentPrice * 0.90);
+    data.priceMid = currentPrice;
+    data.priceHigh = Math.round(currentPrice * 1.10);
+    data.priceSource = 'estimated';
+    return;
+  }
 }
 
 /**

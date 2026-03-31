@@ -149,8 +149,9 @@ async function runPipeline(
   console.log(`[pipeline] Successful crawls: ${successful.length}, extracting...`);
 
   // Step 2: Extract structured data from each crawl result
+  const fullAddress = formatAddress(address);
   const extractions = await Promise.all(
-    successful.map((result) => extractPropertyData(result.markdown ?? '', result.source))
+    successful.map((result) => extractPropertyData(result.markdown ?? '', result.source, fullAddress))
   );
   console.log(`[pipeline] Extractions complete: ${extractions.length}, fields: ${extractions.map(e => Object.keys(e.raw).join(',')).join(' | ')}`);
 

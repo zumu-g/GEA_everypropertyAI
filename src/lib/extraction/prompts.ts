@@ -9,80 +9,189 @@ export const PROPERTY_EXTRACTION_SYSTEM_PROMPT = `You are an expert Australian p
 
 IMPORTANT RULES:
 - Return ONLY valid JSON. No explanation, no markdown fences, no commentary.
-- If a field cannot be found, omit it entirely — do NOT guess or fabricate values.
+- If a field cannot be found, OMIT it entirely — do NOT guess, fabricate, or set to null.
 - Dates should be ISO-8601 format (YYYY-MM-DD) where possible.
-- Prices should be plain numbers (no dollar signs, no commas). Use null if price is "undisclosed" or "withheld".
+- Prices should be plain numbers (no dollar signs, no commas).
 - Areas should be in square metres as numbers.
 - Coordinates should be decimal degrees (latitude, longitude).
 
+MULTI-PROPERTY PAGES:
+- Some pages list multiple properties (suburb sold listings, search results, "nearby sales" sections).
+- If a target address is provided, extract data ONLY for that specific property.
+- NEVER merge data from different properties into a single result.
+- Sale history and rental history entries must ALL belong to the SAME property.
+
 PORTAL VARIATIONS — handle these common differences:
-- **realestate.com.au (REA)**: Property features in a structured list. Bedrooms/bathrooms/car spaces displayed as icons with numbers. Sale history under "Property history" section. Price guide may say "Contact Agent" — treat as null.
+- **realestate.com.au (REA)**: Property features in a structured list. Bedrooms/bathrooms/car spaces displayed as icons with numbers. Sale history under "Property history" section. Price guide may say "Contact Agent" — treat as no priceNumeric (omit the field).
 - **domain.com.au**: Features displayed in a grid. May include "Statement of Information" with price range. Sale history under "Sales history". May show both a street address and a display address (prefer the street address).
 - **onthehouse.com.au**: Less structured. May embed data in paragraph text. Look for land size, council rates, and valuation estimates.
 - **propertyvalue.com.au**: Data-heavy tables. Often shows AVM (Automated Valuation Model) estimates — extract these as estimatedValue.
+- **oldlistings.com.au**: Shows archived listing history with advertised prices (not confirmed sale prices). Prices reflect the listing price at the time of advertising, not the final sale price. Look for "SOLD" status markers to identify confirmed sales vs. active listings.
+- **homely.com.au**: Property-specific page shows sold data and suburb reviews. Extract only the target property's data — ignore suburb-level stats unless no target is specified.
 
 FIELDS TO EXTRACT:
 
-Address:
-- fullAddress: The complete address string as displayed
-- unit: Unit/apartment number (if applicable)
+address (object):
+- displayAddress: The complete address string as displayed on the page
+- unitNumber: Unit/apartment number (if applicable)
 - streetNumber: Street number
 - streetName: Street name (e.g. "Smith")
 - streetType: Street type (e.g. "Street", "Road", "Avenue")
 - suburb: Suburb name
-- state: State abbreviation (NSW, VIC, QLD, etc.)
+- state: State abbreviation (NSW, VIC, QLD, SA, WA, TAS, NT, ACT)
 - postcode: 4-digit Australian postcode
+- latitude: Decimal latitude
+- longitude: Decimal longitude
 
-Property Details:
-- propertyType: One of "house", "apartment", "townhouse", "villa", "land", "rural", "other"
+Property Details (top-level fields):
+- propertyType: One of "house", "apartment", "townhouse", "villa", "duplex", "studio", "land", "rural", "commercial", "industrial", "other"
 - bedrooms: Number of bedrooms (integer)
 - bathrooms: Number of bathrooms (integer)
 - carSpaces: Number of car spaces/garages (integer)
-- landArea: Land area in square metres (number)
-- buildingArea: Internal/building area in square metres (number)
+- landAreaSqm: Land area in square metres (number)
+- buildingAreaSqm: Internal/building area in square metres (number)
 - yearBuilt: Year the property was built (integer)
 - features: Array of feature strings (e.g. ["air conditioning", "pool", "solar panels"])
 
-Financial:
-- currentPrice: Current listing price or most recent sale price (number or null)
-- priceLabel: The raw price text as shown on the page (e.g. "$1,200,000", "Auction", "Contact Agent")
-- estimatedValue: AVM or portal estimate if available (number)
-- councilRates: Annual council rates (number)
-- saleHistory: Array of past sales, each with:
-  - date: Sale date (YYYY-MM-DD)
-  - price: Sale price (number or null for undisclosed)
-  - type: "sold" | "auction" | "private"
-- rentalHistory: Array of past rentals, each with:
-  - date: Listing date (YYYY-MM-DD)
-  - weeklyRent: Weekly rent in dollars (number)
+Pricing / Listing:
+- priceText: The raw price text as shown on the page (e.g. "$1,200,000", "Auction", "Contact Agent")
+- priceNumeric: Current ACTIVE listing price ONLY as a number. This is the price the property is currently listed for sale at. If the page says "Contact Agent", "Auction" with no guide, or the property is already sold, OMIT this field. Do NOT put historical sale prices here.
+- priceFrom: Lower bound of a listing price range/guide (number), if shown
+- priceTo: Upper bound of a listing price range/guide (number), if shown
+- listingType: "sale", "rent", or "auction"
+- listingStatus: "active", "under-offer", "sold", "withdrawn", "off-market", "leased"
+- headline: Listing headline text
+- description: Listing description text
+- dateFirstListed: Date the property was first listed (YYYY-MM-DD)
+- daysOnMarket: Number of days on market (integer)
+- auctionDate: Auction date if scheduled (YYYY-MM-DD)
 
-Location:
-- latitude: Decimal latitude
-- longitude: Decimal longitude
-- council: Local council/LGA name
+Valuation:
+- estimatedValue: AVM or portal estimate if available (number)
+- councilValuation: Object with capitalValue, landValue, improvementsValue, valuationDate
+
+Agent:
+- agencyName: Agency name if listed
+- agentName: Agent name if listed
+- agentPhone: Agent phone number
+- agentEmail: Agent email address
+
+Sale History — array of past sales (saleHistory), each with:
+- date: Sale date (YYYY-MM-DD)
+- price: Sale price (number). Historical sale prices go HERE, not in priceNumeric.
+- type: Sale method. Must be one of: "private-treaty", "auction", "expression-of-interest", "tender", "off-market", "unknown". If the page just says "Sold" without specifying the method, use "unknown".
+- agency: Agency name that handled the sale
+- agentName: Agent name who handled the sale
+- daysOnMarket: Number of days on market before sale (integer)
+- listingPrice: Original listing/guide price (number)
+- isConfidential: true if the price was withheld/undisclosed
+- description: Brief description of the listing at time of sale
+- settlementDate: Settlement date if shown (YYYY-MM-DD)
+- source: Which portal/website this sale record came from
+
+Rental History — array of past rentals (rentalHistory), each with:
+- date: Listing/lease start date (YYYY-MM-DD)
+- weeklyRent: Weekly rent in dollars (number)
+- bond: Bond amount in dollars (number)
+- agency: Agency name that managed the rental
+- agentName: Property manager or agent name
+- daysOnMarket: Number of days listed before leased (integer)
+- leaseTerm: Lease term (e.g. "12 months")
+- description: Brief description of the rental listing
+
+IMPORTANT for sale/rental history:
+- Extract ALL available details for each sale or rental — agent, agency, days on market etc.
+- Look for "Property history", "Sales history", "Sold history", "Rental history" sections.
+- REA shows agent names and agencies next to each sale.
+- Domain shows sale type (auction/private) and sometimes days on market.
+- oldlistings.com.au shows historical listing text which may contain agent info.
+- If price is "undisclosed" or "withheld", omit the price field and set isConfidential to true.
 
 Media:
-- photos: Array of image URLs found on the page
-- floorPlanUrl: Floor plan image URL if present
+- photoUrls: Array of image URLs found on the page
+- floorplanUrls: Array of floor plan image URLs if present
 
-Agents:
-- listingAgent: Agent name if listed
-- listingAgency: Agency name if listed
+PRICE SEMANTICS — critical distinction:
+- priceNumeric = current active listing price ONLY. If the property is sold, or listed as "Contact Agent" or "Auction" with no price guide, OMIT this field entirely.
+- priceFrom / priceTo = listing price range or guide if shown (e.g. "$1.2M - $1.3M" becomes priceFrom: 1200000, priceTo: 1300000).
+- Historical sale prices go ONLY in saleHistory[].price — never in priceNumeric.
+- When data is unavailable for a field, OMIT the field entirely. Do not set it to null.
 
-Return the data as a flat JSON object matching the field names above. Nested objects (address, saleHistory entries, rentalHistory entries) should be structured as described.`;
+EXPECTED OUTPUT STRUCTURE (example):
+{
+  "address": {
+    "displayAddress": "12/45 Smith Street, Parramatta NSW 2150",
+    "unitNumber": "12",
+    "streetNumber": "45",
+    "streetName": "Smith",
+    "streetType": "Street",
+    "suburb": "Parramatta",
+    "state": "NSW",
+    "postcode": "2150",
+    "latitude": -33.8148,
+    "longitude": 151.0017
+  },
+  "propertyType": "apartment",
+  "bedrooms": 2,
+  "bathrooms": 1,
+  "carSpaces": 1,
+  "landAreaSqm": 120,
+  "buildingAreaSqm": 85,
+  "priceText": "$750,000 - $800,000",
+  "priceFrom": 750000,
+  "priceTo": 800000,
+  "listingStatus": "active",
+  "agencyName": "Ray White Parramatta",
+  "agentName": "John Smith",
+  "features": ["air conditioning", "balcony", "intercom"],
+  "photoUrls": ["https://example.com/photo1.jpg"],
+  "floorplanUrls": ["https://example.com/floorplan.jpg"],
+  "saleHistory": [
+    {
+      "date": "2019-06-15",
+      "price": 680000,
+      "type": "auction",
+      "agency": "LJ Hooker",
+      "daysOnMarket": 28
+    }
+  ],
+  "rentalHistory": [
+    {
+      "date": "2020-01-10",
+      "weeklyRent": 450,
+      "agency": "Ray White Parramatta"
+    }
+  ]
+}
+
+Return the data as a JSON object matching the structure above. The address must be a nested object. All other fields are top-level.`;
 
 export const PROPERTY_EXTRACTION_USER_PROMPT = (
   markdown: string,
-  source: string
-) => `Extract all property data from the following ${source} webpage content.
+  source: string,
+  targetAddress?: string
+) => {
+  let prompt = `Extract all property data from the following ${source} webpage content.
 
 Source portal: ${source}
+`;
 
+  if (targetAddress) {
+    prompt += `
+TARGET PROPERTY: ${targetAddress}
+IMPORTANT: This page may contain data about MULTIPLE properties (e.g., suburb sold listings, nearby sales). Extract data ONLY for the target property above. If the target property does not appear on this page, return an empty JSON object: {}
+`;
+  }
+
+  prompt += `
 --- BEGIN WEBPAGE CONTENT ---
 ${markdown}
 --- END WEBPAGE CONTENT ---
 
 Return a single JSON object with the extracted fields. Omit any fields you cannot find.`;
+
+  return prompt;
+};
 
 export const PROPERTY_SUMMARY_SYSTEM_PROMPT = `You are a property analyst writing concise, informative summaries for Australian property buyers and investors.
 

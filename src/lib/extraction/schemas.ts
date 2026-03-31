@@ -438,14 +438,25 @@ export const propertyExtractionSchema = z.object({
     price: z.number().positive().optional(),
     type: z.string().optional(),
     agency: z.string().optional(),
+    agentName: z.string().optional(),
+    daysOnMarket: z.number().int().min(0).optional(),
+    listingPrice: z.number().positive().optional(),
     isConfidential: z.boolean().optional(),
+    description: z.string().optional(),
+    settlementDate: z.string().optional(),
+    source: z.string().optional(),
   })).optional(),
 
   // Rental history
   rentalHistory: z.array(z.object({
     date: z.string().optional(),
     weeklyRent: z.number().positive().optional(),
+    bond: z.number().positive().optional(),
     agency: z.string().optional(),
+    agentName: z.string().optional(),
+    daysOnMarket: z.number().int().min(0).optional(),
+    leaseTerm: z.string().optional(),
+    description: z.string().optional(),
   })).optional(),
 
   // Valuation

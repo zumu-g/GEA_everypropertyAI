@@ -32,7 +32,7 @@ const HAS_LLM = Boolean(OPENROUTER_API_KEY || ANTHROPIC_API_KEY);
 async function callLLM(
   system: string,
   userMessage: string,
-  maxTokens: number = 4096
+  maxTokens: number = 8192
 ): Promise<string | null> {
   if (OPENROUTER_API_KEY) {
     return callOpenRouter(system, userMessage, maxTokens);
@@ -103,6 +103,30 @@ async function callAnthropic(
   return textBlock?.type === 'text' ? textBlock.text : null;
 }
 
+// ─── Address Validation ─────────────────────────────────────────────────────
+
+/**
+ * Check if extracted address roughly matches the target address.
+ * Returns true if they match or if we can't determine (benefit of the doubt).
+ */
+function addressMatchesTarget(extracted: Record<string, unknown>, targetAddress: string): boolean {
+  const extractedAddr = extracted.address as Record<string, unknown> | undefined;
+  const extractedDisplay = String(extractedAddr?.displayAddress ?? extractedAddr?.streetNumber ?? '').toLowerCase();
+  const target = targetAddress.toLowerCase();
+
+  // Extract street number and name from target for comparison
+  const targetParts = target.match(/(\d+)\s+(\w+)/);
+  if (!targetParts) return true; // Can't validate, allow through
+
+  const [, streetNum, streetName] = targetParts;
+
+  // If extracted data has address info, verify it matches
+  if (extractedAddr?.streetNumber && String(extractedAddr.streetNumber) !== streetNum) return false;
+  if (extractedAddr?.streetName && !String(extractedAddr.streetName).toLowerCase().includes(streetName)) return false;
+
+  return true;
+}
+
 // ─── Extraction Functions ───────────────────────────────────────────────────
 
 /**
@@ -111,7 +135,8 @@ async function callAnthropic(
  */
 export async function extractPropertyData(
   markdown: string,
-  source: string
+  source: string,
+  targetAddress?: string
 ): Promise<ExtractedPropertyData> {
   if (!HAS_LLM) {
     console.log(`[extractor] No LLM key — using basic extraction for ${source}`);
@@ -124,7 +149,7 @@ export async function extractPropertyData(
 
     const text = await callLLM(
       PROPERTY_EXTRACTION_SYSTEM_PROMPT,
-      PROPERTY_EXTRACTION_USER_PROMPT(markdown, source)
+      PROPERTY_EXTRACTION_USER_PROMPT(markdown, source, targetAddress)
     );
 
     if (!text) {
@@ -136,6 +161,11 @@ export async function extractPropertyData(
     if (!rawJson) {
       console.warn(`[extractor] Failed to parse JSON from LLM response for ${source}`);
       return basicExtract(markdown, source);
+    }
+
+    // Post-extraction address validation
+    if (targetAddress && !addressMatchesTarget(rawJson, targetAddress)) {
+      console.warn(`[extractor] Extracted address does not match target "${targetAddress}" for ${source} — data may be for wrong property`);
     }
 
     // Validate against Zod schema

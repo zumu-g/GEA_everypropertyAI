@@ -564,7 +564,27 @@ export interface SaleHistoryEntry {
   price?: number;
   type?: string;
   agency?: string;
+  agentName?: string;
+  daysOnMarket?: number;
+  listingPrice?: number;
   isConfidential?: boolean;
+  description?: string;
+  settlementDate?: string;
+  source?: string;
+}
+
+/**
+ * A single rental history entry from raw extraction.
+ */
+export interface RentalHistoryEntry {
+  date?: string;
+  weeklyRent?: number;
+  bond?: number;
+  agency?: string;
+  agentName?: string;
+  daysOnMarket?: number;
+  leaseTerm?: string;
+  description?: string;
 }
 
 /**
