@@ -47,11 +47,29 @@ Property Details (top-level fields):
 - propertyType: One of "house", "apartment", "townhouse", "villa", "duplex", "studio", "land", "rural", "commercial", "industrial", "other"
 - bedrooms: Number of bedrooms (integer)
 - bathrooms: Number of bathrooms (integer)
+- ensuites: Number of ensuite bathrooms (integer) — shown as "Ensuites" in Key Features
+- toilets: Total toilet count (integer) — shown as "Toilets" in Key Features
 - carSpaces: Number of car spaces/garages (integer)
+- garages: Number of garage spaces (integer, may differ from carSpaces)
 - landAreaSqm: Land area in square metres (number)
 - buildingAreaSqm: Internal/building area in square metres (number)
 - yearBuilt: Year the property was built (integer)
 - features: Array of feature strings (e.g. ["air conditioning", "pool", "solar panels"])
+- satelliteDetected: Object with attributes detected via satellite/aerial imagery (shown as "Additional features — Detected via satellite or aerial imagery"):
+  - buildingCoveragePercent: Building coverage as a percentage of land (number 0-100)
+  - groundElevationM: Ground elevation in metres (number)
+  - roofHeightM: Roof height in metres (number)
+  - detectedAt: Detection date (YYYY-MM-DD), e.g. "Sep 2025" → "2025-09-01"
+  - confidencePercent: Detection confidence as a percentage (number 0-100)
+
+Internet & Connectivity:
+- connectivity: Object with NBN and mobile coverage details:
+  - nbn: Object with NBN connection info (from "Internet availability" section):
+    - connectionType: One of "FTTP", "FTTN", "FTTC", "FTTB", "HFC", "fixed-wireless", "satellite", "none"
+    - maxDownloadMbps: Maximum download speed in Mbps (number)
+    - maxUploadMbps: Maximum upload speed in Mbps (number)
+    - lastUpdated: Date of last update (YYYY-MM-DD)
+  - mobileCoverage: Array of mobile coverage tiers available at the property, e.g. ["5G", "4G"]
 
 Pricing / Listing:
 - priceText: The raw price text as shown on the page (e.g. "$1,200,000", "Auction", "Contact Agent")
@@ -75,6 +93,34 @@ Agent:
 - agentName: Agent name if listed
 - agentPhone: Agent phone number
 - agentEmail: Agent email address
+
+Nearby Schools — nearbySchools array, each with:
+- name: School name
+- type: "primary", "secondary", "combined", or "special"
+- sector: "government", "catholic", or "independent"
+- distanceKm: Distance in kilometres (number)
+- isZoned: true if the property is in this school's catchment zone (shown as "Zoned" badge)
+- enrolmentCount: Number of enrolled students (integer)
+- website: School website URL
+
+Nearby Childcare & Kindergartens — nearbyChildcare array (from "Nearby childcare and kinder centres" section), each with:
+- name: Centre name
+- nqsRating: One of "Exceeding NQS", "Meeting NQS", "Working Towards NQS", "Significant Improvement Required", "Not Yet Assessed"
+- userRating: Average user rating 0-5 (number)
+- reviewCount: Number of user reviews (integer)
+- dailyRateCents: Daily fee in cents (integer); 0 if "POA" (price on application)
+- distanceKm: Distance in kilometres (number)
+- hoursOfOperation: Hours string, e.g. "6:30am - 6:30pm, Monday to Friday"
+- address: Street address of the centre
+- hasVacancies: true if vacancies are mentioned
+
+Neighbouring Properties — neighbouringProperties array (from "Neighbouring properties" section), each with:
+- address: Structured address object (same format as main address)
+- estimatedValue: Estimated value as a number (from "estimated value" shown on the card)
+- bedrooms: Number of bedrooms (integer)
+- bathrooms: Number of bathrooms (integer)
+- carSpaces: Number of car spaces (integer)
+- landAreaSqm: Land area in square metres (number)
 
 Sale History — array of past sales (saleHistory), each with:
 - date: Sale date (YYYY-MM-DD)

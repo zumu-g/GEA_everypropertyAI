@@ -3,6 +3,7 @@ import type {
   PropertySearchResult,
   SaleRecord,
   PropertyId,
+  MergedPropertyProfile,
 } from '@/types/property';
 import type { CrawlJob } from '@/types/crawl';
 import { getSupabaseServerClient, isSupabaseConfigured } from './supabase';
@@ -420,6 +421,7 @@ function rowToProfile(row: Record<string, unknown>): PropertyProfile {
     listingHistory: [],
     location: {
       nearbySchools: [],
+      nearbyChildcare: [],
       nearbyTransport: [],
     },
     planningHistory: [],
@@ -458,4 +460,263 @@ function confidenceLevelFromScore(
   if (score < 0.6) return 'medium';
   if (score < 0.8) return 'high';
   return 'very-high';
+}
+
+// ─── Property Cache (Supabase-backed, cross-restart persistence) ─────────────
+
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Retrieve a cached MergedPropertyProfile from Supabase.
+ * Returns null if not found, expired (>24hr), or Supabase not configured.
+ */
+export async function getCachedProfile(
+  slug: string
+): Promise<MergedPropertyProfile | null> {
+  if (!isSupabaseConfigured()) return null;
+
+  try {
+    const { data, error } = await supabase()
+      .from('property_cache')
+      .select('raw_data, cached_at')
+      .eq('address_slug', slug)
+      .single();
+
+    if (error || !data) {
+      if (error && error.code !== 'PGRST116') {
+        console.error('[getCachedProfile] Supabase error:', error.message);
+      }
+      return null;
+    }
+
+    const cachedAt = new Date(data.cached_at).getTime();
+    if (Date.now() - cachedAt > CACHE_TTL_MS) {
+      return null;
+    }
+
+    return data.raw_data as MergedPropertyProfile;
+  } catch (err) {
+    console.error('[getCachedProfile] Unexpected error:', err);
+    return null;
+  }
+}
+
+/**
+ * Save a MergedPropertyProfile to Supabase property_cache.
+ * Silently no-ops if Supabase is not configured.
+ */
+export async function saveCachedProfile(
+  slug: string,
+  profile: MergedPropertyProfile
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+
+  try {
+    const { error } = await supabase()
+      .from('property_cache')
+      .upsert(
+        { address_slug: slug, raw_data: profile, cached_at: new Date().toISOString() },
+        { onConflict: 'address_slug' }
+      );
+
+    if (error) {
+      console.error('[saveCachedProfile] Supabase error:', error.message);
+    }
+  } catch (err) {
+    console.error('[saveCachedProfile] Unexpected error:', err);
+  }
+}
+
+// ─── Agency Queries ──────────────────────────────────────────────────────────
+
+export interface AgencyRecord {
+  id?: string;
+  name: string;
+  website: string;
+  suburb?: string;
+  state: string;
+  postcode?: string;
+  franchise_group?: string;
+  search_pattern?: string;
+  suburbs_covered?: string[];
+  enabled?: boolean;
+  url_verified?: boolean;
+  last_crawled?: string;
+  consecutive_failures?: number;
+}
+
+export async function getAgenciesByState(state: string): Promise<AgencyRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from('agencies')
+    .select('*')
+    .eq('state', state.toUpperCase())
+    .eq('enabled', true)
+    .order('name');
+  if (error) { console.error('[getAgenciesByState]', error.message); return []; }
+  return data ?? [];
+}
+
+export async function upsertAgency(agency: AgencyRecord): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const { error } = await supabase()
+    .from('agencies')
+    .upsert(agency, { onConflict: 'website,suburb' });
+  if (error) console.error('[upsertAgency]', error.message);
+}
+
+export async function markAgencyFailure(website: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  await supabase().rpc('increment_agency_failures', { p_website: website });
+}
+
+// ─── Crawl Queue Queries ──────────────────────────────────────────────────────
+
+export interface CrawlQueueJob {
+  id?: string;
+  job_type: string;
+  payload: Record<string, unknown>;
+  priority?: number;
+  status?: string;
+  attempts?: number;
+  next_attempt?: string;
+}
+
+export async function enqueueJob(job: CrawlQueueJob): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const { error } = await supabase().from('crawl_queue').insert({
+    job_type: job.job_type,
+    payload: job.payload,
+    priority: job.priority ?? 5,
+    status: 'pending',
+    next_attempt: job.next_attempt ?? new Date().toISOString(),
+  });
+  if (error) console.error('[enqueueJob]', error.message);
+}
+
+export async function claimNextJob(jobType?: string): Promise<CrawlQueueJob | null> {
+  if (!isSupabaseConfigured()) return null;
+  const query = supabase()
+    .from('crawl_queue')
+    .select('*')
+    .in('status', ['pending'])
+    .lte('next_attempt', new Date().toISOString())
+    .order('priority', { ascending: true })
+    .order('created_at', { ascending: true })
+    .limit(1);
+  if (jobType) query.eq('job_type', jobType);
+  const { data, error } = await query;
+  if (error || !data?.length) return null;
+  const job = data[0];
+  await supabase()
+    .from('crawl_queue')
+    .update({ status: 'running', attempts: job.attempts + 1, updated_at: new Date().toISOString() })
+    .eq('id', job.id);
+  return job;
+}
+
+export async function completeJob(id: string, result?: Record<string, unknown>): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  await supabase()
+    .from('crawl_queue')
+    .update({ status: 'completed', result: result ?? null, updated_at: new Date().toISOString() })
+    .eq('id', id);
+}
+
+export async function failJob(id: string, error: string, retryAfterMs = 60_000): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const { data } = await supabase().from('crawl_queue').select('attempts, max_attempts').eq('id', id).single();
+  const exhausted = data && data.attempts >= data.max_attempts;
+  await supabase()
+    .from('crawl_queue')
+    .update({
+      status: exhausted ? 'failed' : 'pending',
+      error,
+      next_attempt: new Date(Date.now() + retryAfterMs).toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+}
+
+// ─── Suburb Progress Queries ─────────────────────────────────────────────────
+
+export async function getSuburbsDueForCrawl(
+  state: string,
+  limit: number = 20
+): Promise<Array<{ suburb: string; state: string; postcode: string }>> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from('suburb_crawl_progress')
+    .select('suburb, state, postcode')
+    .eq('state', state.toUpperCase())
+    .or(`next_due.is.null,next_due.lte.${new Date().toISOString()}`)
+    .order('next_due', { ascending: true, nullsFirst: true })
+    .limit(limit);
+  if (error) { console.error('[getSuburbsDueForCrawl]', error.message); return []; }
+  return data ?? [];
+}
+
+export async function markSuburbCrawled(
+  suburb: string,
+  state: string,
+  postcode: string,
+  listingsFound: number = 0,
+  nextDueMs: number = 7 * 24 * 60 * 60 * 1000
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const now = new Date().toISOString();
+  const nextDue = new Date(Date.now() + nextDueMs).toISOString();
+  await supabase().from('suburb_crawl_progress').upsert({
+    suburb, state: state.toUpperCase(), postcode,
+    last_crawled: now, next_due: nextDue, listings_found: listingsFound,
+  }, { onConflict: 'suburb,state' });
+}
+
+// ─── Property Sales Queries ───────────────────────────────────────────────────
+
+export interface PropertySaleRecord {
+  raw_address: string;
+  suburb?: string;
+  state: string;
+  postcode?: string;
+  lot_number?: string;
+  plan_number?: string;
+  land_area_sqm?: number;
+  property_type?: string;
+  sale_price?: number;
+  sale_date?: string;
+  settlement_date?: string;
+  source: string;
+  raw_data?: Record<string, unknown>;
+}
+
+export async function insertPropertySales(sales: PropertySaleRecord[]): Promise<void> {
+  if (!isSupabaseConfigured() || sales.length === 0) return;
+  const CHUNK = 500;
+  for (let i = 0; i < sales.length; i += CHUNK) {
+    const chunk = sales.slice(i, i + CHUNK);
+    const { error } = await supabase()
+      .from('property_sales')
+      .upsert(chunk, { onConflict: 'raw_address,sale_date,sale_price,source', ignoreDuplicates: true });
+    if (error) console.error('[insertPropertySales] chunk error:', error.message);
+  }
+}
+
+export async function getSalesForSuburb(
+  suburb: string,
+  state: string,
+  limitDays: number = 730
+): Promise<PropertySaleRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const since = new Date(Date.now() - limitDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const { data, error } = await supabase()
+    .from('property_sales')
+    .select('*')
+    .ilike('suburb', suburb)
+    .eq('state', state.toUpperCase())
+    .gte('sale_date', since)
+    .order('sale_date', { ascending: false })
+    .limit(200);
+  if (error) { console.error('[getSalesForSuburb]', error.message); return []; }
+  return data ?? [];
 }

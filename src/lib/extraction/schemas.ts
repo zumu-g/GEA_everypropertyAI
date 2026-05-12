@@ -74,6 +74,8 @@ export const physicalAttributesSchema = z.object({
   propertyType: propertyTypeSchema,
   bedrooms: z.number().int().min(0).optional(),
   bathrooms: z.number().int().min(0).optional(),
+  ensuites: z.number().int().min(0).optional(),
+  toilets: z.number().int().min(0).optional(),
   carSpaces: z.number().int().min(0).optional(),
   garages: z.number().int().min(0).optional(),
   landAreaSqm: z.number().positive().optional(),
@@ -87,6 +89,13 @@ export const physicalAttributesSchema = z.object({
   features: z.array(z.string()),
   outdoorFeatures: z.array(z.string()),
   indoorFeatures: z.array(z.string()),
+  satelliteDetected: z.object({
+    buildingCoveragePercent: z.number().min(0).max(100).optional(),
+    groundElevationM: z.number().optional(),
+    roofHeightM: z.number().positive().optional(),
+    detectedAt: z.string().optional(),
+    confidencePercent: z.number().min(0).max(100).optional(),
+  }).optional(),
   strata: z.object({
     planNumber: z.string().optional(),
     totalUnitsInBlock: z.number().int().positive().optional(),
@@ -224,10 +233,59 @@ export const schoolInfoSchema = z.object({
   type: z.enum(['primary', 'secondary', 'combined', 'special']),
   sector: z.enum(['government', 'catholic', 'independent']),
   distanceKm: z.number().min(0),
+  isZoned: z.boolean().optional(),
   ranking: z.number().int().positive().optional(),
   icseaScore: z.number().int().optional(),
   enrolmentCount: z.number().int().positive().optional(),
   website: z.string().url().optional(),
+});
+
+export const nqsRatingSchema = z.enum([
+  'Exceeding NQS',
+  'Meeting NQS',
+  'Working Towards NQS',
+  'Significant Improvement Required',
+  'Not Yet Assessed',
+]);
+
+export const childcareInfoSchema = z.object({
+  name: z.string(),
+  nqsRating: nqsRatingSchema.optional(),
+  userRating: z.number().min(0).max(5).optional(),
+  reviewCount: z.number().int().min(0).optional(),
+  dailyRateCents: z.number().int().min(0).optional(),
+  distanceKm: z.number().min(0),
+  hoursOfOperation: z.string().optional(),
+  address: z.string().optional(),
+  hasVacancies: z.boolean().optional(),
+  website: z.string().url().optional(),
+});
+
+export const neighbouringPropertySchema = z.object({
+  address: structuredAddressSchema,
+  estimatedValue: moneyAmountSchema.optional(),
+  bedrooms: z.number().int().min(0).optional(),
+  bathrooms: z.number().int().min(0).optional(),
+  carSpaces: z.number().int().min(0).optional(),
+  landAreaSqm: z.number().positive().optional(),
+  source: dataSourceSchema,
+});
+
+export const nbnConnectionTypeSchema = z.enum([
+  'FTTP', 'FTTN', 'FTTC', 'FTTB', 'HFC', 'fixed-wireless', 'satellite', 'none',
+]);
+
+export const mobileCoverageTypeSchema = z.enum(['5G', '4G', '3G', 'none']);
+
+export const connectivityInfoSchema = z.object({
+  nbn: z.object({
+    connectionType: nbnConnectionTypeSchema,
+    maxDownloadMbps: z.number().positive().optional(),
+    maxUploadMbps: z.number().positive().optional(),
+    lastUpdated: z.string().optional(),
+  }).optional(),
+  mobileCoverage: z.array(mobileCoverageTypeSchema).optional(),
+  source: dataSourceSchema,
 });
 
 export const transportInfoSchema = z.object({
@@ -269,12 +327,14 @@ export const zoningInfoSchema = z.object({
 export const locationDataSchema = z.object({
   suburbProfile: suburbProfileSchema.optional(),
   nearbySchools: z.array(schoolInfoSchema),
+  nearbyChildcare: z.array(childcareInfoSchema),
   nearbyTransport: z.array(transportInfoSchema),
   environmentalRisk: environmentalRiskSchema.optional(),
   zoning: zoningInfoSchema.optional(),
   distanceToCbdKm: z.number().positive().optional(),
   walkScore: z.number().int().min(0).max(100).optional(),
   transitScore: z.number().int().min(0).max(100).optional(),
+  neighbouringProperties: z.array(neighbouringPropertySchema).optional(),
 });
 
 // ─── Planning ────────────────────────────────────────────────────────────────
@@ -403,6 +463,8 @@ export const propertyExtractionSchema = z.object({
   propertyType: z.string().optional(),
   bedrooms: z.number().int().min(0).optional(),
   bathrooms: z.number().int().min(0).optional(),
+  ensuites: z.number().int().min(0).optional(),
+  toilets: z.number().int().min(0).optional(),
   carSpaces: z.number().int().min(0).optional(),
   garages: z.number().int().min(0).optional(),
   landAreaSqm: z.number().positive().optional(),
@@ -412,6 +474,13 @@ export const propertyExtractionSchema = z.object({
   roofType: z.string().optional(),
   storeys: z.number().int().min(1).optional(),
   features: z.array(z.string()).optional(),
+  satelliteDetected: z.object({
+    buildingCoveragePercent: z.number().min(0).max(100).optional(),
+    groundElevationM: z.number().optional(),
+    roofHeightM: z.number().positive().optional(),
+    detectedAt: z.string().optional(),
+    confidencePercent: z.number().min(0).max(100).optional(),
+  }).optional(),
 
   // Pricing / listing
   priceText: z.string().optional(),
@@ -476,17 +545,58 @@ export const propertyExtractionSchema = z.object({
   videoUrls: z.array(z.string().url()).optional(),
   virtualTourUrl: z.string().url().optional(),
 
+  // Connectivity
+  connectivity: z.object({
+    nbn: z.object({
+      connectionType: z.string().optional(),
+      maxDownloadMbps: z.number().positive().optional(),
+      maxUploadMbps: z.number().positive().optional(),
+      lastUpdated: z.string().optional(),
+    }).optional(),
+    mobileCoverage: z.array(z.string()).optional(),
+  }).optional(),
+
   // Location
   nearbySchools: z.array(z.object({
     name: z.string().optional(),
     type: z.string().optional(),
     sector: z.string().optional(),
     distanceKm: z.number().min(0).optional(),
+    isZoned: z.boolean().optional(),
+    enrolmentCount: z.number().int().positive().optional(),
+    website: z.string().optional(),
+  })).optional(),
+  nearbyChildcare: z.array(z.object({
+    name: z.string().optional(),
+    nqsRating: z.string().optional(),
+    userRating: z.number().min(0).max(5).optional(),
+    reviewCount: z.number().int().min(0).optional(),
+    dailyRateCents: z.number().int().min(0).optional(),
+    distanceKm: z.number().min(0).optional(),
+    hoursOfOperation: z.string().optional(),
+    address: z.string().optional(),
+    hasVacancies: z.boolean().optional(),
   })).optional(),
   nearbyTransport: z.array(z.object({
     type: z.string().optional(),
     name: z.string().optional(),
     distanceKm: z.number().min(0).optional(),
+  })).optional(),
+  neighbouringProperties: z.array(z.object({
+    address: z.object({
+      displayAddress: z.string().optional(),
+      streetNumber: z.string().optional(),
+      streetName: z.string().optional(),
+      streetType: z.string().optional(),
+      suburb: z.string().optional(),
+      state: z.string().optional(),
+      postcode: z.string().optional(),
+    }).optional(),
+    estimatedValue: z.number().positive().optional(),
+    bedrooms: z.number().int().min(0).optional(),
+    bathrooms: z.number().int().min(0).optional(),
+    carSpaces: z.number().int().min(0).optional(),
+    landAreaSqm: z.number().positive().optional(),
   })).optional(),
 
   // Planning

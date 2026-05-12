@@ -85,10 +85,35 @@ export type RoofType =
   | 'concrete'
   | 'other';
 
+export type NBNConnectionType =
+  | 'FTTP'
+  | 'FTTN'
+  | 'FTTC'
+  | 'FTTB'
+  | 'HFC'
+  | 'fixed-wireless'
+  | 'satellite'
+  | 'none';
+
+export type MobileCoverageType = '5G' | '4G' | '3G' | 'none';
+
+export interface ConnectivityInfo {
+  nbn?: {
+    connectionType: NBNConnectionType;
+    maxDownloadMbps?: number;
+    maxUploadMbps?: number;
+    lastUpdated?: string; // ISO date
+  };
+  mobileCoverage?: MobileCoverageType[];
+  source: DataSource;
+}
+
 export interface PhysicalAttributes {
   propertyType: PropertyType;
   bedrooms?: number;
   bathrooms?: number;
+  ensuites?: number;
+  toilets?: number;
   carSpaces?: number;
   garages?: number;
   landAreaSqm?: number;
@@ -104,6 +129,14 @@ export interface PhysicalAttributes {
   outdoorFeatures: string[];
   /** e.g. "ducted-ac", "alarm", "intercom" */
   indoorFeatures: string[];
+  /** Attributes detected via satellite or aerial imagery */
+  satelliteDetected?: {
+    buildingCoveragePercent?: number;
+    groundElevationM?: number;
+    roofHeightM?: number;
+    detectedAt?: string;       // ISO date
+    confidencePercent?: number;
+  };
   /** Strata or body corporate details */
   strata?: {
     planNumber?: string;
@@ -261,10 +294,42 @@ export interface SchoolInfo {
   type: 'primary' | 'secondary' | 'combined' | 'special';
   sector: 'government' | 'catholic' | 'independent';
   distanceKm: number;
+  /** Whether this property falls within the school's catchment zone */
+  isZoned?: boolean;
   ranking?: number;
   icseaScore?: number;
   enrolmentCount?: number;
   website?: string;
+}
+
+export type NQSRating =
+  | 'Exceeding NQS'
+  | 'Meeting NQS'
+  | 'Working Towards NQS'
+  | 'Significant Improvement Required'
+  | 'Not Yet Assessed';
+
+export interface ChildcareInfo {
+  name: string;
+  nqsRating?: NQSRating;
+  userRating?: number;      // 0–5
+  reviewCount?: number;
+  dailyRateCents?: number;  // 0 = price on application
+  distanceKm: number;
+  hoursOfOperation?: string;
+  address?: string;
+  hasVacancies?: boolean;
+  website?: string;
+}
+
+export interface NeighbouringProperty {
+  address: StructuredAddress;
+  estimatedValue?: MoneyAmount;
+  bedrooms?: number;
+  bathrooms?: number;
+  carSpaces?: number;
+  landAreaSqm?: number;
+  source: DataSource;
 }
 
 export interface TransportInfo {
@@ -309,6 +374,7 @@ export interface ZoningInfo {
 export interface LocationData {
   suburbProfile?: SuburbProfile;
   nearbySchools: SchoolInfo[];
+  nearbyChildcare: ChildcareInfo[];
   nearbyTransport: TransportInfo[];
   environmentalRisk?: EnvironmentalRisk;
   zoning?: ZoningInfo;
@@ -317,6 +383,8 @@ export interface LocationData {
   /** Walkability / amenity scores */
   walkScore?: number;
   transitScore?: number;
+  /** Immediately adjacent or nearby properties with estimated values */
+  neighbouringProperties?: NeighbouringProperty[];
 }
 
 // ─── Planning ────────────────────────────────────────────────────────────────
@@ -433,6 +501,9 @@ export interface PropertyProfile {
 
   /** Location intelligence */
   location: LocationData;
+
+  /** NBN and mobile connectivity */
+  connectivity?: ConnectivityInfo;
 
   /** Planning applications on or near the property */
   planningHistory: PlanningRecord[];
