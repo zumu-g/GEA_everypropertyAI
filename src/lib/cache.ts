@@ -86,6 +86,20 @@ export class PropertyCache {
   }
 
   /**
+   * Return all non-expired entries as an array of [slug, profile] pairs.
+   */
+  entries(): Array<[string, PropertyProfile]> {
+    const now = Date.now();
+    const result: Array<[string, PropertyProfile]> = [];
+    for (const [slug, entry] of this.store) {
+      if (now - entry.cachedAt <= this.ttlMs) {
+        result.push([slug, entry.profile]);
+      }
+    }
+    return result;
+  }
+
+  /**
    * Get the number of entries currently in the cache (including expired).
    */
   get size(): number {

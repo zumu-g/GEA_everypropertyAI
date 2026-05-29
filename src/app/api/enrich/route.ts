@@ -3,6 +3,7 @@ import { geocodeAddress } from '@/lib/enrichment/geocoding';
 import { fetchPlanningData } from '@/lib/enrichment/planning';
 import { fetchNearbySchools } from '@/lib/enrichment/schools';
 import { fetchNearbyTransport } from '@/lib/enrichment/transport';
+import { fetchNearbyChildcare } from '@/lib/enrichment/childcare';
 import { fetchSuburbStats } from '@/lib/enrichment/suburb-stats';
 import { fetchBuyerDemand } from '@/lib/enrichment/buyer-demand';
 import { fetchSuburbMarketData } from '@/lib/enrichment/market-data';
@@ -60,12 +61,20 @@ export async function GET(request: NextRequest) {
     } catch { /* logged inside */ }
   }
 
+  let childcare: Awaited<ReturnType<typeof fetchNearbyChildcare>> = [];
+  if (coords) {
+    try {
+      childcare = await fetchNearbyChildcare(coords.lat, coords.lng);
+    } catch { /* logged inside */ }
+  }
+
   return NextResponse.json({
     coordinates: coords,
     planning:
       planningResult.status === 'fulfilled' ? planningResult.value : null,
     schools,
     transport,
+    childcare,
     suburbStats:
       suburbStatsResult.status === 'fulfilled' ? suburbStatsResult.value : null,
     buyerDemand:

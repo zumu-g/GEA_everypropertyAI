@@ -1,6 +1,8 @@
 import type { StructuredAddress } from '@/types/property';
-import type { CrawlResult } from '@/types/crawl';
+import type { CrawlResult, FetchBackend } from '@/types/crawl';
 import { scrapeUrl } from './client';
+import { scrapeWithApify } from '@/lib/apify/client';
+import { scrapeWithStealth, isStealthConfigured } from '@/lib/stealth/client';
 import { getActiveSources, getAllSourcesForAddress } from './sources';
 import { toAddressSlug } from './address';
 
@@ -71,27 +73,63 @@ export async function crawlProperty(
     }
 
     const url = source.buildPropertyUrl(address);
-    console.log(`[orchestrator] Crawling ${source.name}: ${url}`);
+    const apifyActorId = source.options?.apifyActorId as string | undefined;
+
+    // Resolve the primary fetch backend. Default preserves prior behaviour:
+    // apify when an actor id is configured, otherwise firecrawl.
+    const primary: FetchBackend =
+      source.fetchBackend ?? (apifyActorId ? 'apify' : 'firecrawl');
+
+    // Dispatch a single backend. Unavailable backends return a 'failed' result
+    // (no actor id / stealth unconfigured) so the fallback loop can move on.
+    const dispatch = (backend: FetchBackend, target: string): Promise<CrawlResult> => {
+      if (backend === 'stealth') {
+        return scrapeWithStealth(target, source.name, {
+          waitFor: source.scrapeOptions?.waitFor,
+          timeout: source.scrapeOptions?.timeout,
+          engine: source.scrapeOptions?.stealthEngine,
+        });
+      }
+      if (backend === 'apify') {
+        return apifyActorId
+          ? scrapeWithApify(target, source.name, apifyActorId)
+          : Promise.resolve<CrawlResult>({
+              source: source.name,
+              url: target,
+              status: 'failed',
+              crawledAt: new Date(),
+              error: 'apify backend requested but no apifyActorId configured',
+            });
+      }
+      return scrapeUrl(target, source.name, source.scrapeOptions);
+    };
 
     try {
-      const result = await scrapeUrl(url, source.name, source.scrapeOptions);
+      console.log(`[orchestrator] Crawling ${source.name} via ${primary}: ${url}`);
+      let result = await dispatch(primary, url);
       console.log(`[orchestrator] ${source.name} result: status=${result.status}, markdown=${(result.markdown?.length ?? 0)} chars`);
 
-      // If direct URL fails and a search URL builder exists, try the search fallback
-      if (result.status === 'failed' && source.buildSearchUrl) {
+      // Search-URL fallback for the firecrawl backend only: if the direct page
+      // misses and the source has a search URL, retry against it.
+      if (result.status === 'failed' && primary === 'firecrawl' && source.buildSearchUrl) {
         const searchUrl = source.buildSearchUrl(address);
-        const searchResult = await scrapeUrl(
-          searchUrl,
-          source.name,
-          source.scrapeOptions
-        );
-
-        // Cache and return search result regardless of status
-        setCachedResult(source.name, address, searchResult);
-        return searchResult;
+        result = await scrapeUrl(searchUrl, source.name, source.scrapeOptions);
       }
 
-      // Cache successful results
+      // Cross-backend fallback chain: try alternate backends in order until one
+      // succeeds. Skips backends that aren't available in this environment.
+      if (result.status !== 'success' && source.fallbackBackends?.length) {
+        for (const fb of source.fallbackBackends) {
+          if (fb === primary) continue;
+          if (fb === 'apify' && !apifyActorId) continue;
+          if (fb === 'stealth' && !isStealthConfigured()) continue;
+          console.log(`[orchestrator] ${source.name} falling back to ${fb}`);
+          result = await dispatch(fb, url);
+          if (result.status === 'success') break;
+        }
+      }
+
+      // Cache successful results (and search-fallback results, as before).
       if (result.status === 'success') {
         setCachedResult(source.name, address, result);
       }

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Loader2, List } from "lucide-react";
 
 interface AddressSuggestion {
   display: string;
@@ -15,6 +15,31 @@ interface AddressSuggestion {
   slug?: string;
 }
 
+interface StreetSuggestion {
+  kind: "street";
+  query: string;
+  label: string;
+  /** Street name without a number, e.g. "May Rd" */
+  streetLabel: string;
+  suburb: string;
+  state: string;
+  postcode: string;
+}
+
+/** Strip a leading street number (and optional "Lot"/unit) to get the street name. */
+function deriveStreetLabel(streetAddress: string): string {
+  return streetAddress
+    .replace(/^\s*(?:lot\s+)?\d+[a-zA-Z]?(?:[/-]\d+[a-zA-Z]?)?\s+/i, "")
+    .trim();
+}
+
+/** "Beaconsfield VIC 3807" suburb line for a street suggestion. */
+function suburbLine(s: { suburb: string; state: string; postcode: string }): string {
+  return [s.suburb, s.state, s.postcode].filter(Boolean).join(" ");
+}
+
+type Suggestion = ({ kind: "address" } & AddressSuggestion) | StreetSuggestion;
+
 interface AddressSearchProps {
   size?: "lg" | "md";
 }
@@ -22,7 +47,7 @@ interface AddressSearchProps {
 export function AddressSearch({ size = "lg" }: AddressSearchProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -78,7 +103,54 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
         const res = await fetch(`/api/address-suggest?${params.toString()}`);
         if (!res.ok) throw new Error("Search failed");
         const data = await res.json();
-        const items: AddressSuggestion[] = data.suggestions ?? [];
+        const rawAddresses: AddressSuggestion[] = data.suggestions ?? [];
+        const addressItems: Suggestion[] = rawAddresses.map(
+          (s: AddressSuggestion) => ({ kind: "address" as const, ...s })
+        );
+
+        // Street-only search (no leading digit): show distinct streets grouped by
+        // suburb (e.g. "May Rd, Beaconsfield VIC") rather than individual addresses.
+        const isStreetQuery = !/^\d/.test(q.trim());
+
+        let items: Suggestion[];
+        if (isStreetQuery) {
+          const seen = new Set<string>();
+          const streets: StreetSuggestion[] = [];
+          for (const s of rawAddresses) {
+            const streetLabel = deriveStreetLabel(s.streetAddress);
+            if (!streetLabel || !s.suburb) continue;
+            const key = `${streetLabel.toLowerCase()}|${s.suburb.toLowerCase()}|${s.state}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            streets.push({
+              kind: "street",
+              streetLabel,
+              suburb: s.suburb,
+              state: s.state,
+              postcode: s.postcode,
+              query: `${streetLabel} ${s.suburb} ${s.state}`.trim(),
+              label: `${streetLabel}, ${s.suburb} ${s.state}`.trim(),
+            });
+          }
+          // Fall back to a generic browse option if nothing could be grouped.
+          items =
+            streets.length > 0
+              ? streets
+              : [
+                  {
+                    kind: "street",
+                    streetLabel: q.trim(),
+                    suburb: "",
+                    state: "",
+                    postcode: "",
+                    query: q.trim(),
+                    label: `Browse all properties on "${q.trim()}"`,
+                  },
+                ];
+        } else {
+          items = addressItems;
+        }
+
         setSuggestions(items);
         if (items.length > 0) {
           setIsOpen(true);
@@ -103,9 +175,15 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
     }, 300);
   };
 
-  const handleSelect = (suggestion: AddressSuggestion) => {
-    setQuery(suggestion.fullAddress);
+  const handleSelect = (suggestion: Suggestion) => {
     setIsOpen(false);
+
+    if (suggestion.kind === "street") {
+      router.push(`/street?q=${encodeURIComponent(suggestion.query)}`);
+      return;
+    }
+
+    setQuery(suggestion.fullAddress);
 
     // Parse streetAddress into number + name + type
     // e.g. "17 Rose Garden Ave" → { streetNumber: "17", streetName: "Rose Garden", streetType: "Ave" }
@@ -128,9 +206,32 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
   };
 
   const handleSubmit = () => {
-    if (suggestions.length > 0) {
-      handleSelect(suggestions[0]);
+    const trimmed = query.trim();
+    if (trimmed.length < 3) return;
+
+    // Street-only query (no leading street number) → go straight to the street list,
+    // even if address suggestions also matched.
+    const isStreetQuery = !/^\d/.test(trimmed);
+    if (isStreetQuery) {
+      // Prefer the first grouped street (top-ranked suburb, VIC first).
+      const street =
+        suggestions.find((s): s is StreetSuggestion => s.kind === "street") ??
+        ({
+          kind: "street",
+          query: trimmed,
+          label: "",
+          streetLabel: trimmed,
+          suburb: "",
+          state: "",
+          postcode: "",
+        } as StreetSuggestion);
+      handleSelect(street);
+      return;
     }
+
+    // Otherwise prefer the first specific address suggestion.
+    const first = suggestions.find((s) => s.kind === "address") ?? suggestions[0];
+    if (first) handleSelect(first);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -183,15 +284,16 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
 
   return (
     <div ref={containerRef} className="relative w-full max-w-2xl mx-auto">
+      {/* Input wrapper */}
       <div
-        className={`relative flex items-center rounded-xl border border-gray-200 bg-white shadow-sm transition-shadow duration-200 focus-within:shadow-md focus-within:ring-2 focus-within:ring-brand-500/30 ${
-          size === "lg" ? "h-16" : "h-12"
+        className={`relative flex items-center rounded-xl border border-[#E7E9EE] bg-white transition-all duration-200 focus-within:border-[#C8A96E] focus-within:shadow-md focus-within:ring-2 focus-within:ring-[#C8A96E]/25 ${
+          size === "lg" ? "min-h-[3.5rem]" : "min-h-[3rem]"
         }`}
       >
         {/* Map pin icon */}
         <svg
-          className={`absolute left-4 text-gray-400 ${
-            size === "lg" ? "h-6 w-6" : "h-5 w-5"
+          className={`absolute left-4 shrink-0 text-[#8A8F97] ${
+            size === "lg" ? "h-5 w-5" : "h-4 w-4"
           }`}
           fill="none"
           viewBox="0 0 24 24"
@@ -220,10 +322,10 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
           onFocus={() => suggestions.length > 0 && setIsOpen(true)}
           placeholder="Search any Australian address..."
           autoComplete="off"
-          className={`w-full bg-transparent outline-none placeholder-gray-400 ${
+          className={`w-full bg-transparent text-[#16181D] outline-none placeholder:text-[#8A8F97] ${
             size === "lg"
-              ? "pl-14 pr-14 text-lg"
-              : "pl-12 pr-12 text-base"
+              ? "py-3.5 pl-11 pr-24 text-base"
+              : "py-3 pl-10 pr-20 text-sm"
           }`}
           role="combobox"
           aria-expanded={isOpen}
@@ -234,33 +336,36 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
           }
         />
 
-        {isLoading ? (
-          <Loader2
-            className={`absolute right-4 animate-spin text-brand-500 ${
-              size === "lg" ? "h-6 w-6" : "h-5 w-5"
-            }`}
-            aria-label="Searching..."
-          />
-        ) : query.length >= 3 ? (
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className={`absolute right-2 rounded-lg bg-brand-600 text-white font-medium transition-colors duration-150 hover:bg-brand-700 active:scale-[0.97] ${
-              size === "lg" ? "px-4 py-2 text-sm" : "px-3 py-1.5 text-xs"
-            }`}
-          >
-            Search
-          </button>
-        ) : null}
+        {/* Right-side: spinner or Search button */}
+        <div className="absolute right-2 flex items-center">
+          {isLoading ? (
+            <Loader2
+              className={`animate-spin text-[#C8A96E] ${
+                size === "lg" ? "h-5 w-5" : "h-4 w-4"
+              }`}
+              aria-label="Searching…"
+            />
+          ) : query.length >= 3 ? (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className={`rounded-lg bg-[#16181D] font-medium text-white transition-all duration-150 hover:bg-[#C8A96E] active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-1 ${
+                size === "lg" ? "px-4 py-2 text-sm" : "px-3 py-1.5 text-xs"
+              }`}
+            >
+              Search
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* Helper text */}
       {query.length < 3 && (
-        <p className="mt-2 text-center text-sm text-gray-400">
-          Start typing to search Australian addresses
+        <p className="mt-2 text-center text-xs text-[#8A8F97]">
+          Type a street address, suburb, or postcode
           {userLocation?.state && (
-            <span className="ml-1 text-brand-500">
-              · Prioritising {userLocation.state}
+            <span className="ml-1 text-[#C8A96E]">
+              &middot; Prioritising {userLocation.state}
             </span>
           )}
         </p>
@@ -275,52 +380,83 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15 }}
             role="listbox"
-            className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg"
+            className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-[#E7E9EE] bg-white shadow-lg"
           >
             {suggestions.map((suggestion, index) => (
               <button
-                key={`${suggestion.fullAddress}-${index}`}
+                key={`${suggestion.kind === "address" ? suggestion.fullAddress : suggestion.query}-${index}`}
                 id={`suggestion-${index}`}
                 type="button"
                 role="option"
                 aria-selected={index === activeIndex}
                 onClick={() => handleSelect(suggestion)}
-                className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 min-h-[48px] text-left transition-colors duration-150 ${
+                className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 min-h-[48px] text-left transition-colors duration-150 border-b border-[#F4F5F7] last:border-b-0 ${
                   index === activeIndex
-                    ? "bg-brand-50"
-                    : "hover:bg-gray-50"
+                    ? "bg-[#F4F5F7]"
+                    : "hover:bg-[#FBFBFC]"
                 }`}
               >
-                {/* Map pin */}
-                <svg
-                  className="h-4 w-4 shrink-0 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"
-                  />
-                </svg>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-900">
-                    {suggestion.streetAddress}
-                  </p>
-                  <p className="truncate text-xs text-gray-500">
-                    {[suggestion.suburb, suggestion.state, suggestion.postcode]
-                      .filter(Boolean)
-                      .join(" ")}
-                  </p>
-                </div>
+                {suggestion.kind === "street" ? (
+                  <>
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                        index === activeIndex ? "bg-[#EFE3CC]" : "bg-[#F4F5F7]"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      <List className="h-3.5 w-3.5 text-[#C8A96E]" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-[#16181D]">
+                        {suggestion.suburb
+                          ? `${suggestion.streetLabel}, ${suburbLine(suggestion)}`
+                          : suggestion.label}
+                      </p>
+                      <p className="truncate text-xs text-[#6B7077]">
+                        Browse all properties on this street
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Map pin */}
+                    <span
+                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
+                        index === activeIndex ? "bg-[#EFE3CC]" : "bg-[#F4F5F7]"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      <svg
+                        className="h-3.5 w-3.5 text-[#C8A96E]"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2}
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z"
+                        />
+                      </svg>
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-[#16181D]">
+                        {suggestion.streetAddress}
+                      </p>
+                      <p className="truncate text-xs text-[#6B7077]">
+                        {[suggestion.suburb, suggestion.state, suggestion.postcode]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </p>
+                    </div>
+                  </>
+                )}
               </button>
             ))}
           </motion.ul>

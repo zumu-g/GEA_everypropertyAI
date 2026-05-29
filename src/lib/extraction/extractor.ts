@@ -13,6 +13,13 @@ import {
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
+
+// MiniMax (Hailuo) — OpenAI-compatible chat completions endpoint.
+// Override the base URL if your account uses a different region/host.
+const MINIMAX_BASE_URL =
+  process.env.MINIMAX_BASE_URL ?? 'https://api.minimaxi.chat/v1/text/chatcompletion_v2';
+const MINIMAX_MODEL = process.env.MINIMAX_MODEL ?? 'MiniMax-Text-01';
 
 // OpenRouter model — change this to any model on openrouter.ai
 // Popular cheap options:
@@ -23,7 +30,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 //   'anthropic/claude-sonnet-4'    — Claude Sonnet via OpenRouter
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'moonshotai/kimi-k2';
 
-const HAS_LLM = Boolean(OPENROUTER_API_KEY || ANTHROPIC_API_KEY);
+const HAS_LLM = Boolean(MINIMAX_API_KEY || OPENROUTER_API_KEY || ANTHROPIC_API_KEY);
 
 /**
  * Call an LLM via OpenRouter or direct Anthropic API.
@@ -34,13 +41,70 @@ async function callLLM(
   userMessage: string,
   maxTokens: number = 8192
 ): Promise<string | null> {
+  // Provider cascade: MiniMax → OpenRouter → Anthropic. Each step falls through
+  // to the next if its key is missing or the call fails (e.g. out of credits).
+  if (MINIMAX_API_KEY) {
+    const result = await callMiniMax(system, userMessage, maxTokens);
+    if (result !== null) return result;
+    console.warn('[extractor] MiniMax unavailable — trying next provider');
+  }
   if (OPENROUTER_API_KEY) {
-    return callOpenRouter(system, userMessage, maxTokens);
+    const result = await callOpenRouter(system, userMessage, maxTokens);
+    if (result !== null) return result;
+    console.warn('[extractor] OpenRouter unavailable — trying next provider');
   }
   if (ANTHROPIC_API_KEY) {
     return callAnthropic(system, userMessage, maxTokens);
   }
   return null;
+}
+
+/**
+ * MiniMax (Hailuo) — OpenAI-compatible chat completions.
+ * Returns null on any HTTP or API-level error so callLLM can cascade.
+ */
+async function callMiniMax(
+  system: string,
+  userMessage: string,
+  maxTokens: number
+): Promise<string | null> {
+  try {
+    const res = await fetch(MINIMAX_BASE_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${MINIMAX_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MINIMAX_MODEL,
+        max_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: userMessage },
+        ],
+      }),
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      console.warn(`[extractor] MiniMax ${res.status}: ${err.slice(0, 200)}`);
+      return null;
+    }
+
+    const data = await res.json();
+    // MiniMax returns base_resp.status_code !== 0 on logical errors (HTTP 200).
+    const status = data?.base_resp?.status_code;
+    if (status !== undefined && status !== 0) {
+      console.warn(`[extractor] MiniMax base_resp ${status}: ${data?.base_resp?.status_msg}`);
+      return null;
+    }
+    return data.choices?.[0]?.message?.content ?? null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'unknown error';
+    console.warn(`[extractor] MiniMax request failed: ${msg}`);
+    return null;
+  }
 }
 
 /**
@@ -144,7 +208,11 @@ export async function extractPropertyData(
   }
 
   try {
-    const provider = OPENROUTER_API_KEY ? `OpenRouter/${OPENROUTER_MODEL}` : 'Anthropic';
+    const provider = MINIMAX_API_KEY
+      ? `MiniMax/${MINIMAX_MODEL}`
+      : OPENROUTER_API_KEY
+      ? `OpenRouter/${OPENROUTER_MODEL}`
+      : 'Anthropic';
     console.log(`[extractor] Using ${provider} for ${source}`);
 
     const text = await callLLM(

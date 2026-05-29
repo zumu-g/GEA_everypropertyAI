@@ -114,6 +114,124 @@ CREATE TABLE photos (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- ─── Raw Property Cache ─────────────────────────────────────────────────────
+-- Stores the full MergedPropertyProfile JSON for fast retrieval.
+-- Replaces in-memory cache for cross-restart persistence.
+
+CREATE TABLE property_cache (
+  address_slug     TEXT PRIMARY KEY,
+  raw_data         JSONB NOT NULL,
+  cached_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_property_cache_cached_at ON property_cache (cached_at);
+
+-- ─── Agencies ────────────────────────────────────────────────────────────────
+
+CREATE TABLE agencies (
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name                 TEXT NOT NULL,
+  website              TEXT NOT NULL,
+  suburb               TEXT,
+  state                TEXT NOT NULL DEFAULT 'VIC',
+  postcode             TEXT,
+  franchise_group      TEXT,
+  search_pattern       TEXT,
+  suburbs_covered      TEXT[] DEFAULT '{}',
+  enabled              BOOLEAN NOT NULL DEFAULT true,
+  url_verified         BOOLEAN DEFAULT false,
+  last_crawled         TIMESTAMPTZ,
+  consecutive_failures INT NOT NULL DEFAULT 0,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (website, suburb)
+);
+
+CREATE INDEX idx_agencies_state        ON agencies (state);
+CREATE INDEX idx_agencies_enabled      ON agencies (enabled);
+CREATE INDEX idx_agencies_suburb       ON agencies (suburb);
+
+-- ─── Property Sales (Valuer General + confirmed records) ─────────────────────
+
+CREATE TABLE property_sales (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  address_slug    TEXT,
+  raw_address     TEXT NOT NULL,
+  suburb          TEXT,
+  state           TEXT NOT NULL,
+  postcode        TEXT,
+  lot_number      TEXT,
+  plan_number     TEXT,
+  land_area_sqm   NUMERIC(10,2),
+  property_type   TEXT,
+  sale_price      NUMERIC(14,2),
+  sale_date       DATE,
+  settlement_date DATE,
+  source          TEXT NOT NULL,
+  raw_data        JSONB,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (raw_address, sale_date, sale_price, source)
+);
+
+CREATE INDEX idx_property_sales_suburb_date ON property_sales (suburb, state, sale_date DESC);
+CREATE INDEX idx_property_sales_slug        ON property_sales (address_slug);
+CREATE INDEX idx_property_sales_source      ON property_sales (source);
+
+-- ─── Addresses (enumeration universe — e.g. G-NAF Core) ──────────────────────
+-- Every known address in scope, independent of whether it has sold. Seeds the
+-- backfill orchestrator's per-suburb crawl list. No sale data here (that lives
+-- in property_sales); details are filled into property_cache by the crawl.
+
+CREATE TABLE addresses (
+  address_slug  TEXT PRIMARY KEY,
+  raw_address   TEXT NOT NULL,
+  street_number TEXT,
+  street_name   TEXT,
+  street_type   TEXT,
+  suburb        TEXT,
+  state         TEXT NOT NULL,
+  postcode      TEXT,
+  lat           NUMERIC(9,6),
+  lng           NUMERIC(9,6),
+  source        TEXT NOT NULL DEFAULT 'gnaf',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_addresses_suburb ON addresses (suburb, state);
+CREATE INDEX idx_addresses_postcode ON addresses (postcode);
+
+-- ─── Suburb Crawl Progress ───────────────────────────────────────────────────
+
+CREATE TABLE suburb_crawl_progress (
+  suburb       TEXT NOT NULL,
+  state        TEXT NOT NULL,
+  postcode     TEXT NOT NULL,
+  last_crawled TIMESTAMPTZ,
+  next_due     TIMESTAMPTZ,
+  listings_found INT DEFAULT 0,
+  PRIMARY KEY (suburb, state)
+);
+
+-- ─── Crawl Queue ─────────────────────────────────────────────────────────────
+
+CREATE TABLE crawl_queue (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  job_type     TEXT NOT NULL,
+  payload      JSONB NOT NULL,
+  priority     INT NOT NULL DEFAULT 5,
+  status       TEXT NOT NULL DEFAULT 'pending',
+  attempts     INT NOT NULL DEFAULT 0,
+  max_attempts INT NOT NULL DEFAULT 3,
+  next_attempt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  result       JSONB,
+  error        TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_crawl_queue_status_next ON crawl_queue (status, next_attempt)
+  WHERE status IN ('pending', 'failed');
+CREATE INDEX idx_crawl_queue_job_type    ON crawl_queue (job_type);
+
 -- ============================================================================
 -- Row Level Security
 -- ============================================================================
@@ -124,6 +242,7 @@ ALTER TABLE rental_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crawl_jobs     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE data_sources   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE photos         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE property_cache ENABLE ROW LEVEL SECURITY;
 
 -- Public read access (anon + authenticated can SELECT)
 CREATE POLICY "Public read access" ON properties     FOR SELECT USING (true);
@@ -132,6 +251,22 @@ CREATE POLICY "Public read access" ON rental_history FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON crawl_jobs     FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON data_sources   FOR SELECT USING (true);
 CREATE POLICY "Public read access" ON photos         FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON property_cache FOR SELECT USING (true);
+
+ALTER TABLE agencies               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE property_sales         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE suburb_crawl_progress  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE crawl_queue            ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Public read access" ON agencies               FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON property_sales         FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON suburb_crawl_progress  FOR SELECT USING (true);
+CREATE POLICY "Public read access" ON crawl_queue            FOR SELECT USING (true);
+
+CREATE POLICY "Service role full access" ON agencies               FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON property_sales         FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON suburb_crawl_progress  FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON crawl_queue            FOR ALL USING (auth.role() = 'service_role');
 
 -- Service role can do everything (insert/update/delete via server-side only)
 CREATE POLICY "Service role full access" ON properties     FOR ALL USING (auth.role() = 'service_role');
@@ -140,6 +275,7 @@ CREATE POLICY "Service role full access" ON rental_history FOR ALL USING (auth.r
 CREATE POLICY "Service role full access" ON crawl_jobs     FOR ALL USING (auth.role() = 'service_role');
 CREATE POLICY "Service role full access" ON data_sources   FOR ALL USING (auth.role() = 'service_role');
 CREATE POLICY "Service role full access" ON photos         FOR ALL USING (auth.role() = 'service_role');
+CREATE POLICY "Service role full access" ON property_cache FOR ALL USING (auth.role() = 'service_role');
 
 -- ============================================================================
 -- Indexes
@@ -178,3 +314,59 @@ CREATE TRIGGER properties_updated_at
   BEFORE UPDATE ON properties
   FOR EACH ROW
   EXECUTE FUNCTION set_updated_at();
+
+-- ============================================================================
+-- RPC: increment_agency_failures
+-- Called by queries.ts markAgencyFailure() to track crawl failures per agency.
+-- When an agency hits 5 consecutive failures it is automatically disabled.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION increment_agency_failures(p_website TEXT)
+RETURNS VOID AS $$
+BEGIN
+  UPDATE agencies
+  SET
+    consecutive_failures = consecutive_failures + 1,
+    enabled = CASE
+      WHEN consecutive_failures + 1 >= 5 THEN false
+      ELSE enabled
+    END
+  WHERE website = p_website;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ─── Property Overrides ──────────────────────────────────────────────────────
+-- Stores user-corrected field values. Applied at read time, highest priority.
+
+CREATE TABLE property_overrides (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  address_slug TEXT NOT NULL,
+  field        TEXT NOT NULL,
+  value        TEXT NOT NULL,
+  updated_by   TEXT,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (address_slug, field)
+);
+
+CREATE INDEX idx_property_overrides_slug ON property_overrides (address_slug);
+
+ALTER TABLE property_overrides ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read access"       ON property_overrides FOR SELECT USING (true);
+CREATE POLICY "Service role full access" ON property_overrides FOR ALL    USING (auth.role() = 'service_role');
+
+-- ─── User Tracked Properties ─────────────────────────────────────────────────
+
+CREATE TABLE user_properties (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id      UUID NOT NULL,
+  address_slug TEXT NOT NULL,
+  full_address TEXT NOT NULL,
+  claimed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, address_slug)
+);
+
+CREATE INDEX idx_user_properties_user_id ON user_properties (user_id);
+
+ALTER TABLE user_properties ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own properties"
+  ON user_properties FOR ALL USING (auth.uid() = user_id);

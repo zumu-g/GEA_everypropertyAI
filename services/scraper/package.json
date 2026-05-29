@@ -1,0 +1,32 @@
+{
+  "name": "propertyiq-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stealth-browser scraper service for PropertyIQ (Camoufox / Patchright / Playwright-stealth behind Playwright).",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "fetch-browser": "camoufox-js fetch"
+  },
+  "dependencies": {
+    "camoufox-js": "^0.2.0",
+    "fastify": "^5.2.0",
+    "patchright": "^1.49.0",
+    "playwright": "^1.49.0",
+    "playwright-core": "^1.49.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "turndown": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/turndown": "^5.0.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

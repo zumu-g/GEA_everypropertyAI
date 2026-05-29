@@ -73,4 +73,10 @@ export const realestateSource: SourceConfig = {
     formats: ['markdown'],
   },
   enabled: true,
+  // Routed through Apify actor for reliable Cloudflare bypass.
+  // 'properties-pages-scraper' accepts individual property page URLs via startUrls.
+  options: { apifyActorId: 'azzouzana/realestate-com-au-properties-pages-scraper' },
+  // When Apify is unconfigured/fails and Firecrawl hits the bot wall (429),
+  // fall back to the stealth-browser service. Skipped if stealth is unconfigured.
+  fallbackBackends: ['firecrawl', 'stealth'],
 };

@@ -1,84 +1,155 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Building2, Database, Activity } from "lucide-react";
+import { Database, MapPin, BarChart3 } from "lucide-react";
 import { AddressSearch } from "@/components/search/AddressSearch";
+import { AuthButton } from "@/components/auth/AuthButton";
 
-const prefersReducedMotion =
-  typeof window !== "undefined"
-    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    : false;
-
-const fadeUp = prefersReducedMotion
-  ? {}
-  : {
-      initial: { opacity: 0, y: 20 },
-      animate: { opacity: 1, y: 0 },
-      transition: { duration: 0.4, ease: "easeOut" },
-    };
-
-function fadeUpDelay(delay: number) {
-  return prefersReducedMotion
-    ? {}
-    : {
-        initial: { opacity: 0, y: 20 },
-        animate: { opacity: 1, y: 0 },
-        transition: { duration: 0.4, ease: "easeOut", delay },
-      };
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  return reduced;
 }
 
-const stats = [
-  { icon: Building2, label: "2M+ Properties", key: "properties" },
-  { icon: Database, label: "15+ Data Sources", key: "sources" },
-  { icon: Activity, label: "Real-time Data", key: "realtime" },
+const trustSignals = [
+  { icon: MapPin, label: "Casey & Cardinia", description: "Hyper-local focus" },
+  { icon: Database, label: "8+ Data Portals", description: "Aggregated in real time" },
+  { icon: BarChart3, label: "Instant Results", description: "Quick sign-in via email" },
 ];
 
 export default function HomePage() {
+  const reduced = usePrefersReducedMotion();
+
+  function fadeUp(delay = 0) {
+    if (reduced) return {};
+    return {
+      initial: { opacity: 0, y: 20 },
+      animate: { opacity: 1, y: 0 },
+      transition: { duration: 0.4, ease: "easeOut", delay },
+    };
+  }
+
   return (
-    <main className="flex min-h-screen flex-col">
-      {/* Nav */}
-      <header className="flex items-center justify-between px-6 py-4 lg:px-12">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-7 w-7 text-brand-600" />
-          <span className="text-xl font-bold text-brand-900">PropertyIQ</span>
+    <div className="flex min-h-screen flex-col bg-[#FBFBFC]">
+      {/* ── Navigation ── */}
+      <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+          <a href="/" className="flex items-center gap-3 group" aria-label="PropertyIQ home">
+            {/* GEA monogram */}
+            <span
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#C8A96E] transition-opacity duration-150 group-hover:opacity-80"
+              aria-hidden="true"
+            >
+              GEA
+            </span>
+            <div className="leading-none">
+              <span
+                className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]"
+              >
+                Property<span className="text-[#C8A96E]">IQ</span>
+              </span>
+              <span className="block text-[0.65rem] text-[#6B7077] tracking-wide uppercase">
+                by Grants Estate Agents
+              </span>
+            </div>
+          </a>
+
+          <nav aria-label="Site navigation" className="flex items-center gap-3">
+            <a
+              href="mailto:info@grantse.com.au"
+              className="rounded-lg border border-[#E7E9EE] bg-white px-4 py-2 text-sm font-medium text-[#16181D] transition-all duration-150 hover:border-[#C8A96E] hover:text-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2"
+            >
+              Contact
+            </a>
+            <AuthButton />
+          </nav>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="flex flex-1 flex-col items-center justify-center px-6 py-24 text-center lg:py-32">
-        <motion.h1
-          {...fadeUp}
-          className="max-w-3xl text-4xl font-extrabold tracking-tight text-brand-900 sm:text-5xl lg:text-6xl"
-        >
-          Every detail. Every property.{" "}
-          <span className="text-brand-600">One search.</span>
-        </motion.h1>
+      {/* ── Hero ── */}
+      <main className="flex flex-1 flex-col">
+        {/* Faint cool backdrop */}
+        <div
+          className="absolute inset-x-0 top-0 h-[600px] pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(ellipse 80% 60% at 50% -10%, rgba(51,92,125,0.05) 0%, transparent 70%)",
+          }}
+          aria-hidden="true"
+        />
 
-        <motion.p
-          {...fadeUpDelay(0.1)}
-          className="mt-6 max-w-xl text-lg text-gray-600"
-        >
-          Comprehensive property data aggregated from 15+ sources for
-          Australian real estate professionals.
-        </motion.p>
+        <section className="relative mx-auto flex w-full max-w-5xl flex-col items-center px-6 pb-20 pt-24 text-center sm:pt-32">
+          {/* Eyebrow */}
+          <motion.div {...fadeUp(0)}>
+            <span className="inline-flex items-center gap-2 rounded-full border border-[#E7E9EE] bg-[#F4F5F7] px-4 py-1.5 text-xs font-medium text-[#6B7077] tracking-wide uppercase">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#C8A96E]" aria-hidden="true" />
+              Casey &amp; Cardinia — Victoria
+            </span>
+          </motion.div>
 
-        <motion.div {...fadeUpDelay(0.2)} className="mt-10 w-full max-w-2xl">
-          <AddressSearch size="lg" />
-        </motion.div>
+          {/* Headline */}
+          <motion.h1
+            {...fadeUp(0.08)}
+            className="text-display mt-7 max-w-3xl text-[#16181D]"
+          >
+            Every property.{" "}
+            <span className="font-editorial italic text-[#C8A96E]">
+              Every detail.
+            </span>
+          </motion.h1>
 
-        {/* Stats bar */}
-        <motion.div
-          {...fadeUpDelay(0.35)}
-          className="mt-16 flex flex-wrap items-center justify-center gap-8 sm:gap-12"
-        >
-          {stats.map(({ icon: Icon, label, key }) => (
-            <div key={key} className="flex items-center gap-2 text-gray-500">
-              <Icon className="h-5 w-5 text-brand-500" aria-hidden="true" />
-              <span className="text-sm font-medium">{label}</span>
-            </div>
-          ))}
-        </motion.div>
-      </section>
-    </main>
+          {/* Sub-heading */}
+          <motion.p
+            {...fadeUp(0.16)}
+            className="mt-6 max-w-lg text-[1.0625rem] leading-relaxed text-[#6B7077]"
+          >
+            Search any property across Casey &amp; Cardinia.{" "}
+            Instant data from 8+ portals, no sign-up required.
+          </motion.p>
+
+          {/* Search */}
+          <motion.div
+            {...fadeUp(0.24)}
+            className="mt-10 w-full max-w-2xl"
+          >
+            <AddressSearch size="lg" />
+          </motion.div>
+
+          {/* Trust signals */}
+          <motion.div
+            {...fadeUp(0.36)}
+            className="mt-20 grid w-full max-w-3xl grid-cols-1 divide-y divide-[#E7E9EE] border-t border-[#E7E9EE] sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+          >
+            {trustSignals.map(({ icon: Icon, label, description }) => (
+              <div
+                key={label}
+                className="flex items-center gap-3 py-5 sm:flex-col sm:items-center sm:gap-1.5 sm:px-6 sm:text-center"
+              >
+                <Icon className="h-4 w-4 shrink-0 text-[#8A8F97]" aria-hidden="true" />
+                <div className="sm:space-y-0.5">
+                  <p className="text-sm font-medium text-[#16181D]">{label}</p>
+                  <p className="text-xs text-[#6B7077]">{description}</p>
+                </div>
+              </div>
+            ))}
+          </motion.div>
+        </section>
+
+        {/* ── Footer strip ── */}
+        <footer className="mt-auto border-t border-[#E7E9EE] py-6 text-center">
+          <p className="text-xs text-[#6B7077]">
+            &copy; {new Date().getFullYear()} Grants Estate Agents &middot;{" "}
+            <span className="text-[#C8A96E]">PropertyIQ</span> &mdash; Property data for Casey &amp; Cardinia
+          </p>
+        </footer>
+      </main>
+    </div>
   );
 }

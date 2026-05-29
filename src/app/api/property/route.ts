@@ -1,13 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { StructuredAddress, MergedPropertyProfile as PropertyProfile } from '@/types/property';
-import type { CrawlResult } from '@/types/crawl';
 import { propertyCache } from '@/lib/cache';
-import { toSlug, formatAddress } from '@/lib/utils/address';
-import { crawlProperty } from '@/lib/firecrawl/orchestrator';
-import { extractPropertyData } from '@/lib/extraction/extractor';
-import { mergePropertyData } from '@/lib/extraction/merger';
+import { toSlug } from '@/lib/utils/address';
+import { fetchAndCacheProfile } from '@/lib/jobs/fetch-profile';
+import { getCachedProfile, getOverrides } from '@/lib/db/queries';
 
 const PIPELINE_TIMEOUT_MS = 60_000; // 60 seconds
+
+function applyOverrides(
+  profile: PropertyProfile,
+  overrides: Record<string, string>
+): PropertyProfile {
+  if (Object.keys(overrides).length === 0) return profile;
+
+  const NUMERIC_FIELDS = new Set(['bedrooms', 'bathrooms', 'carSpaces', 'landArea', 'yearBuilt']);
+
+  const patchedData = { ...profile.data };
+  const patchedConfidences = { ...profile.fieldConfidences };
+
+  for (const [field, rawValue] of Object.entries(overrides)) {
+    const value = NUMERIC_FIELDS.has(field) ? Number(rawValue) : rawValue;
+    patchedData[field] = value;
+    patchedConfidences[field] = { confidence: 100, contributedBy: ['user-override'] };
+  }
+
+  return { ...profile, data: patchedData, fieldConfidences: patchedConfidences };
+}
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -51,11 +69,31 @@ export async function POST(request: NextRequest) {
 
   const slug = toSlug(address);
 
-  // 1. Check cache
+  // 1. Check in-memory cache
   const cached = propertyCache.get(slug);
   if (cached) {
+    const overrides = await getOverrides(slug);
+    const finalProfile = applyOverrides(cached, overrides);
     return NextResponse.json(
-      { profile: cached, source: 'cache' },
+      { profile: finalProfile, source: 'cache', addressSlug: slug },
+      {
+        status: 200,
+        headers: {
+          ...CORS_HEADERS,
+          'X-Cache-Status': 'HIT',
+        },
+      }
+    );
+  }
+
+  // 1b. Try Supabase cache (persistent, survives restarts)
+  const supabaseCached = await getCachedProfile(slug);
+  if (supabaseCached) {
+    propertyCache.set(slug, supabaseCached); // warm in-memory cache
+    const overrides = await getOverrides(slug);
+    const finalProfile = applyOverrides(supabaseCached, overrides);
+    return NextResponse.json(
+      { profile: finalProfile, source: 'cache', addressSlug: slug },
       {
         status: 200,
         headers: {
@@ -69,9 +107,11 @@ export async function POST(request: NextRequest) {
   // 2. Run the full pipeline with a timeout
   try {
     const profile = await runPipelineWithTimeout(address, slug);
+    const overrides = await getOverrides(slug);
+    const finalProfile = applyOverrides(profile, overrides);
 
     return NextResponse.json(
-      { profile, source: 'fresh' },
+      { profile: finalProfile, source: 'fresh', addressSlug: slug },
       {
         status: 200,
         headers: {
@@ -112,58 +152,15 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Run the full crawl -> extract -> merge pipeline with a timeout.
+ * Run the shared crawl -> extract -> merge -> cache pipeline with a timeout.
  */
 async function runPipelineWithTimeout(
   address: StructuredAddress,
-  slug: string
+  _slug: string
 ): Promise<PropertyProfile> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PIPELINE_TIMEOUT_MS);
-
-  try {
-    const profile = await runPipeline(address, slug, controller.signal);
-    return profile;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/**
- * Core pipeline: crawl sources, extract data, merge into a unified profile.
- */
-async function runPipeline(
-  address: StructuredAddress,
-  slug: string,
-  signal: AbortSignal
-): Promise<PropertyProfile> {
-  // Step 1: Crawl property data from multiple sources
-  const crawlResults: CrawlResult[] = await crawlProperty(address);
-  console.log(`[pipeline] Crawl complete: ${crawlResults.length} sources, statuses: ${crawlResults.map(r => `${r.source}=${r.status}`).join(', ')}`);
-
-  if (signal.aborted) {
-    throw new Error('Pipeline timed out during crawl phase');
-  }
-
-  const successful = crawlResults.filter((result) => result.status === 'success');
-  console.log(`[pipeline] Successful crawls: ${successful.length}, extracting...`);
-
-  // Step 2: Extract structured data from each crawl result
-  const fullAddress = formatAddress(address);
-  const extractions = await Promise.all(
-    successful.map((result) => extractPropertyData(result.markdown ?? '', result.source, fullAddress))
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Pipeline timed out')), PIPELINE_TIMEOUT_MS)
   );
-  console.log(`[pipeline] Extractions complete: ${extractions.length}, fields: ${extractions.map(e => Object.keys(e.raw).join(',')).join(' | ')}`);
-
-  if (signal.aborted) {
-    throw new Error('Pipeline timed out during extraction phase');
-  }
-
-  // Step 3: Merge all extractions into a unified PropertyProfile
-  const profile = mergePropertyData(extractions);
-
-  // Step 4: Cache the result
-  propertyCache.set(slug, profile);
-
+  const { profile } = await Promise.race([fetchAndCacheProfile(address), timeout]);
   return profile;
 }
