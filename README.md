@@ -15,21 +15,29 @@ npm run dev
 ## Configuration (.env.local)
 
 ```bash
-# Required — Firecrawl for web scraping
+# Required — Firecrawl for web scraping (unprotected sources)
 FIRECRAWL_API_KEY=your-key          # Get at https://firecrawl.dev
 
+# Scraping cascade for bot-protected portals (REA/Domain/View) — see "Scraping Backends"
+APIFY_API_TOKEN=your-token          # PRIMARY for protected portals. https://console.apify.com/account/integrations
+STEALTH_SCRAPER_URL=                # FALLBACK — URL of the services/scraper stealth browser (e.g. http://localhost:8090)
+STEALTH_SCRAPER_SECRET=             # Optional bearer for the stealth service
+STEALTH_ENGINE=camoufox             # camoufox (default) | patchright | playwright
+
 # LLM Extraction — pick ONE (OpenRouter recommended for cost)
+EXTRACTION_PROVIDER=llm             # 'llm' (default) or 'firecrawl' (native /extract)
 OPENROUTER_API_KEY=your-key         # Get at https://openrouter.ai/keys
 OPENROUTER_MODEL=moonshotai/kimi-k2 # See model options below
 # OR
 ANTHROPIC_API_KEY=your-key          # Direct Anthropic (more expensive)
 
 # Optional
-NEXT_PUBLIC_SUPABASE_URL=           # Supabase for persistent storage
+NEXT_PUBLIC_SUPABASE_URL=           # Supabase for persistent storage (property_cache, property_sales, …)
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=    # Google Places autocomplete (has free fallback)
-CRON_SECRET=                        # Auth token for daily cron endpoint
+MAPBOX_ACCESS_TOKEN=                # Mapbox autocomplete/geocoding (preferred)
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=    # Google Places autocomplete (fallback)
+CRON_SECRET=                        # Auth token for cron endpoints
 ```
 
 ### OpenRouter Model Options
@@ -43,6 +51,25 @@ CRON_SECRET=                        # Auth token for daily cron endpoint
 | `anthropic/claude-sonnet-4` | ~$3.00 | Best quality |
 
 Without any LLM key, the app falls back to regex-based extraction (gets beds/baths/cars/features but misses sale history and descriptions).
+
+## Scraping Backends (cascade)
+
+Bot-protected portals are fetched through a per-source fallback cascade in
+`src/lib/firecrawl/orchestrator.ts`:
+
+1. **Apify** (`APIFY_API_TOKEN`) — PRIMARY for REA/Domain/View. Managed actors with residential
+   proxies that bypass Kasada (REA) / DataDome (View) / Cloudflare (Domain).
+   - REA → `azzouzana/real-estate-au-scraper-pro`
+   - Domain → `shahidirfan/Domain-com-au-Property-Scraper`
+   - View → `abotapi/view-com-au-scraper` (runs in `mode: url` via `apifyInput`)
+2. **Stealth browser** (`STEALTH_SCRAPER_URL`) — FALLBACK. The `services/scraper` Fastify service
+   (Camoufox / Patchright / Playwright). Handles SPA settle + anti-detect fingerprinting.
+3. **Firecrawl** — primary for unprotected sources (oldlistings, homely, homehound, agencies).
+
+If `APIFY_API_TOKEN` and `STEALTH_SCRAPER_URL` are both unset, protected portals fall through to
+raw Firecrawl and get rate-limited (429) — so set at least one. Notes: REA uses **Kasada**, which
+plain playwright-stealth cannot beat (needs Apify or Camoufox); the cascade drops Firecrawl from
+the protected-portal chain to avoid wasted 15–30s timeouts.
 
 ## Architecture
 
@@ -87,6 +114,12 @@ propertyiq/
 │       ├── property.ts                      # Property type definitions
 │       ├── crawl.ts                         # Crawl types + SourceConfig
 │       └── source.ts                        # Data source names
+│   ├── lib/apify/client.ts                  # Apify actor wrapper (protected portals)
+│   └── lib/stealth/client.ts                # Stealth-service HTTP client
+├── services/
+│   ├── scraper/                             # Stealth browser service (Camoufox/Patchright/Playwright)
+│   └── everypropertyai/                     # MCP server + CLI exposing data to CMA/proposal tools
+├── DESIGN.md                                # Design system (cool data-site look; overrides GEA baseline)
 ├── vercel.json                              # Cron config (daily at 6am)
 └── .env.local                               # API keys (not committed)
 ```
@@ -136,13 +169,13 @@ Rental records include: date, weekly rent, bond, agency, agent/manager, days on 
 
 | Source | Status | Data |
 |---|---|---|
-| realestate.com.au | **Active** | Listings, photos, features, prices, sale history |
-| domain.com.au | **Active** | Listings, photos, suburb data |
+| realestate.com.au | **Active** (Apify) | Listings, photos, features, prices, sale history. Kasada-protected → Apify actor |
+| domain.com.au | **Active** (Apify) | Listings, photos, suburb data. Verified returning structured data |
+| view.com.au | **Active** (Apify, url mode) | DataDome — via Apify actor; single-property hits depend on slug/listing availability |
 | oldlistings.com.au (buy) | **Active** | 18 years historical listing prices, 15M+ records |
 | oldlistings.com.au (rent) | **Active** | 18 years historical rental listings |
 | homely.com.au | **Active** | Property-specific sold data (property URL, suburb fallback) |
 | homehound.com.au | **Active** | Listings via Renet CRM |
-| view.com.au | Disabled | Datadome captcha |
 | ratemyagent.com.au | Disabled | DataDome captcha |
 | inspectrealestate.com.au | Disabled | B2B SaaS, not a portal |
 
@@ -163,12 +196,17 @@ Casey, Cardinia, and Baw Baw council areas. Includes Ray White, Barry Plant, Har
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/address-suggest?q=...&state=...&lat=...&lng=...` | Address autocomplete (location-aware) |
-| POST | `/api/property` | Full property lookup pipeline |
-| GET | `/api/property/[id]` | Cached property by slug |
+| GET | `/api/search?q=...` | Address autocomplete (Mapbox/Google) |
+| GET | `/api/address-suggest?q=...&state=...&lat=...&lng=...` | REA autocomplete (clean suburb/state/postcode) |
+| POST | `/api/property` | Full property lookup pipeline (`maxDuration` 120s) |
+| GET | `/api/property/[slug]/override` | User overrides for a cached property |
+| GET | `/api/comparable-sales?suburb=...&state=...&beds=...&baths=...` | Top comparable sales (similarity-scored) |
+| GET | `/api/sold-sales?suburb=...&state=...&limit=...` | Recent sold-sales feed (Valuer General) |
+| GET | `/api/street-details?q=...` | All known addresses on a street |
 | GET | `/api/enrich?address=...&suburb=...&state=...&postcode=...` | Planning, schools, transport, market data |
-| POST | `/api/cron/daily-listings` | Trigger daily listing crawl |
-| GET | `/api/cron/daily-listings` | Check cron status |
+| POST | `/api/cron/{process-queue,backfill,ingest-vg,daily-listings}` | Cron jobs (`CRON_SECRET` auth) |
+
+These routes are wrapped by `services/everypropertyai` for the CMA/proposal tools.
 
 ## Daily Cron
 
@@ -183,13 +221,50 @@ Customise via POST body:
 }
 ```
 
+## everypropertyAI (data access for CMA / proposal tools)
+
+`services/everypropertyai/` is a standalone **MCP server + CLI** that exposes this app's data to
+GEA's CMA and proposal tools, wrapping the HTTP API (no logic/keys duplicated).
+
+```bash
+cd services/everypropertyai && npm install && npm run build && npm link   # one-time
+everypropertyai cma "9 Gloucester Ave Berwick"        # CMA pack (subject + comps + estimate + suburb stats)
+everypropertyai proposal "<address>"                   # presentation-ready fields
+npm run mcp                                            # MCP stdio server (8 tools)
+```
+
+- Config: `EVERYPROPERTY_API_URL` (default `http://localhost:3007`), optional `EVERYPROPERTY_API_TOKEN`.
+- 8 MCP tools: `search_address`, `fetch_property`, `comparable_sales`, `sold_sales`, `enrich`,
+  `street_details`, `generate_cma_pack`, `proposal_property_data`.
+- CMA-project integration prompt: `services/everypropertyai/CMA_INTEGRATION_PROMPT.md`.
+- See `services/everypropertyai/README.md` for the full surface.
+
+## Design system
+
+UI follows `DESIGN.md` — a cooler/whiter, sans-dominant "data site" aesthetic (intentional
+override of the warm GEA editorial baseline; gold kept as a sparing accent). `DESIGN.stitch.md`
+is a Google Stitch–formatted companion. Validate tokens/contrast with `design.md lint DESIGN.md`.
+
+## Current status (resume here)
+
+- ✅ **Redesign** shipped (cool data-site palette, sans headings, shared `src/components/ui` primitives).
+- ✅ **Scraping cascade live**: Apify primary (Domain verified returning data), stealth fallback
+  (`services/scraper`, playwright engine), Firecrawl for unprotected. **View** runs in url mode
+  but single-property hits depend on slug/listing availability.
+- ✅ **everypropertyAI** package built, verified (CLI + MCP), `npm link`ed locally.
+- 🔜 **Open items:** REA reliability (Kasada — Apify actor / fetch **Camoufox**, blocked earlier by
+  a GitHub API rate-limit); `cachedOnly`/`fresh` flag on `/api/property` so CMA packs skip the
+  ~120s live crawl; shared-secret auth on data routes before exposing a deployed instance; deploy
+  the stealth service + set `STEALTH_SCRAPER_URL` in prod. Branch: `redesign/data-site-look` (unpushed).
+
 ## Tech Stack
 
 - **Framework:** Next.js 15 (App Router), TypeScript, Tailwind CSS v4
-- **Scraping:** Firecrawl SDK
-- **LLM:** OpenRouter (Kimi K2 default) or Anthropic Claude
-- **Database:** In-memory cache (Supabase-ready)
-- **Maps:** Nominatim (free), Google Places (optional)
+- **Scraping cascade:** Apify actors (protected portals) → stealth browser (`services/scraper`) → Firecrawl
+- **LLM:** OpenRouter (Kimi K2 default), Anthropic Claude, or MiniMax
+- **Database:** Supabase (`property_cache`, `property_sales`, …) + in-memory cache
+- **Maps:** Mapbox (preferred), Nominatim (free), Google Places (optional)
 - **Planning:** VicPlan ArcGIS REST API
 - **Market Data:** CoreLogic via YourInvestmentPropertyMag
+- **Data access:** `services/everypropertyai` MCP server + CLI
 - **Deployment:** Vercel
