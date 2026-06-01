@@ -78,5 +78,5 @@ export const realestateSource: SourceConfig = {
   options: { apifyActorId: 'azzouzana/realestate-com-au-properties-pages-scraper' },
   // When Apify is unconfigured/fails and Firecrawl hits the bot wall (429),
   // fall back to the stealth-browser service. Skipped if stealth is unconfigured.
-  fallbackBackends: ['firecrawl', 'stealth'],
+  fallbackBackends: ['stealth'],
 };

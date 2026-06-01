@@ -73,6 +73,15 @@ export const playwrightEngine: Engine = {
         await page.waitForSelector(options.waitFor, { timeout }).catch(() => {});
       }
 
+      // SPA settle: REA/Domain/View render property data via JS after
+      // domcontentloaded. networkidle waits for XHR/fetch to quiesce; the floor
+      // delay covers late hydration so we don't capture an empty shell. Both are
+      // best-effort — a stale/missing waitFor selector no longer yields 0 chars.
+      await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+      if (typeof options.waitFor !== 'number') {
+        await page.waitForTimeout(1500);
+      }
+
       const html = await page.content();
       const finalUrl = page.url();
       return { html, finalUrl };

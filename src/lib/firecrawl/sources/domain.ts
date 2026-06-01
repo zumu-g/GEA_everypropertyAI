@@ -34,5 +34,5 @@ export const domainSource: SourceConfig = {
   options: { apifyActorId: 'shahidirfan/domain-com-au-property-scraper' },
   // Fall back to Firecrawl then the stealth-browser service when Apify is
   // unavailable/fails. Skipped if stealth is unconfigured.
-  fallbackBackends: ['firecrawl', 'stealth'],
+  fallbackBackends: ['stealth'],
 };

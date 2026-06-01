@@ -51,5 +51,5 @@ export const viewSource: SourceConfig = {
   options: { apifyActorId: 'abotapi/view-com-au-scraper' },
   // Fall back to Firecrawl then the stealth-browser service when Apify is
   // unavailable/fails. Skipped if stealth is unconfigured.
-  fallbackBackends: ['firecrawl', 'stealth'],
+  fallbackBackends: ['stealth'],
 };

@@ -5,7 +5,11 @@ import { toSlug } from '@/lib/utils/address';
 import { fetchAndCacheProfile } from '@/lib/jobs/fetch-profile';
 import { getCachedProfile, getOverrides } from '@/lib/db/queries';
 
-const PIPELINE_TIMEOUT_MS = 60_000; // 60 seconds
+// Allow headroom for the stealth fallback (browser fetch ~10-15s/portal) on a
+// fresh, uncached lookup. Cached lookups return instantly. Declared maxDuration
+// keeps the serverless function alive long enough on Vercel (Pro).
+export const maxDuration = 120;
+const PIPELINE_TIMEOUT_MS = 110_000; // 110s — just under maxDuration
 
 function applyOverrides(
   profile: PropertyProfile,
