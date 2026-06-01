@@ -376,7 +376,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mx-auto max-w-5xl px-6 py-10 lg:py-14">
         {/* Progress indicator */}
         <div className="mb-10 flex flex-col items-center justify-center py-12">
           <div className="relative mb-6">
@@ -515,7 +515,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-10 px-6 py-10">
+    <div className="mx-auto max-w-5xl space-y-8 px-6 py-10 lg:py-14">
       <Link
         href="/"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-[#6B7077] transition-colors duration-150 hover:text-[#C8A96E]"
@@ -528,7 +528,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         initial={prefersReducedMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4 }}
-        className="space-y-10"
+        className="space-y-16"
       >
         {/* ─── Hero ─── */}
         <section className="overflow-hidden rounded-2xl bg-white border border-[#E7E9EE] ">
@@ -700,7 +700,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           <section>
             <SectionTitle icon={FileText} title="About This Property" />
             <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
-              <p className="text-sm leading-relaxed text-[#33363D]">{d.description as string}</p>
+              <p className="max-w-[68ch] text-sm leading-relaxed text-[#33363D]">{d.description as string}</p>
             </div>
           </section>
         )}
@@ -899,7 +899,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           <section>
             <SectionTitle icon={Users} title="Buyer Demand" />
             <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
-              <div className="flex items-center gap-4 mb-5">
+              <div className="flex items-center gap-4 mb-6">
                 <DemandGauge score={enrichment.buyerDemand.score} level={enrichment.buyerDemand.level} />
                 <div>
                   <p className="text-lg font-bold text-[#16181D] capitalize">

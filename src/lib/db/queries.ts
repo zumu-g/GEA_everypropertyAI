@@ -925,7 +925,8 @@ export async function countRecentJobs(jobType: string, sinceIso: string): Promis
 export async function getSalesForSuburb(
   suburb: string,
   state: string,
-  limitDays: number = 730
+  limitDays: number = 730,
+  limit: number = 200
 ): Promise<PropertySaleRecord[]> {
   if (!isSupabaseConfigured()) return [];
   const since = new Date(Date.now() - limitDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
@@ -936,7 +937,7 @@ export async function getSalesForSuburb(
     .eq('state', state.toUpperCase())
     .gte('sale_date', since)
     .order('sale_date', { ascending: false })
-    .limit(200);
+    .limit(limit);
   if (error) { console.error('[getSalesForSuburb]', error.message); return []; }
   return data ?? [];
 }
