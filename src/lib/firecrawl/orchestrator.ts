@@ -92,7 +92,12 @@ export async function crawlProperty(
       }
       if (backend === 'apify') {
         return apifyActorId
-          ? scrapeWithApify(target, source.name, apifyActorId)
+          ? scrapeWithApify(
+              target,
+              source.name,
+              apifyActorId,
+              source.options?.apifyInput as Record<string, unknown> | undefined
+            )
           : Promise.resolve<CrawlResult>({
               source: source.name,
               url: target,

@@ -75,6 +75,12 @@ export async function scrapeWithApify(
       maxItems: 5,
       ...extraInput,
     };
+    // Some actors (e.g. view.com.au) run in "url mode" and expect a `urls`
+    // string array rather than `startUrls`. When a source opts into url mode
+    // via apifyInput, supply the target URL in the shape the actor wants.
+    if (input.mode === 'url' && !input.urls) {
+      input.urls = [url];
+    }
 
     const run = await startActorRun(actorId, input, 90, token);
 
@@ -97,6 +103,24 @@ export async function scrapeWithApify(
         status: 'failed',
         crawledAt: new Date(),
         error: 'Apify actor returned no results',
+      };
+    }
+
+    // Some actors "succeed" but emit an error-shaped payload (e.g. view.com.au
+    // returns { error: true, message: 'No results found' } when the property
+    // URL has no listing). Treat that as a failure so the cascade falls through
+    // to the stealth backend instead of feeding the junk to the LLM extractor.
+    const allErrors = items.every(
+      (it) => it && typeof it === 'object' && (it as { error?: unknown }).error === true
+    );
+    if (allErrors) {
+      const msg = (items[0] as { message?: unknown }).message;
+      return {
+        source,
+        url,
+        status: 'failed',
+        crawledAt: new Date(),
+        error: `Apify actor error: ${typeof msg === 'string' ? msg : 'unknown'}`,
       };
     }
 

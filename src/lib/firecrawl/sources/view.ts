@@ -48,7 +48,12 @@ export const viewSource: SourceConfig = {
   enabled: true,
   trustRank: 2,
   refreshIntervalHours: 24,
-  options: { apifyActorId: 'abotapi/view-com-au-scraper' },
+  // The view.com.au actor defaults to location/search mode; it must be told to
+  // run in "url mode" so it scrapes the specific property URL we pass.
+  options: {
+    apifyActorId: 'abotapi/view-com-au-scraper',
+    apifyInput: { mode: 'url' },
+  },
   // Fall back to Firecrawl then the stealth-browser service when Apify is
   // unavailable/fails. Skipped if stealth is unconfigured.
   fallbackBackends: ['stealth'],
