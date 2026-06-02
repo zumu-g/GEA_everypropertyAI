@@ -65,6 +65,34 @@ server.tool(
 );
 
 server.tool(
+  "on_market_listings",
+  "Current on-market (for-sale) listings in a suburb or around a lat/lng point (Domain feed).",
+  {
+    suburb: z.string().optional(),
+    state: z.string().optional(),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+    radius: z.number().optional(),
+    limit: z.number().optional(),
+  },
+  (args) => safe(() => client.onMarketListings(args)),
+);
+
+server.tool(
+  "rental_listings",
+  "Current on-market rental listings in a suburb or around a lat/lng point (Domain feed).",
+  {
+    suburb: z.string().optional(),
+    state: z.string().optional(),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+    radius: z.number().optional(),
+    limit: z.number().optional(),
+  },
+  (args) => safe(() => client.rentalListings(args)),
+);
+
+server.tool(
   "enrich",
   "Location enrichment for a suburb/address: planning/zoning, schools, transport, childcare, suburb stats, buyer demand, market data.",
   {

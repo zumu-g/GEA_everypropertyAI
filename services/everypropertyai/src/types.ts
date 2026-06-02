@@ -71,6 +71,41 @@ export interface SoldSaleResult {
   source?: string | null;
 }
 
+export interface OnMarketListing {
+  rawAddress: string;
+  suburb: string | null;
+  postcode: string | null;
+  displayPrice: string | null;
+  priceLow: number | null;
+  priceHigh: number | null;
+  status: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  carSpaces: number | null;
+  landAreaSqm: number | null;
+  propertyType: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  source: string;
+}
+
+export interface RentalListing {
+  rawAddress: string;
+  suburb: string | null;
+  postcode: string | null;
+  displayPrice: string | null;
+  weeklyRent: number | null;
+  status: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  carSpaces: number | null;
+  landAreaSqm: number | null;
+  propertyType: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  source: string;
+}
+
 export interface StreetRow {
   streetAddress: string;
   suburb: string;

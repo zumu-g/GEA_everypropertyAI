@@ -37,8 +37,11 @@ program
 program
   .command("property")
   .argument("<address...>", "free-text address")
-  .description("Full merged property profile (may trigger a live crawl if uncached)")
-  .action((address: string[]) => run(() => client.fetchProperty(address.join(" "))));
+  .description("Merged property profile. Fast by default (quick partial + background fill); --full forces the complete crawl.")
+  .option("--full", "run the complete multi-source crawl (slower; waits for all data)")
+  .action((address: string[], o) =>
+    run(() => client.fetchProperty(address.join(" "), { fast: !o.full })),
+  );
 
 program
   .command("comps")
@@ -77,6 +80,50 @@ program
         minPrice: o.min,
         maxPrice: o.max,
         sinceDays: o.sinceDays,
+        limit: o.limit,
+      }),
+    ),
+  );
+
+program
+  .command("listings")
+  .description("Current on-market (for-sale) listings in a suburb or around a point")
+  .option("--suburb <suburb>")
+  .option("--state <state>", "state", "VIC")
+  .option("--lat <n>", "centre latitude (radius mode)", Number)
+  .option("--lng <n>", "centre longitude (radius mode)", Number)
+  .option("--radius <n>", "radius in km (radius mode)", Number)
+  .option("--limit <n>", "max rows", Number)
+  .action((o) =>
+    run(() =>
+      client.onMarketListings({
+        suburb: o.suburb,
+        state: o.state,
+        lat: o.lat,
+        lng: o.lng,
+        radius: o.radius,
+        limit: o.limit,
+      }),
+    ),
+  );
+
+program
+  .command("rentals")
+  .description("Current on-market rental listings in a suburb or around a point")
+  .option("--suburb <suburb>")
+  .option("--state <state>", "state", "VIC")
+  .option("--lat <n>", "centre latitude (radius mode)", Number)
+  .option("--lng <n>", "centre longitude (radius mode)", Number)
+  .option("--radius <n>", "radius in km (radius mode)", Number)
+  .option("--limit <n>", "max rows", Number)
+  .action((o) =>
+    run(() =>
+      client.rentalListings({
+        suburb: o.suburb,
+        state: o.state,
+        lat: o.lat,
+        lng: o.lng,
+        radius: o.radius,
         limit: o.limit,
       }),
     ),

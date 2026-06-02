@@ -166,6 +166,8 @@ CREATE TABLE property_sales (
   sale_price      NUMERIC(14,2),
   sale_date       DATE,
   settlement_date DATE,
+  latitude        DOUBLE PRECISION,
+  longitude       DOUBLE PRECISION,
   source          TEXT NOT NULL,
   raw_data        JSONB,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -370,3 +372,73 @@ CREATE INDEX idx_user_properties_user_id ON user_properties (user_id);
 ALTER TABLE user_properties ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users manage own properties"
   ON user_properties FOR ALL USING (auth.uid() = user_id);
+
+-- ─── Property Listings (on-market / for-sale) ────────────────────────────────
+-- Suburb- and radius-queryable feed of CURRENT on-market listings, sourced from
+-- the Domain Apify scraper (record_type "listing", /sale/ pages). Parallel to
+-- property_sales (which holds SOLD records). Deduped per source on raw_address.
+
+CREATE TABLE IF NOT EXISTS property_listings (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  raw_address   TEXT NOT NULL,
+  suburb        TEXT,
+  state         TEXT NOT NULL DEFAULT 'VIC',
+  postcode      TEXT,
+  display_price TEXT,            -- raw price string, e.g. "$930,000 - $970,000"
+  price_low     NUMERIC(14,2),   -- parsed low end of the range (low=high if single)
+  price_high    NUMERIC(14,2),   -- parsed high end of the range
+  status        TEXT,            -- listing.tags.tag_text, e.g. "Under offer"
+  bedrooms      SMALLINT,
+  bathrooms     SMALLINT,
+  car_spaces    SMALLINT,
+  land_area_sqm NUMERIC(10,2),
+  property_type TEXT,
+  latitude      DOUBLE PRECISION,
+  longitude     DOUBLE PRECISION,
+  source        TEXT NOT NULL,
+  raw_data      JSONB,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (raw_address, source)
+);
+
+CREATE INDEX IF NOT EXISTS idx_property_listings_suburb ON property_listings (suburb, state);
+CREATE INDEX IF NOT EXISTS idx_property_listings_geo    ON property_listings (latitude, longitude);
+
+ALTER TABLE property_listings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read access"       ON property_listings FOR SELECT USING (true);
+CREATE POLICY "Service role full access" ON property_listings FOR ALL    USING (auth.role() = 'service_role');
+
+-- ─── Property Rentals (on-market / for-rent) ─────────────────────────────────
+-- Suburb- and radius-queryable feed of CURRENT rental listings, sourced from the
+-- Domain Apify scraper (/rent/ pages). Distinct from rental_history (per-property
+-- lease records). Deduped per source on raw_address. (Table + endpoint exist now;
+-- the /rent/ scrape is loaded in a later step.)
+
+CREATE TABLE IF NOT EXISTS property_rentals (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  raw_address   TEXT NOT NULL,
+  suburb        TEXT,
+  state         TEXT NOT NULL DEFAULT 'VIC',
+  postcode      TEXT,
+  display_price TEXT,            -- raw price string, e.g. "$550 per week"
+  weekly_rent   NUMERIC(10,2),   -- parsed weekly rent
+  status        TEXT,            -- listing.tags.tag_text, e.g. "Under application"
+  bedrooms      SMALLINT,
+  bathrooms     SMALLINT,
+  car_spaces    SMALLINT,
+  land_area_sqm NUMERIC(10,2),
+  property_type TEXT,
+  latitude      DOUBLE PRECISION,
+  longitude     DOUBLE PRECISION,
+  source        TEXT NOT NULL,
+  raw_data      JSONB,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (raw_address, source)
+);
+
+CREATE INDEX IF NOT EXISTS idx_property_rentals_suburb ON property_rentals (suburb, state);
+CREATE INDEX IF NOT EXISTS idx_property_rentals_geo    ON property_rentals (latitude, longitude);
+
+ALTER TABLE property_rentals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read access"       ON property_rentals FOR SELECT USING (true);
+CREATE POLICY "Service role full access" ON property_rentals FOR ALL    USING (auth.role() = 'service_role');

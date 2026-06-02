@@ -6,6 +6,13 @@ Paste the block below into a **Claude Code session running inside the CMA projec
 > command verified working against PropertyIQ on `:3007`). On that machine, step 2 is a no-op
 > beyond confirming `everypropertyai --version`. On a fresh machine, run step 2 in full.
 
+## How to use
+
+1. `cd` into the CMA project repo
+2. Start a Claude Code session there
+3. Paste everything inside the code fence below as the first message
+4. Prereq: PropertyIQ must be reachable at `EVERYPROPERTY_API_URL` (defaults to `http://localhost:3007`)
+
 ---
 
 ```
@@ -32,16 +39,21 @@ one build/link step noted below.
 - everypropertyai search "<address>"     → address suggestions
 
 CMA pack JSON shape:
-{ "address","addressSlug","source",
-  "subject": { "bedrooms","bathrooms","carSpaces","landAreaSqm","propertyType","overallConfidence" },
-  "priceEstimate": { "low","mid","high","source" },
-  "comparables": [ { "address","suburb","price","saleDate","beds","baths","landAreaSqm","similarityScore" } ],
-  "recentSuburbSales": [ { "rawAddress","suburb","salePrice","saleDate","propertyType" } ],
-  "suburbStats", "marketData", "generatedAt" }
+{
+  "address", "addressSlug", "source",
+  "subject":       { "bedrooms", "bathrooms", "carSpaces", "landAreaSqm", "propertyType", "overallConfidence" },
+  "priceEstimate": { "low", "mid", "high", "source" },
+  "comparables":        [ { "address", "suburb", "price", "saleDate", "beds", "baths", "landAreaSqm", "similarityScore" } ],
+  "recentSuburbSales":  [ { "rawAddress", "suburb", "salePrice", "saleDate", "propertyType" } ],
+  "suburbStats", "marketData", "generatedAt"
+}
 
 Proposal JSON shape:
-{ "address","bedrooms","bathrooms","carSpaces","landAreaSqm","propertyType",
-  "priceEstimate","formattedEstimate","agency","agentName","heroPhotos":[],"suburb","description","confidence" }
+{
+  "address", "bedrooms", "bathrooms", "carSpaces", "landAreaSqm", "propertyType",
+  "priceEstimate", "formattedEstimate", "agency", "agentName",
+  "heroPhotos": [], "suburb", "description", "confidence"
+}
 
 IMPORTANT latency note: `cma`/`property` for an UNCACHED address can take up to ~120s (it
 triggers a live crawl); cached addresses return in <2s. Design any runtime call to be async

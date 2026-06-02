@@ -226,7 +226,9 @@ async function handlePropertyProfile(
 ): Promise<Record<string, unknown>> {
   if (!payload.address) throw new Error('property-profile job missing address');
 
-  const { profile, slug, empty } = await fetchAndCacheProfile(payload.address);
+  // skipIfCached: a job enqueued earlier may already be cached (e.g. filled by a
+  // CRM lookup's background crawl) — don't re-scrape it.
+  const { profile, slug, empty } = await fetchAndCacheProfile(payload.address, { skipIfCached: true });
 
   if (empty) {
     // Surface as an error so the queue retries with backoff.

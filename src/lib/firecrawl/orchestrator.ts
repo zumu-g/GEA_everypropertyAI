@@ -3,10 +3,13 @@ import type { CrawlResult, FetchBackend } from '@/types/crawl';
 import { scrapeUrl } from './client';
 import { scrapeWithApify } from '@/lib/apify/client';
 import { scrapeWithStealth, isStealthConfigured } from '@/lib/stealth/client';
-import { getActiveSources, getAllSourcesForAddress } from './sources';
+import { getActiveSources, getAllSourcesForAddress, getFastSources } from './sources';
 import { toAddressSlug } from './address';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+// Per-source timeout for the FAST path — keeps a fresh lookup snappy. The full
+// background crawl uses each source's own (longer) timeout.
+const FAST_SOURCE_TIMEOUT_MS = 8_000;
 
 /**
  * Simple in-memory cache for crawl results.
@@ -59,11 +62,14 @@ function setCachedResult(
  */
 export async function crawlProperty(
   address: StructuredAddress,
-  options?: { includeAgencies?: boolean }
+  options?: { includeAgencies?: boolean; fast?: boolean }
 ): Promise<CrawlResult[]> {
-  const sources = options?.includeAgencies
-    ? getAllSourcesForAddress(address)
-    : getActiveSources();
+  const fast = options?.fast ?? false;
+  const sources = fast
+    ? getFastSources()
+    : options?.includeAgencies
+      ? getAllSourcesForAddress(address)
+      : getActiveSources();
 
   const jobs = sources.map(async (source): Promise<CrawlResult> => {
     // Check cache first
@@ -75,19 +81,27 @@ export async function crawlProperty(
     const url = source.buildPropertyUrl(address);
     const apifyActorId = source.options?.apifyActorId as string | undefined;
 
+    // FAST path: force the firecrawl backend with a short timeout and skip Apify
+    // (its ~90s actor wait is the main source of slowness). The full background
+    // crawl uses the normal backends/timeouts.
+    const scrapeOptions = fast
+      ? { ...source.scrapeOptions, timeout: FAST_SOURCE_TIMEOUT_MS }
+      : source.scrapeOptions;
+
     // Resolve the primary fetch backend. Default preserves prior behaviour:
     // apify when an actor id is configured, otherwise firecrawl.
-    const primary: FetchBackend =
-      source.fetchBackend ?? (apifyActorId ? 'apify' : 'firecrawl');
+    const primary: FetchBackend = fast
+      ? 'firecrawl'
+      : source.fetchBackend ?? (apifyActorId ? 'apify' : 'firecrawl');
 
     // Dispatch a single backend. Unavailable backends return a 'failed' result
     // (no actor id / stealth unconfigured) so the fallback loop can move on.
     const dispatch = (backend: FetchBackend, target: string): Promise<CrawlResult> => {
       if (backend === 'stealth') {
         return scrapeWithStealth(target, source.name, {
-          waitFor: source.scrapeOptions?.waitFor,
-          timeout: source.scrapeOptions?.timeout,
-          engine: source.scrapeOptions?.stealthEngine,
+          waitFor: scrapeOptions?.waitFor,
+          timeout: scrapeOptions?.timeout,
+          engine: scrapeOptions?.stealthEngine,
         });
       }
       if (backend === 'apify') {
@@ -106,11 +120,11 @@ export async function crawlProperty(
               error: 'apify backend requested but no apifyActorId configured',
             });
       }
-      return scrapeUrl(target, source.name, source.scrapeOptions);
+      return scrapeUrl(target, source.name, scrapeOptions);
     };
 
     try {
-      console.log(`[orchestrator] Crawling ${source.name} via ${primary}: ${url}`);
+      console.log(`[orchestrator] Crawling ${source.name} via ${primary}${fast ? ' (fast)' : ''}: ${url}`);
       let result = await dispatch(primary, url);
       console.log(`[orchestrator] ${source.name} result: status=${result.status}, markdown=${(result.markdown?.length ?? 0)} chars`);
 
@@ -118,14 +132,16 @@ export async function crawlProperty(
       // misses and the source has a search URL, retry against it.
       if (result.status === 'failed' && primary === 'firecrawl' && source.buildSearchUrl) {
         const searchUrl = source.buildSearchUrl(address);
-        result = await scrapeUrl(searchUrl, source.name, source.scrapeOptions);
+        result = await scrapeUrl(searchUrl, source.name, scrapeOptions);
       }
 
       // Cross-backend fallback chain: try alternate backends in order until one
       // succeeds. Skips backends that aren't available in this environment.
+      // In fast mode only the (short) stealth fallback is allowed — never Apify.
       if (result.status !== 'success' && source.fallbackBackends?.length) {
         for (const fb of source.fallbackBackends) {
           if (fb === primary) continue;
+          if (fast && fb !== 'stealth') continue;
           if (fb === 'apify' && !apifyActorId) continue;
           if (fb === 'stealth' && !isStealthConfigured()) continue;
           console.log(`[orchestrator] ${source.name} falling back to ${fb}`);

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import type { StructuredAddress, MergedPropertyProfile as PropertyProfile } from '@/types/property';
 import { propertyCache } from '@/lib/cache';
 import { toSlug } from '@/lib/utils/address';
@@ -10,6 +10,9 @@ import { getCachedProfile, getOverrides } from '@/lib/db/queries';
 // keeps the serverless function alive long enough on Vercel (Pro).
 export const maxDuration = 120;
 const PIPELINE_TIMEOUT_MS = 110_000; // 110s — just under maxDuration
+// FAST path (e.g. CRM enrich): short synchronous crawl of high-value sources, then
+// the full crawl runs in the background to fill the cache. Keeps the caller snappy.
+const FAST_TIMEOUT_MS = 12_000;
 
 function applyOverrides(
   profile: PropertyProfile,
@@ -51,7 +54,7 @@ export async function OPTIONS() {
  * by orchestrating: cache check -> crawl -> extract -> merge -> cache.
  */
 export async function POST(request: NextRequest) {
-  let body: { address: StructuredAddress };
+  let body: { address: StructuredAddress; fast?: boolean };
 
   try {
     body = await request.json();
@@ -62,7 +65,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { address } = body;
+  const { address, fast = false } = body;
 
   if (!address || (!address.streetName && !address.displayAddress)) {
     return NextResponse.json(
@@ -108,21 +111,48 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 2. Run the full pipeline with a timeout
+  // 2. Cache miss. In FAST mode (e.g. CRM enrich): kick off the full crawl in the
+  // background to fill the cache, then run a short trimmed crawl for an immediate
+  // (possibly partial) response. In normal mode: the full blocking pipeline.
+  if (fast) {
+    // Fill the cache with the full crawl in the background. Single mechanism only
+    // (no extra enqueue) so a new address triggers ONE background crawl, not two —
+    // fetchAndCacheProfile dedupes/reuses the cache, so repeat work is avoided.
+    after(async () => {
+      try {
+        await fetchAndCacheProfile(address); // full crawl → fills cache
+      } catch (e) {
+        console.warn('[/api/property] background full crawl failed:', e);
+      }
+    });
+  }
+
   try {
-    const profile = await runPipelineWithTimeout(address, slug);
+    const profile = await runPipelineWithTimeout(address, {
+      fast,
+      timeoutMs: fast ? FAST_TIMEOUT_MS : PIPELINE_TIMEOUT_MS,
+    });
     const overrides = await getOverrides(slug);
     const finalProfile = applyOverrides(profile, overrides);
+    const empty =
+      (profile.sources?.length ?? 0) === 0 || Object.keys(profile.data ?? {}).length === 0;
 
     return NextResponse.json(
-      { profile: finalProfile, source: 'fresh', addressSlug: slug },
+      {
+        profile: finalProfile,
+        source: empty ? 'queued' : 'fresh',
+        addressSlug: slug,
+        ...(fast && empty
+          ? { warning: 'Enriching in background — re-fetch in a minute for full data.' }
+          : {}),
+      },
       {
         status: 200,
         headers: {
           ...CORS_HEADERS,
-          'X-Cache-Status': 'MISS',
+          'X-Cache-Status': fast ? 'FAST' : 'MISS',
           'X-Sources-Found': String(profile.sources?.length ?? 0),
-          'X-Crawl-Status': 'complete',
+          'X-Crawl-Status': fast ? 'fast' : 'complete',
         },
       }
     );
@@ -148,6 +178,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Fast mode: the background full crawl is already running — don't 500, tell the
+    // caller it's being enriched so it can re-fetch shortly.
+    if (fast) {
+      return NextResponse.json(
+        {
+          profile: { data: {}, fieldConfidences: {}, overallConfidence: 0, sources: [], mergedAt: new Date() },
+          source: 'queued',
+          addressSlug: slug,
+          warning: 'Enriching in background — re-fetch in a minute for full data.',
+        },
+        { status: 200, headers: { ...CORS_HEADERS, 'X-Cache-Status': 'QUEUED', 'X-Crawl-Status': 'queued' } }
+      );
+    }
+
     return NextResponse.json(
       { error: `Property lookup failed: ${message}` },
       { status: 500, headers: CORS_HEADERS }
@@ -157,14 +201,18 @@ export async function POST(request: NextRequest) {
 
 /**
  * Run the shared crawl -> extract -> merge -> cache pipeline with a timeout.
+ * `fast` trims to high-value sources with short timeouts (see fetch-profile).
  */
 async function runPipelineWithTimeout(
   address: StructuredAddress,
-  _slug: string
+  opts: { fast: boolean; timeoutMs: number }
 ): Promise<PropertyProfile> {
   const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Pipeline timed out')), PIPELINE_TIMEOUT_MS)
+    setTimeout(() => reject(new Error('Pipeline timed out')), opts.timeoutMs)
   );
-  const { profile } = await Promise.race([fetchAndCacheProfile(address), timeout]);
+  const { profile } = await Promise.race([
+    fetchAndCacheProfile(address, { fast: opts.fast }),
+    timeout,
+  ]);
   return profile;
 }

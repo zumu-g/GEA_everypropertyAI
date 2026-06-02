@@ -42,8 +42,13 @@ export interface BackfillResult {
   reason?: string;
 }
 
-const DEFAULT_PER_SUBURB = Number(process.env.BACKFILL_PER_SUBURB_CAP ?? 25);
-const DEFAULT_DAILY = Number(process.env.BACKFILL_DAILY_CAP ?? 100);
+// PAUSED to contain Apify/Firecrawl spend — each enqueued property-profile job
+// becomes a full crawl (~3 Apify + several Firecrawl), and the hourly backfill
+// cron was the main driver of the Domain Apify billing-cap aborts. The cron is
+// also removed from vercel.json. To RESUME: set BACKFILL_DAILY_CAP (e.g. 20) and
+// BACKFILL_PER_SUBURB_CAP (e.g. 10) env vars, and re-add the cron in vercel.json.
+const DEFAULT_PER_SUBURB = Number(process.env.BACKFILL_PER_SUBURB_CAP ?? 10);
+const DEFAULT_DAILY = Number(process.env.BACKFILL_DAILY_CAP ?? 0);
 
 /**
  * Parse a VG `raw_address` ("12 Smith Street Cranbourne VIC 3977") into a

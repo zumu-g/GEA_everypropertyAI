@@ -11,10 +11,6 @@
     {
       "path": "/api/cron/ingest-vg",
       "schedule": "0 2 * * 1"
-    },
-    {
-      "path": "/api/cron/backfill",
-      "schedule": "0 * * * *"
     }
   ]
 }

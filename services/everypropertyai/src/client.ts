@@ -3,9 +3,11 @@ import type {
   ComparableResult,
   EnrichResponse,
   MergedPropertyProfile,
+  OnMarketListing,
   ProposalPropertyData,
   PropertyResponse,
   ReaSuggestion,
+  RentalListing,
   SoldSaleResult,
   StreetRow,
   StructuredAddress,
@@ -134,9 +136,21 @@ export class PropertyIQClient {
     return suggestionToAddress(suggestions[0]);
   }
 
-  async fetchProperty(addressOrQuery: string | StructuredAddress): Promise<PropertyResponse> {
+  /**
+   * Full merged property profile. `fast` mode (used by the CLI `property`
+   * command / CRM enrichment) returns a quick partial from high-value sources and
+   * fills the rest in the background — avoids the ~120s live-crawl wait. cma/proposal
+   * leave it off to get the complete crawl.
+   */
+  async fetchProperty(
+    addressOrQuery: string | StructuredAddress,
+    opts?: { fast?: boolean },
+  ): Promise<PropertyResponse> {
     const address = await this.resolveAddress(addressOrQuery);
-    return this.request("/api/property", { method: "POST", body: { address } });
+    return this.request("/api/property", {
+      method: "POST",
+      body: { address, fast: opts?.fast ?? false },
+    });
   }
 
   comparableSales(params: {
@@ -159,6 +173,28 @@ export class PropertyIQClient {
     limit?: number;
   }): Promise<{ suburb: string; state: string; count: number; results: SoldSaleResult[] }> {
     return this.request("/api/sold-sales", { query: { state: "VIC", ...params } });
+  }
+
+  onMarketListings(params: {
+    suburb?: string;
+    state?: string;
+    lat?: number;
+    lng?: number;
+    radius?: number;
+    limit?: number;
+  }): Promise<{ suburb: string | null; state: string; count: number; results: OnMarketListing[] }> {
+    return this.request("/api/on-market-listings", { query: { state: "VIC", ...params } });
+  }
+
+  rentalListings(params: {
+    suburb?: string;
+    state?: string;
+    lat?: number;
+    lng?: number;
+    radius?: number;
+    limit?: number;
+  }): Promise<{ suburb: string | null; state: string; count: number; results: RentalListing[] }> {
+    return this.request("/api/rental-listings", { query: { state: "VIC", ...params } });
   }
 
   enrich(params: {

@@ -33,6 +33,22 @@ export function getActiveSources(): SourceConfig[] {
 }
 
 /**
+ * High-value sources used by the FAST path (e.g. CRM enrichment). These carry
+ * most of the headline fields. The fast crawl trims to these and uses a short
+ * timeout so a new-address lookup returns in seconds instead of ~120s; the full
+ * 9-source cascade still runs in the background to fill the cache.
+ */
+export const FAST_SOURCE_NAMES = [
+  realestateSource.name,
+  domainSource.name,
+  viewSource.name,
+];
+
+export function getFastSources(): SourceConfig[] {
+  return getActiveSources().filter((s) => FAST_SOURCE_NAMES.includes(s.name));
+}
+
+/**
  * Return active portal sources PLUS relevant agency websites for the suburb.
  * This gives maximum data coverage for a specific property lookup.
  */

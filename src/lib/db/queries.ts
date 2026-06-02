@@ -804,6 +804,8 @@ export interface PropertySaleRecord {
   sale_price?: number;
   sale_date?: string;
   settlement_date?: string;
+  latitude?: number;
+  longitude?: number;
   source: string;
   raw_data?: Record<string, unknown>;
 }
@@ -940,6 +942,134 @@ export async function getSalesForSuburb(
     .limit(limit);
   if (error) { console.error('[getSalesForSuburb]', error.message); return []; }
   return data ?? [];
+}
+
+// ─── On-market Listings & Rentals (Domain Apify feeds) ───────────────────────
+
+export interface PropertyListingRecord {
+  raw_address: string;
+  suburb?: string;
+  state: string;
+  postcode?: string;
+  display_price?: string;
+  price_low?: number;
+  price_high?: number;
+  status?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  car_spaces?: number;
+  land_area_sqm?: number;
+  property_type?: string;
+  latitude?: number;
+  longitude?: number;
+  source: string;
+  raw_data?: Record<string, unknown>;
+}
+
+export interface PropertyRentalRecord {
+  raw_address: string;
+  suburb?: string;
+  state: string;
+  postcode?: string;
+  display_price?: string;
+  weekly_rent?: number;
+  status?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  car_spaces?: number;
+  land_area_sqm?: number;
+  property_type?: string;
+  latitude?: number;
+  longitude?: number;
+  source: string;
+  raw_data?: Record<string, unknown>;
+}
+
+async function upsertRows(table: string, rows: object[], onConflict: string): Promise<void> {
+  if (!isSupabaseConfigured() || rows.length === 0) return;
+  const CHUNK = 500;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    // merge-duplicates → re-runs update in place, never insert duplicates
+    const { error } = await supabase().from(table).upsert(chunk, { onConflict, ignoreDuplicates: false });
+    if (error) console.error(`[upsert ${table}] chunk error:`, error.message);
+  }
+}
+
+export function insertPropertyListings(rows: PropertyListingRecord[]): Promise<void> {
+  return upsertRows('property_listings', rows, 'raw_address,source');
+}
+
+export function insertPropertyRentals(rows: PropertyRentalRecord[]): Promise<void> {
+  return upsertRows('property_rentals', rows, 'raw_address,source');
+}
+
+export async function getListingsForSuburb(
+  suburb: string, state: string, limit = 200
+): Promise<PropertyListingRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from('property_listings')
+    .select('*')
+    .ilike('suburb', suburb)
+    .eq('state', state.toUpperCase())
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) { console.error('[getListingsForSuburb]', error.message); return []; }
+  return data ?? [];
+}
+
+export async function getRentalsForSuburb(
+  suburb: string, state: string, limit = 200
+): Promise<PropertyRentalRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from('property_rentals')
+    .select('*')
+    .ilike('suburb', suburb)
+    .eq('state', state.toUpperCase())
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) { console.error('[getRentalsForSuburb]', error.message); return []; }
+  return data ?? [];
+}
+
+/**
+ * Bounding-box fetch around a point for any table with latitude/longitude
+ * columns (property_sales, property_listings, property_rentals). Callers refine
+ * with a precise haversine distance in code. ~111km per degree of latitude.
+ */
+export async function getRowsNearby<T = Record<string, unknown>>(
+  table: string,
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  limit = 500
+): Promise<T[]> {
+  if (!isSupabaseConfigured()) return [];
+  const latDelta = radiusKm / 111;
+  const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180) || 1);
+  const { data, error } = await supabase()
+    .from(table)
+    .select('*')
+    .gte('latitude', lat - latDelta)
+    .lte('latitude', lat + latDelta)
+    .gte('longitude', lng - lngDelta)
+    .lte('longitude', lng + lngDelta)
+    .limit(limit);
+  if (error) { console.error(`[getRowsNearby ${table}]`, error.message); return []; }
+  return (data ?? []) as T[];
+}
+
+/** Great-circle distance in km between two lat/lng points. */
+export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 // ─── Property Overrides ──────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import { crawlProperty } from '@/lib/firecrawl/orchestrator';
 import { extractPropertyData } from '@/lib/extraction/extractor';
 import { scrapeAndExtract } from '@/lib/firecrawl/client';
 import { mergePropertyData } from '@/lib/extraction/merger';
-import { saveCachedProfile } from '@/lib/db/queries';
+import { saveCachedProfile, getCachedProfile } from '@/lib/db/queries';
 import type { ExtractedPropertyData } from '@/types/property';
 
 // When 'firecrawl', use Firecrawl's native /extract (structured JSON) instead of
@@ -27,6 +27,11 @@ export interface FetchProfileResult {
   empty: boolean;
 }
 
+// In-flight dedupe: collapse concurrent crawls of the same address (keyed by
+// slug + mode) into a single run so parallel callers (CRM, queue, background)
+// don't each spawn duplicate Apify/Firecrawl scrapes.
+const inFlight = new Map<string, Promise<FetchProfileResult>>();
+
 /**
  * Run the full crawl → extract → merge pipeline for one address and persist the
  * result to both the in-memory and Supabase caches. Empty profiles (no sources
@@ -36,12 +41,44 @@ export interface FetchProfileResult {
  * those on top (the /api/property route does).
  */
 export async function fetchAndCacheProfile(
-  address: StructuredAddress
+  address: StructuredAddress,
+  opts?: { fast?: boolean; skipIfCached?: boolean }
 ): Promise<FetchProfileResult> {
   const slug = toSlug(address);
+  const fast = opts?.fast ?? false;
 
-  // Step 1: crawl multiple sources in parallel
-  const crawlResults: CrawlResult[] = await crawlProperty(address);
+  // Cache-guard: callers that may run after a delay (queue worker, background
+  // fill) can skip the crawl entirely if a profile is already cached — avoids
+  // re-scraping an address that got cached between enqueue and execution.
+  if (opts?.skipIfCached) {
+    const mem = propertyCache.get(slug);
+    if (mem) return { profile: mem, slug, empty: false };
+    const persisted = await getCachedProfile(slug);
+    if (persisted) {
+      propertyCache.set(slug, persisted);
+      return { profile: persisted, slug, empty: false };
+    }
+  }
+
+  // In-flight dedupe (keyed by slug + mode): share one run across concurrent callers.
+  const key = `${slug}::${fast ? 'fast' : 'full'}`;
+  const existing = inFlight.get(key);
+  if (existing) return existing;
+
+  const run = doFetchAndCacheProfile(address, slug, fast).finally(() => inFlight.delete(key));
+  inFlight.set(key, run);
+  return run;
+}
+
+async function doFetchAndCacheProfile(
+  address: StructuredAddress,
+  slug: string,
+  fast: boolean
+): Promise<FetchProfileResult> {
+  // Step 1: crawl sources in parallel. Fast mode trims to high-value sources
+  // with short timeouts (for the CRM enrich path); the full crawl runs in the
+  // background to fill the cache.
+  const crawlResults: CrawlResult[] = await crawlProperty(address, { fast });
   console.log(
     `[fetch-profile] Crawl complete for "${slug}": ${crawlResults.length} sources, ` +
       `statuses: ${crawlResults.map((r) => `${r.source}=${r.status}`).join(', ')}`
