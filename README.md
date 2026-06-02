@@ -202,9 +202,15 @@ Casey, Cardinia, and Baw Baw council areas. Includes Ray White, Barry Plant, Har
 | GET | `/api/property/[slug]/override` | User overrides for a cached property |
 | GET | `/api/comparable-sales?suburb=...&state=...&beds=...&baths=...` | Top comparable sales (similarity-scored) |
 | GET | `/api/sold-sales?suburb=...&state=...&limit=...` | Recent sold-sales feed (Valuer General) |
+| GET | `/api/on-market-listings?suburb=...&state=...` or `?lat=...&lng=...&radius=...` | Current on-market (for-sale) listings (Domain feed) |
+| GET | `/api/rental-listings?suburb=...&state=...` or `?lat=...&lng=...&radius=...` | Current rental listings (Domain feed) |
 | GET | `/api/street-details?q=...` | All known addresses on a street |
 | GET | `/api/enrich?address=...&suburb=...&state=...&postcode=...` | Planning, schools, transport, market data |
+| POST | `/api/ingest/domain?category=<sold\|on-market\|rent>&token=...` | Apify→Supabase ingest webhook (see `DAILY_SYNC_SETUP.md`) |
 | POST | `/api/cron/{process-queue,backfill,ingest-vg,daily-listings}` | Cron jobs (`CRON_SECRET` auth) |
+
+Suburb queries are case-insensitive and resolve reversed-name aliases (e.g. "Upper Beaconsfield" →
+"Beaconsfield Upper") via `normaliseSuburbAlias()` in `src/lib/utils/address.ts`.
 
 These routes are wrapped by `services/everypropertyai` for the CMA/proposal tools.
 

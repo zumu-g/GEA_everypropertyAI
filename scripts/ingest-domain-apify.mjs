@@ -106,6 +106,12 @@ function smallint(v) {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isInteger(n) ? n : null;
 }
+// "BEACONSFIELD UPPER" / "beaconsfield upper" → "Beaconsfield Upper" (mirrors titleCaseSuburb in src/lib/utils/address.ts)
+function titleCaseSuburb(s) {
+  if (s == null) return null;
+  const out = String(s).trim().split(/\s+/).map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '')).join(' ');
+  return out || null;
+}
 
 // ── Per-category config ───────────────────────────────────────────────────────
 
@@ -122,7 +128,7 @@ const CATEGORIES = {
       if (!rawAddress || salePrice == null) return null; // sold needs a price
       return {
         raw_address: rawAddress,
-        suburb: loc.suburb ?? null,
+        suburb: titleCaseSuburb(loc.suburb),
         state: (loc.state ?? 'VIC').toUpperCase(),
         postcode: loc.postcode ?? null,
         land_area_sqm: num(prop.land_size),
@@ -149,7 +155,7 @@ const CATEGORIES = {
       const { low, high } = parsePriceRange(display);
       return {
         raw_address: rawAddress,
-        suburb: loc.suburb ?? null,
+        suburb: titleCaseSuburb(loc.suburb),
         state: (loc.state ?? 'VIC').toUpperCase(),
         postcode: loc.postcode ?? null,
         display_price: display,
@@ -180,7 +186,7 @@ const CATEGORIES = {
       const display = it.pricing?.display_price ?? null;
       return {
         raw_address: rawAddress,
-        suburb: loc.suburb ?? null,
+        suburb: titleCaseSuburb(loc.suburb),
         state: (loc.state ?? 'VIC').toUpperCase(),
         postcode: loc.postcode ?? null,
         display_price: display,
@@ -200,6 +206,22 @@ const CATEGORIES = {
 };
 
 // ── Supabase upsert (PostgREST; merge-duplicates → no dupes on re-run) ─────────
+
+/**
+ * Collapse rows sharing the same on_conflict key, keeping the last occurrence.
+ * PostgREST rejects an upsert whose batch touches the same conflict target twice
+ * ("ON CONFLICT DO UPDATE command cannot affect row a second time"), so we must
+ * de-dupe within the batch before sending.
+ */
+function dedupeByConflict(rows, conflict) {
+  const cols = conflict.split(',').map((c) => c.trim());
+  const byKey = new Map();
+  for (const row of rows) {
+    const key = cols.map((c) => String(row[c] ?? '')).join(' ');
+    byKey.set(key, row); // last write wins
+  }
+  return [...byKey.values()];
+}
 
 async function upsert(table, conflict, rows) {
   const res = await fetch(
@@ -239,11 +261,12 @@ async function ingestDataset(cat, datasetId) {
       if (row) rows.push(row);
       else skipped++;
     }
-    if (rows.length) {
-      for (let i = 0; i < rows.length; i += 500) {
-        await upsert(cat.table, cat.conflict, rows.slice(i, i + 500));
+    const deduped = dedupeByConflict(rows, cat.conflict);
+    if (deduped.length) {
+      for (let i = 0; i < deduped.length; i += 500) {
+        await upsert(cat.table, cat.conflict, deduped.slice(i, i + 500));
       }
-      mapped += rows.length;
+      mapped += deduped.length;
     }
     offset += items.length;
     console.log(`  [${datasetId}] processed ${offset} · mapped ${mapped} · skipped ${skipped}`);

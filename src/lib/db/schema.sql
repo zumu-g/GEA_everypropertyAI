@@ -381,6 +381,7 @@ CREATE POLICY "Users manage own properties"
 CREATE TABLE IF NOT EXISTS property_listings (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   raw_address   TEXT NOT NULL,
+  address_slug  TEXT,            -- links to addresses.address_slug
   suburb        TEXT,
   state         TEXT NOT NULL DEFAULT 'VIC',
   postcode      TEXT,
@@ -397,12 +398,16 @@ CREATE TABLE IF NOT EXISTS property_listings (
   longitude     DOUBLE PRECISION,
   source        TEXT NOT NULL,
   raw_data      JSONB,
+  last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- bumped each sync run
+  active        BOOLEAN NOT NULL DEFAULT true,        -- false once no longer on-market
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (raw_address, source)
 );
 
 CREATE INDEX IF NOT EXISTS idx_property_listings_suburb ON property_listings (suburb, state);
 CREATE INDEX IF NOT EXISTS idx_property_listings_geo    ON property_listings (latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_property_listings_active ON property_listings (suburb, state, active);
+CREATE INDEX IF NOT EXISTS idx_property_listings_slug   ON property_listings (address_slug);
 
 ALTER TABLE property_listings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read access"       ON property_listings FOR SELECT USING (true);
@@ -417,6 +422,7 @@ CREATE POLICY "Service role full access" ON property_listings FOR ALL    USING (
 CREATE TABLE IF NOT EXISTS property_rentals (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   raw_address   TEXT NOT NULL,
+  address_slug  TEXT,            -- links to addresses.address_slug
   suburb        TEXT,
   state         TEXT NOT NULL DEFAULT 'VIC',
   postcode      TEXT,
@@ -432,12 +438,16 @@ CREATE TABLE IF NOT EXISTS property_rentals (
   longitude     DOUBLE PRECISION,
   source        TEXT NOT NULL,
   raw_data      JSONB,
+  last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- bumped each sync run
+  active        BOOLEAN NOT NULL DEFAULT true,        -- false once no longer listed
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (raw_address, source)
 );
 
 CREATE INDEX IF NOT EXISTS idx_property_rentals_suburb ON property_rentals (suburb, state);
 CREATE INDEX IF NOT EXISTS idx_property_rentals_geo    ON property_rentals (latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_property_rentals_active ON property_rentals (suburb, state, active);
+CREATE INDEX IF NOT EXISTS idx_property_rentals_slug   ON property_rentals (address_slug);
 
 ALTER TABLE property_rentals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read access"       ON property_rentals FOR SELECT USING (true);

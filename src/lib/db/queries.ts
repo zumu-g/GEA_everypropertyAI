@@ -7,6 +7,7 @@ import type {
 } from '@/types/property';
 import type { CrawlJob } from '@/types/crawl';
 import { getSupabaseServerClient, isSupabaseConfigured } from './supabase';
+import { normaliseSuburbAlias } from '@/lib/utils/address';
 
 // ─── Types for DB records ───────────────────────────────────────────────────
 
@@ -746,7 +747,7 @@ export async function getAddressesForSuburb(
     const { data, error } = await supabase()
       .from('addresses')
       .select('*')
-      .ilike('suburb', suburb)
+      .ilike('suburb', normaliseSuburbAlias(suburb))
       .eq('state', state.toUpperCase())
       .range(page * PAGE, page * PAGE + PAGE - 1);
     if (error) { console.error('[getAddressesForSuburb]', error.message); break; }
@@ -883,7 +884,7 @@ export async function getSalesAddressesForSuburb(
     const { data, error } = await supabase()
       .from('property_sales')
       .select('address_slug, raw_address, suburb, postcode')
-      .ilike('suburb', suburb)
+      .ilike('suburb', normaliseSuburbAlias(suburb))
       .eq('state', state.toUpperCase())
       .range(page * PAGE, page * PAGE + PAGE - 1);
     if (error) { console.error('[getSalesAddressesForSuburb]', error.message); break; }
@@ -935,7 +936,7 @@ export async function getSalesForSuburb(
   const { data, error } = await supabase()
     .from('property_sales')
     .select('*')
-    .ilike('suburb', suburb)
+    .ilike('suburb', normaliseSuburbAlias(suburb))
     .eq('state', state.toUpperCase())
     .gte('sale_date', since)
     .order('sale_date', { ascending: false })
@@ -948,6 +949,7 @@ export async function getSalesForSuburb(
 
 export interface PropertyListingRecord {
   raw_address: string;
+  address_slug?: string;
   suburb?: string;
   state: string;
   postcode?: string;
@@ -963,11 +965,14 @@ export interface PropertyListingRecord {
   latitude?: number;
   longitude?: number;
   source: string;
+  last_seen_at?: string;
+  active?: boolean;
   raw_data?: Record<string, unknown>;
 }
 
 export interface PropertyRentalRecord {
   raw_address: string;
+  address_slug?: string;
   suburb?: string;
   state: string;
   postcode?: string;
@@ -982,14 +987,25 @@ export interface PropertyRentalRecord {
   latitude?: number;
   longitude?: number;
   source: string;
+  last_seen_at?: string;
+  active?: boolean;
   raw_data?: Record<string, unknown>;
 }
 
 async function upsertRows(table: string, rows: object[], onConflict: string): Promise<void> {
   if (!isSupabaseConfigured() || rows.length === 0) return;
+  // De-dupe by the conflict key (last write wins): PostgREST rejects an upsert
+  // whose batch touches the same conflict target twice.
+  const cols = onConflict.split(',').map((c) => c.trim());
+  const byKey = new Map<string, object>();
+  for (const row of rows) {
+    const key = cols.map((c) => String((row as Record<string, unknown>)[c] ?? '')).join(' ');
+    byKey.set(key, row);
+  }
+  const deduped = [...byKey.values()];
   const CHUNK = 500;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const chunk = rows.slice(i, i + CHUNK);
+  for (let i = 0; i < deduped.length; i += CHUNK) {
+    const chunk = deduped.slice(i, i + CHUNK);
     // merge-duplicates → re-runs update in place, never insert duplicates
     const { error } = await supabase().from(table).upsert(chunk, { onConflict, ignoreDuplicates: false });
     if (error) console.error(`[upsert ${table}] chunk error:`, error.message);
@@ -1011,8 +1027,9 @@ export async function getListingsForSuburb(
   const { data, error } = await supabase()
     .from('property_listings')
     .select('*')
-    .ilike('suburb', suburb)
+    .ilike('suburb', normaliseSuburbAlias(suburb))
     .eq('state', state.toUpperCase())
+    .eq('active', true)
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) { console.error('[getListingsForSuburb]', error.message); return []; }
@@ -1026,12 +1043,38 @@ export async function getRentalsForSuburb(
   const { data, error } = await supabase()
     .from('property_rentals')
     .select('*')
-    .ilike('suburb', suburb)
+    .ilike('suburb', normaliseSuburbAlias(suburb))
     .eq('state', state.toUpperCase())
+    .eq('active', true)
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) { console.error('[getRentalsForSuburb]', error.message); return []; }
   return data ?? [];
+}
+
+/**
+ * Expire on-market rows not seen in the latest sync: set active=false for rows in
+ * the given suburbs whose last_seen_at predates the run start. Scoped to the
+ * scraped suburbs so it never touches unrelated areas. `table` is
+ * 'property_listings' | 'property_rentals'.
+ */
+export async function expireNotSeen(
+  table: 'property_listings' | 'property_rentals',
+  suburbs: string[],
+  sinceIso: string,
+  state = 'VIC'
+): Promise<number> {
+  if (!isSupabaseConfigured() || suburbs.length === 0) return 0;
+  const { data, error } = await supabase()
+    .from(table)
+    .update({ active: false })
+    .in('suburb', suburbs)
+    .eq('state', state.toUpperCase())
+    .eq('active', true)
+    .lt('last_seen_at', sinceIso)
+    .select('id');
+  if (error) { console.error(`[expireNotSeen ${table}]`, error.message); return 0; }
+  return data?.length ?? 0;
 }
 
 /**

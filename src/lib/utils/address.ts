@@ -1,4 +1,5 @@
 import type { StructuredAddress } from '@/types/property';
+import { VIC_SUBURBS } from '@/data/vic-suburbs';
 
 /**
  * Common Australian street type abbreviations mapped to their full forms.
@@ -153,6 +154,59 @@ export function parseAddress(raw: string): StructuredAddress {
     state,
     postcode,
   };
+}
+
+/**
+ * Title-case a suburb name for consistent storage.
+ * "BEACONSFIELD UPPER" / "beaconsfield upper" → "Beaconsfield Upper".
+ */
+export function titleCaseSuburb(s: string | null | undefined): string | null {
+  if (s == null) return null;
+  const out = s
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))
+    .join(' ');
+  return out || null;
+}
+
+/**
+ * Reverse-name suburb aliases, derived from VIC_SUBURBS (not hand-maintained).
+ *
+ * Domain stores direction-suffixed suburbs as "<Primary> <Direction>" (e.g.
+ * "Beaconsfield Upper", postcode 3808) but people often query the official
+ * reversed form ("Upper Beaconsfield"). For every canonical name ending in a
+ * direction we register the reversed string → canonical, unless that reversed
+ * string is itself a real suburb (don't shadow a genuine name).
+ */
+const _DIRECTION_SUFFIX = /^(.+)\s(Upper|Lower|North|South|East|West|Central)$/;
+let _suburbAliasMap: Map<string, string> | null = null;
+function suburbAliasMap(): Map<string, string> {
+  if (_suburbAliasMap) return _suburbAliasMap;
+  const canonical = new Set(VIC_SUBURBS.map((s) => s.name.toLowerCase()));
+  const m = new Map<string, string>();
+  for (const s of VIC_SUBURBS) {
+    const mt = s.name.match(_DIRECTION_SUFFIX);
+    if (!mt) continue;
+    const aliasKey = `${mt[2]} ${mt[1]}`.toLowerCase(); // "upper beaconsfield"
+    if (canonical.has(aliasKey)) continue; // don't shadow a real suburb
+    if (!m.has(aliasKey)) m.set(aliasKey, s.name);
+  }
+  _suburbAliasMap = m;
+  return m;
+}
+
+/**
+ * Normalise a queried suburb to the canonical name stored in the DB.
+ * Resolves reversed-name aliases ("Upper Beaconsfield" → "Beaconsfield Upper");
+ * otherwise falls back to title-casing. Safe to pass to a case-insensitive
+ * `ilike` filter.
+ */
+export function normaliseSuburbAlias(raw: string | null | undefined): string {
+  if (raw == null) return '';
+  const key = raw.trim().toLowerCase();
+  if (!key) return '';
+  return suburbAliasMap().get(key) ?? titleCaseSuburb(raw) ?? raw.trim();
 }
 
 /**

@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
     if (hasGeo) {
       const box = await getRowsNearby<PropertyListingRecord>('property_listings', lat!, lng!, radius);
       rows = box
+        .filter((r) => r.active !== false)
         .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number'
           && haversineKm(lat!, lng!, r.latitude, r.longitude) <= radius)
         .slice(0, limit);

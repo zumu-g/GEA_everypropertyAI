@@ -85,11 +85,12 @@ poowong-vic-3988 korumburra-vic-3950 drouin-vic-3818 warragul-vic-3820 longwarry
 | `source`            | `'domain-apify'`                                                  |
 | dedup key           | `(raw_address, sale_date, sale_price, source)`                    |
 
-### On-market → new `property_listings` table  (1,391 records in `V56AzVH6c9Bf2XNUN`, not yet loaded)
+### On-market → `property_listings` table  (loaded: 1,323 rows from `V56AzVH6c9Bf2XNUN`)
 | property_listings   | from                                                              |
 |---------------------|-------------------------------------------------------------------|
 | `raw_address`       | `location.display_address`                                        |
-| `suburb/state/postcode` | `location.*`                                                  |
+| `suburb`            | `location.suburb`, **title-cased** via `titleCaseSuburb()` (`src/lib/utils/address.ts`) |
+| `state/postcode`    | `location.*`                                                      |
 | `display_price`     | `pricing.display_price` (keep raw string)                         |
 | `price_low/price_high` | parse the range out of `display_price` (two `$` amounts; if single, low=high; if none, null) |
 | `status`            | `listing.tags.tag_text` (e.g. "Under offer", "Under contract") or null |
@@ -99,9 +100,22 @@ poowong-vic-3988 korumburra-vic-3950 drouin-vic-3818 warragul-vic-3820 longwarry
 | `source`            | `'domain-apify'`                                                  |
 | dedup key           | `(raw_address, source)`                                           |
 
-## Status / what's done
+## Status / what's done  (updated 2026-06-02)
 
-- **Sold** data is already in `property_sales` (~25k rows). Coords pending the additive
-  `ALTER TABLE property_sales ADD latitude/longitude` + a merge re-ingest (see ingestion prompt).
-- **On-market** (1,391 records) is sitting in dataset `V56AzVH6c9Bf2XNUN`, ready to load once the
-  `property_listings` table exists.
+- **Migrations applied.** `001_listings_rentals.sql` + `002_listing_lifecycle.sql` are live on the
+  Supabase instance — `property_listings` / `property_rentals` exist with the lifecycle columns.
+- **Sold** data is in `property_sales` (~25k rows). Suburb casing was duplicated (`BEACONSFIELD`
+  vs `Beaconsfield`); a one-time `UPDATE … initcap(lower(suburb))` collapsed it to a single
+  title-cased key. New ingests title-case at write time, so it stays clean.
+- **On-market loaded.** Ingested the cached dataset `V56AzVH6c9Bf2XNUN` (free re-read, no Apify
+  spend) → **1,323 rows across 60 suburbs**, incl. Beaconsfield (3). NOTE: that dataset did **not**
+  cover **Beaconsfield Upper**, and there is **no rental dataset** — both need a fresh actor run.
+- **Suburb-alias normalisation.** Reads resolve reversed names: a query for "Upper Beaconsfield"
+  now matches the stored "Beaconsfield Upper" (and 83 other VIC reversals), via
+  `normaliseSuburbAlias()` in `src/lib/utils/address.ts`, wired into the `queries.ts` suburb reads.
+- **Ingest dedup bug fixed.** Both `scripts/ingest-domain-apify.mjs` and `upsertRows()` in
+  `queries.ts` now de-dupe rows by the on-conflict key within a batch (Postgres rejects an upsert
+  that touches the same conflict target twice — this was crashing every ingest with HTTP 500).
+- **⛔ Blocked:** a fresh scrape (for Beaconsfield Upper on-market + all rentals) needs the Apify
+  actor, but the account is at its **monthly hard limit** ($51.59 / $50). Raise the spend limit (or
+  wait for reset), then run `node scripts/ingest-domain-apify.mjs on-market --run` and `… rent --run`.
