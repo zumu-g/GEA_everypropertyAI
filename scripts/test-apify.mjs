@@ -14,7 +14,7 @@ const APIFY_BASE = 'https://api.apify.com/v2';
 const ACTORS = [
   {
     name: 'realestate.com.au',
-    id: 'azzouzana/realestate-com-au-properties-pages-scraper',
+    id: 'azzouzana/real-estate-au-scraper-pro',
     url: 'https://www.realestate.com.au/property/5-william-st-berwick-vic-3806',
   },
   {

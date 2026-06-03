@@ -44,17 +44,41 @@ const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
 const SOURCE = 'domain-apify';
 const ACTOR_ID = '0EXe0hsmDKWLI3JF9';
 
-// Casey / Cardinia / Bass Coast / West Gippsland — slugs are {suburb}-vic-{postcode}.
+// City of Casey + Shire of Cardinia ONLY — slugs are {suburb}-vic-{postcode}.
+// (Out-of-area slugs — nyora/loch/poowong/korumburra/drouin/warragul/longwarry —
+// were removed; we do NOT scrape outside these two LGAs.)
 const SUBURB_SLUGS = [
+  // Casey
   'berwick-vic-3806', 'narre-warren-vic-3805', 'narre-warren-south-vic-3805', 'cranbourne-vic-3977',
   'cranbourne-east-vic-3977', 'cranbourne-north-vic-3977', 'cranbourne-west-vic-3977', 'hallam-vic-3803',
   'hampton-park-vic-3976', 'doveton-vic-3177', 'endeavour-hills-vic-3802', 'lynbrook-vic-3975',
-  'lyndhurst-vic-3975', 'clyde-vic-3978', 'clyde-north-vic-3978', 'pakenham-vic-3810', 'officer-vic-3809',
-  'beaconsfield-vic-3807', 'beaconsfield-upper-vic-3808', 'emerald-vic-3782', 'cockatoo-vic-3781',
-  'gembrook-vic-3783', 'koo-wee-rup-vic-3981', 'nar-nar-goon-vic-3812', 'bunyip-vic-3815', 'garfield-vic-3814',
-  'tynong-vic-3813', 'cardinia-vic-3978', 'nyora-vic-3987', 'lang-lang-vic-3984', 'loch-vic-3945',
-  'poowong-vic-3988', 'korumburra-vic-3950', 'drouin-vic-3818', 'warragul-vic-3820', 'longwarry-vic-3816',
+  'lyndhurst-vic-3975', 'clyde-vic-3978', 'clyde-north-vic-3978',
+  // Cardinia
+  'pakenham-vic-3810', 'officer-vic-3809', 'beaconsfield-vic-3807', 'beaconsfield-upper-vic-3808',
+  'emerald-vic-3782', 'cockatoo-vic-3781', 'gembrook-vic-3783', 'koo-wee-rup-vic-3981',
+  'nar-nar-goon-vic-3812', 'bunyip-vic-3815', 'garfield-vic-3814', 'tynong-vic-3813',
+  'cardinia-vic-3978', 'lang-lang-vic-3984',
 ];
+
+// Service-area guard — mirror of SERVICE_AREA_SUBURBS in src/lib/utils/service-area.ts.
+// A suburb page can surface neighbouring localities; drop anything outside Casey/Cardinia.
+const SERVICE_AREA_SUBURBS = new Set([
+  // Casey
+  'berwick', 'blind bight', 'botanic ridge', 'cannons creek', 'clyde', 'clyde north', 'cranbourne',
+  'cranbourne east', 'cranbourne north', 'cranbourne south', 'cranbourne west', 'devon meadows',
+  'doveton', 'endeavour hills', 'eumemmerring', 'five ways', 'hallam', 'hampton park', 'harkaway',
+  'junction village', 'lynbrook', 'lyndhurst', 'lysterfield south', 'narre warren', 'narre warren east',
+  'narre warren north', 'narre warren south', 'pearcedale', 'sandhurst', 'skye', 'tooradin', 'warneet',
+  // Cardinia
+  'athlone', 'avonsleigh', 'bayles', 'beaconsfield', 'beaconsfield upper', 'bunyip', 'bunyip north',
+  'caldermeade', 'cardinia', 'catani', 'clematis', 'cockatoo', 'cora lynn', 'dalmore', 'dewhurst',
+  'emerald', 'garfield', 'garfield north', 'gembrook', 'guys hill', 'heath hill', 'iona', 'koo wee rup',
+  'koo wee rup north', 'lang lang', 'lang lang east', 'maryknoll', 'modella', 'monomeith', 'mount burnett',
+  'nangana', 'nar nar goon', 'nar nar goon north', 'officer', 'officer south', 'pakenham', 'pakenham south',
+  'pakenham upper', 'ripplebrook', 'rythdale', 'tonimbuk', 'toomuc valley', 'tynong', 'tynong north',
+  'vervale', 'yannathan',
+]);
+const isServiceAreaSuburb = (s) => !!s && SERVICE_AREA_SUBURBS.has(String(s).trim().toLowerCase());
 
 const MONTHS = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
 
@@ -278,8 +302,10 @@ async function ingestDataset(cat, datasetId) {
     const rows = [];
     for (const it of items) {
       const row = cat.map(it);
-      if (row) rows.push(row);
-      else skipped++;
+      if (!row) { skipped++; continue; }
+      // Service-area guard: never store anything outside Casey/Cardinia.
+      if (!isServiceAreaSuburb(row.suburb)) { skipped++; continue; }
+      rows.push(row);
     }
     const deduped = dedupeByConflict(rows, cat.conflict);
     if (deduped.length) {
@@ -305,7 +331,10 @@ async function runActorAndGetDataset(cat) {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ startUrls, maxItems: 5000 }),
+      // Keep maxItems modest — the Domain batch actor bills per result (~$23 at
+      // 5000). For a Casey/Cardinia delta ~50/suburb is plenty and keeps a
+      // weekly run ~$1-2. Override with MAX_ITEMS for a one-off deep backfill.
+      body: JSON.stringify({ startUrls, maxItems: Number(process.env.MAX_ITEMS) || 1500 }),
     },
   );
   if (!startRes.ok) throw new Error(`actor start HTTP ${startRes.status}: ${(await startRes.text()).slice(0, 300)}`);

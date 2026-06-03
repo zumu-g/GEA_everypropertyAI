@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseAddress } from '@/lib/utils/address';
+import { isServiceAreaSuburb } from '@/lib/utils/service-area';
 import {
   mapItem,
   CATEGORY_TABLE,
@@ -89,6 +90,9 @@ export async function POST(request: NextRequest) {
     for (const it of items) {
       const row = mapItem(category, it as Parameters<typeof mapItem>[1]);
       if (!row) { skipped++; continue; }
+      // Hard service-area guard: never store anything outside Casey/Cardinia,
+      // even if a suburb page surfaces a neighbouring locality.
+      if (!isServiceAreaSuburb(row.suburb)) { skipped++; continue; }
       processed++;
       if (row.suburb) suburbs.add(row.suburb);
 
