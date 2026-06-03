@@ -1,5 +1,6 @@
 import type { StructuredAddress } from '@/types/property';
 import type { SourceConfig } from '@/types/crawl';
+import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/db/supabase';
 
 export interface AgencyConfig {
   name: string;
@@ -80,6 +81,108 @@ export function getAgencySourcesForSuburb(suburb: string): SourceConfig[] {
  */
 export function getAllAgencySources(): SourceConfig[] {
   return CASEY_CARDINIA_AGENCIES.filter((a) => a.enabled).map(agencyToSourceConfig);
+}
+
+// ─── DB-backed agency row shape (minimal subset we need) ─────────────────────
+
+interface AgencyRow {
+  name: string;
+  website: string;
+  search_pattern: string | null;
+  suburb: string | null;
+  suburbs_covered: string[] | null;
+  enabled: boolean;
+}
+
+/**
+ * Fetch all enabled agencies from Supabase for a given state.
+ * Returns an empty array if Supabase is not configured or the query fails.
+ */
+async function getAgenciesByState(state: string): Promise<AgencyRow[]> {
+  if (!isSupabaseConfigured()) return [];
+
+  try {
+    const { data, error } = await getSupabaseServerClient()
+      .from('agencies')
+      .select('name, website, search_pattern, suburb, suburbs_covered, enabled')
+      .eq('state', state)
+      .eq('enabled', true);
+
+    if (error) {
+      console.error('[getAgenciesByState] Supabase error:', error.message);
+      return [];
+    }
+
+    return (data ?? []) as AgencyRow[];
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[getAgenciesByState] Unexpected error:', msg);
+    return [];
+  }
+}
+
+/**
+ * Async, DB-backed version of getAgencySourcesForSuburb.
+ *
+ * Fetches enabled VIC agencies from Supabase and filters to those whose
+ * suburbs_covered includes the requested suburb (case-insensitive),
+ * or whose primary suburb matches.
+ *
+ * Falls back to the hardcoded CASEY_CARDINIA_AGENCIES list when:
+ * - Supabase is not configured
+ * - The DB query returns 0 results
+ */
+export async function getAgencySourcesForSuburbFromDB(
+  suburb: string
+): Promise<SourceConfig[]> {
+  const suburbLower = suburb.toLowerCase();
+
+  const rows = await getAgenciesByState('VIC');
+
+  if (rows.length === 0) {
+    // Fallback: use the hardcoded list
+    return getAgencySourcesForSuburb(suburb);
+  }
+
+  const matched = rows.filter((row) => {
+    // Check suburbs_covered array
+    const coveredMatch = (row.suburbs_covered ?? []).some(
+      (s) => s.toLowerCase() === suburbLower
+    );
+    // Check primary suburb field
+    const suburbMatch = (row.suburb ?? '').toLowerCase() === suburbLower;
+    return coveredMatch || suburbMatch;
+  });
+
+  if (matched.length === 0) {
+    // Suburb not found in DB — fall back to hardcoded list for this suburb
+    return getAgencySourcesForSuburb(suburb);
+  }
+
+  return matched.map((row) => dbRowToSourceConfig(row));
+}
+
+function dbRowToSourceConfig(row: AgencyRow): SourceConfig {
+  // Use the stored search_pattern or fall back to a sensible default
+  const pattern = row.search_pattern ?? `${row.website}/properties?search={query}`;
+
+  return {
+    name: row.name,
+    enabled: row.enabled,
+    buildPropertyUrl: (address: StructuredAddress) => {
+      const query = [address.streetNumber, address.streetName, address.streetType, address.suburb]
+        .filter(Boolean)
+        .join(' ');
+      return pattern.replace('{query}', encodeURIComponent(query));
+    },
+    buildSearchUrl: (address: StructuredAddress) => {
+      return pattern.replace('{query}', encodeURIComponent(address.suburb ?? ''));
+    },
+    scrapeOptions: { timeout: 15000, formats: ['markdown'] },
+    baseUrl: row.website,
+    trustRank: 4,
+    refreshIntervalHours: 12,
+  };
 }
 
 function agencyToSourceConfig(agency: AgencyConfig): SourceConfig {

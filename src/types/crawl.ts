@@ -136,6 +136,9 @@ export interface CrawlResult {
 
 // ─── Source Configuration ────────────────────────────────────────────────────
 
+/** The mechanism used to fetch a source's page. */
+export type FetchBackend = 'firecrawl' | 'apify' | 'stealth';
+
 export interface SourceConfig {
   name: DataSourceName | string;
   /** Is this source currently enabled? */
@@ -151,7 +154,21 @@ export interface SourceConfig {
     waitFor?: string;
     timeout?: number;
     formats?: string[];
+    /** Which stealth engine to use when this source is fetched via the stealth backend */
+    stealthEngine?: 'camoufox' | 'patchright' | 'playwright';
   };
+
+  // ─── Fetch backend selection ──────────────────────────────────────────────
+  /**
+   * Which backend fetches this source. When omitted, the backend is inferred:
+   * 'apify' if options.apifyActorId is set, otherwise 'firecrawl'.
+   */
+  fetchBackend?: FetchBackend;
+  /**
+   * Ordered fallback backends to try if the primary returns 'failed'/'timeout'.
+   * Backends are skipped when unavailable (no Apify actor id, stealth unconfigured).
+   */
+  fallbackBackends?: FetchBackend[];
 
   // ─── Extended configuration (for advanced pipeline) ───────────────────────
   /** Base URL for the source */

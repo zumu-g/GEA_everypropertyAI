@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   RefreshCw,
@@ -11,15 +11,28 @@ import {
   Train,
   Building2,
   TrendingUp,
-  Shield,
   Layers,
   Users,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  Scale,
+  FileText,
+  List,
+  Baby,
+  Flame,
+  Droplets,
+  Landmark,
 } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
+import { ComparableSales } from "./ComparableSales";
+import { PropertyTimeline } from "./PropertyTimeline";
+import { TrackPropertyButton } from "./TrackPropertyButton";
+import { SuburbPriceChart } from './SuburbPriceChart';
 
 interface EnrichmentData {
   coordinates: { lat: number; lng: number } | null;
@@ -78,6 +91,7 @@ interface EnrichmentData {
       salesCount?: number;
       avgDaysOnMarket?: number;
       monthlyMedians?: Array<{ month: string; value: number }>;
+      monthlyRents?: Array<{ month: string; value: number }>;
     };
     units: {
       medianPrice?: number;
@@ -88,6 +102,7 @@ interface EnrichmentData {
       salesCount?: number;
       avgDaysOnMarket?: number;
       monthlyMedians?: Array<{ month: string; value: number }>;
+      monthlyRents?: Array<{ month: string; value: number }>;
     };
     demographics?: {
       population?: number;
@@ -99,10 +114,87 @@ interface EnrichmentData {
     };
     source: string;
   } | null;
+  childcare?: Array<{ name: string; distanceKm: number; address?: string }>;
 }
 
 interface PropertyProfileProps {
   address: string;
+}
+
+interface EditableStatProps {
+  field: string;
+  value: string;
+  label: string;
+  suffix?: string;
+  editingField: string | null;
+  editValue: string;
+  editSaving: boolean;
+  onEdit: (field: string, currentValue: string) => void;
+  onSave: (field: string, value: string) => void;
+  onCancel: () => void;
+  onEditValueChange: (v: string) => void;
+}
+
+function EditableStat({
+  field, value, label, suffix = '',
+  editingField, editValue, editSaving,
+  onEdit, onSave, onCancel, onEditValueChange,
+}: EditableStatProps) {
+  const isEditing = editingField === field;
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          value={editValue}
+          onChange={e => onEditValueChange(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') onSave(field, editValue);
+            if (e.key === 'Escape') onCancel();
+          }}
+          autoFocus
+          className="w-16 rounded-lg border border-[#C8A96E] bg-white px-2 py-1 text-sm font-medium text-[#16181D] tabular-nums outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+          style={{ fontFamily: 'var(--font-mono)' }}
+        />
+        <button
+          onClick={() => onSave(field, editValue)}
+          disabled={editSaving}
+          className="rounded-lg bg-[#C8A96E] px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-[#B8954A] disabled:opacity-50"
+        >
+          {editSaving ? '…' : 'Save'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="rounded-lg border border-[#E7E9EE] px-2 py-1 text-xs text-[#4A4E57] transition-colors hover:border-[#C8A96E] hover:text-[#C8A96E]"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="group flex items-center gap-1.5">
+      <span
+        className="text-sm font-medium text-[#16181D] tabular-nums"
+        style={{ fontFamily: 'var(--font-mono)' }}
+      >
+        {value}{suffix}
+      </span>
+      <span className="text-xs text-[#6B7077]">{label}</span>
+      <button
+        onClick={() => onEdit(field, value)}
+        title={`Edit ${label}`}
+        className="opacity-0 transition-opacity group-hover:opacity-100 ml-0.5"
+        aria-label={`Edit ${label}`}
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-3 w-3 text-[#6B7077] hover:text-[#C8A96E]">
+          <path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13H2.5v-2.5L11.5 2.5Z" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </div>
+  );
 }
 
 export function PropertyProfile({ address }: PropertyProfileProps) {
@@ -115,6 +207,12 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   const [parsedAddress, setParsedAddress] = useState<StructuredAddress | null>(
     null
   );
+  const [addressSlug, setAddressSlug] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+  // Photo gallery lightbox state
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
 
   const prefersReducedMotion =
     typeof window !== "undefined"
@@ -153,6 +251,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       }
       const data = await res.json();
       setProperty(data.profile);
+      setAddressSlug(data.addressSlug ?? null);
 
       // Kick off enrichment fetch in background
       fetchEnrichment(structured);
@@ -247,25 +346,49 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     }
   };
 
+  const saveOverride = async (field: string, value: string) => {
+    if (!addressSlug) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch(`/api/property/${addressSlug}/override`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field, value }),
+      });
+      if (!res.ok) throw new Error('Save failed');
+      // Patch local state immediately so UI updates without re-fetch
+      setProperty(prev => prev ? {
+        ...prev,
+        data: { ...prev.data, [field]: isNaN(Number(value)) ? value : Number(value) }
+      } : prev);
+      setEditingField(null);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (address) fetchProperty();
   }, [address, fetchProperty]);
 
+
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mx-auto max-w-5xl px-6 py-10 lg:py-14">
         {/* Progress indicator */}
         <div className="mb-10 flex flex-col items-center justify-center py-12">
           <div className="relative mb-6">
             <div className="h-16 w-16 rounded-full border-4 border-gray-200" />
-            <div className="absolute inset-0 h-16 w-16 animate-spin rounded-full border-4 border-transparent border-t-brand-600" />
-            <Building2 className="absolute inset-0 m-auto h-6 w-6 text-brand-600" />
+            <div className="absolute inset-0 h-16 w-16 animate-spin rounded-full border-4 border-transparent border-t-[#C8A96E]" />
+            <Building2 className="absolute inset-0 m-auto h-6 w-6 text-[#C8A96E]" />
           </div>
-          <h3 className="text-lg font-semibold text-gray-900">
+          <h3 className="text-lg font-semibold text-[#16181D]">
             Searching property data
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Crawling realestate.com.au, domain.com.au and more...
+          <p className="mt-1 text-sm text-[#6B7077]">
+            Searching property records…
           </p>
         </div>
 
@@ -292,24 +415,24 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           transition={{ duration: 0.3 }}
           className="max-w-md"
         >
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
-            <AlertCircle className="h-7 w-7 text-red-500" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F7E7E5]">
+            <AlertCircle className="h-7 w-7 text-[#C5544A]" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900">
+          <h2 className="text-xl font-bold text-[#16181D]">
             Something went wrong
           </h2>
-          <p className="mt-2 text-gray-600">{error}</p>
+          <p className="mt-2 text-[#4A4E57]">{error}</p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <Link
               href="/"
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-[#33363D] transition-colors duration-150 hover:bg-[#FBFBFC]"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to Search
             </Link>
             <button
               onClick={fetchProperty}
-              className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-brand-700 active:scale-[0.97]"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#C8A96E] px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#B8954A] active:scale-[0.97]"
             >
               <RefreshCw className="h-4 w-4" />
               Retry
@@ -392,10 +515,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-10 px-6 py-10">
+    <div className="mx-auto max-w-5xl space-y-8 px-6 py-10 lg:py-14">
       <Link
         href="/"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition-colors duration-150 hover:text-brand-600"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-[#6B7077] transition-colors duration-150 hover:text-[#C8A96E]"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Search
@@ -405,11 +528,14 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         initial={prefersReducedMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4 }}
-        className="space-y-10"
+        className="space-y-16"
       >
         {/* ─── Hero ─── */}
-        <section className="overflow-hidden rounded-2xl bg-white shadow-sm">
-          <div className="relative h-64 w-full sm:h-80 lg:h-96">
+        <section className="overflow-hidden rounded-2xl bg-white border border-[#E7E9EE] ">
+          <div
+            className="relative h-64 w-full sm:h-80 lg:h-96 cursor-pointer"
+            onClick={() => heroImage && setSelectedPhotoIndex(0)}
+          >
             {heroImage ? (
               <img
                 src={heroImage}
@@ -417,14 +543,35 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="h-full w-full bg-gradient-to-br from-brand-600 to-brand-900" />
+              <div className="h-full w-full bg-gradient-to-br from-[#C8A96E] to-[#16181D]" />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
               <span className="mb-2 inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
                 {propertyType.charAt(0).toUpperCase() + propertyType.slice(1)}
               </span>
-              <h1 className="text-2xl font-bold text-white sm:text-3xl lg:text-4xl">
+              {d.listingStatus != null && (() => {
+                const status = String(d.listingStatus).toLowerCase();
+                const cfg =
+                  status === 'for-sale' || status === 'active'
+                    ? { label: 'For Sale', cls: 'bg-[#2F8F6B]/80' }
+                    : status === 'for-rent'
+                    ? { label: 'For Rent', cls: 'bg-[#335C7D]/80' }
+                    : status === 'under-offer'
+                    ? { label: 'Under Offer', cls: 'bg-[#B8954A]/80' }
+                    : status === 'sold'
+                    ? { label: 'Sold', cls: 'bg-gray-500/80' }
+                    : status === 'off-market'
+                    ? { label: 'Off Market', cls: 'bg-gray-500/80' }
+                    : null;
+                if (!cfg) return null;
+                return (
+                  <span className={`ml-2 inline-block rounded-full ${cfg.cls} px-3 py-1 text-xs font-medium text-white backdrop-blur-sm`}>
+                    {cfg.label}
+                  </span>
+                );
+              })()}
+              <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl lg:text-4xl">
                 {displayAddress}
               </h1>
               {parsedAddress?.suburb && (
@@ -441,141 +588,309 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   </span>
                 </div>
               )}
+              {photos.length > 1 && (
+                <div className="absolute top-4 right-4 rounded-full bg-black/40 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
+                  1 / {photos.length}
+                </div>
+              )}
             </div>
           </div>
 
+          {/* Thumbnail strip */}
+          {photos.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide">
+              {photos.map((url, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedPhotoIndex(idx)}
+                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-150 ${
+                    idx === 0
+                      ? "border-[#C8A96E]"
+                      : "border-transparent hover:border-[#EFE3CC]"
+                  }`}
+                  aria-label={`View photo ${idx + 1}`}
+                >
+                  <img
+                    src={url}
+                    alt={`Photo ${idx + 1}`}
+                    className="h-full w-full object-cover"
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {addressSlug && property.data && (
+            <div className="px-6 pb-4 sm:px-8">
+              <TrackPropertyButton
+                addressSlug={addressSlug}
+                fullAddress={
+                  (property.data.address as Record<string, unknown> | undefined)?.fullAddress as string
+                  ?? (property.data.fullAddress as string | undefined)
+                  ?? ''
+                }
+              />
+            </div>
+          )}
+
           {/* Quick stats */}
-          <div className="flex flex-wrap items-center gap-6 border-t border-gray-100 px-6 py-4 sm:px-8">
+          <div className="flex flex-wrap items-center gap-6 border-t border-[#E7E9EE] px-6 py-4 sm:px-8">
             {d.bedrooms != null && (
-              <Stat value={String(d.bedrooms)} label="Beds" />
+              <EditableStat
+                field="bedrooms"
+                value={String(d.bedrooms)}
+                label="Beds"
+                editingField={editingField}
+                editValue={editValue}
+                editSaving={editSaving}
+                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                onSave={saveOverride}
+                onCancel={() => setEditingField(null)}
+                onEditValueChange={setEditValue}
+              />
             )}
             {d.bathrooms != null && (
-              <Stat value={String(d.bathrooms)} label="Baths" />
+              <EditableStat
+                field="bathrooms"
+                value={String(d.bathrooms)}
+                label="Baths"
+                editingField={editingField}
+                editValue={editValue}
+                editSaving={editSaving}
+                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                onSave={saveOverride}
+                onCancel={() => setEditingField(null)}
+                onEditValueChange={setEditValue}
+              />
             )}
             {d.carSpaces != null && (
-              <Stat value={String(d.carSpaces)} label="Cars" />
+              <EditableStat
+                field="carSpaces"
+                value={String(d.carSpaces)}
+                label="Cars"
+                editingField={editingField}
+                editValue={editValue}
+                editSaving={editSaving}
+                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                onSave={saveOverride}
+                onCancel={() => setEditingField(null)}
+                onEditValueChange={setEditValue}
+              />
             )}
             {d.landArea != null && (
-              <Stat value={`${String(d.landArea)}m²`} label="Land" />
+              <EditableStat
+                field="landArea"
+                value={String(d.landArea)}
+                label="Land"
+                suffix="m²"
+                editingField={editingField}
+                editValue={editValue}
+                editSaving={editSaving}
+                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                onSave={saveOverride}
+                onCancel={() => setEditingField(null)}
+                onEditValueChange={setEditValue}
+              />
             )}
           </div>
         </section>
 
+        {/* ─── About This Property ─── */}
+        {typeof d.description === 'string' && (d.description as string).length > 20 && (
+          <section>
+            <SectionTitle icon={FileText} title="About This Property" />
+            <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+              <p className="max-w-[68ch] text-sm leading-relaxed text-[#33363D]">{d.description as string}</p>
+            </div>
+          </section>
+        )}
+
         {/* ─── Estimated Price Range ─── */}
         {(enrichedEstimate || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
           <section>
-            {enrichedEstimate ? (
-              <>
-                <div className="mb-6 flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50">
-                    <TrendingUp className="h-4 w-4 text-brand-600" />
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    {enrichedEstimate.priceSource === 'listing-guide' ? 'Price Guide' :
-                     enrichedEstimate.priceSource === 'listing-price' ? 'Listing Price' :
-                     enrichedEstimate.priceSource === 'recent-sale' ? 'Estimated Value' :
-                     enrichedEstimate.priceSource === 'sale-adjusted' || enrichedEstimate.priceSource === 'old-sale-adjusted' ? 'Estimated Value' :
-                     enrichedEstimate.priceSource === 'rental-yield' ? 'Estimated Value (Rental)' :
-                     enrichedEstimate.priceSource === 'suburb-median' ? 'Estimated Value (Suburb)' :
-                     'Estimated Price Range'}
-                  </h2>
-                  <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
-                    enrichedEstimate.confidenceLevel === 'high' ? 'bg-green-100 text-green-700' :
-                    enrichedEstimate.confidenceLevel === 'medium' ? 'bg-amber-100 text-amber-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {enrichedEstimate.confidenceLevel} confidence
-                  </span>
-                </div>
-                <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="grid gap-6 sm:grid-cols-2">
+              {/* Price estimate card */}
+              <div>
+                {enrichedEstimate ? (
+                  <>
+                    <div className="mb-6 flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
+                        <TrendingUp className="h-4 w-4 text-[#C8A96E]" />
+                      </div>
+                      <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">
+                        {enrichedEstimate.priceSource === 'listing-guide' ? 'Price Guide' :
+                         enrichedEstimate.priceSource === 'listing-price' ? 'Listing Price' :
+                         enrichedEstimate.priceSource === 'recent-sale' ? 'Estimated Value' :
+                         enrichedEstimate.priceSource === 'sale-adjusted' || enrichedEstimate.priceSource === 'old-sale-adjusted' ? 'Estimated Value' :
+                         enrichedEstimate.priceSource === 'rental-yield' ? 'Estimated Value (Rental)' :
+                         enrichedEstimate.priceSource === 'suburb-median' ? 'Estimated Value (Suburb)' :
+                         'Estimated Price Range'}
+                      </h2>
+                      <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        enrichedEstimate.confidenceLevel === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' :
+                        enrichedEstimate.confidenceLevel === 'medium' ? 'bg-[#F5EEDD] text-[#B8954A]' :
+                        'bg-[#F7E7E5] text-[#C5544A]'
+                      }`}>
+                        {enrichedEstimate.confidenceLevel} confidence
+                      </span>
+                    </div>
+                    <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                      <div>
+                        <div className="flex items-end gap-4 mb-4">
+                          <div className="text-center flex-1">
+                            <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
+                            <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceLow)}</p>
+                          </div>
+                          <div className="text-center flex-1">
+                            <p className="text-xs font-medium text-[#C8A96E] uppercase tracking-wide">Estimated</p>
+                            <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceMid)}</p>
+                          </div>
+                          <div className="text-center flex-1">
+                            <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
+                            <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceHigh)}</p>
+                          </div>
+                        </div>
+                        <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-[#C8A96E] to-gray-300" />
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#C8A96E] shadow-md" />
+                        </div>
+                        {enrichedEstimate.growthAdjustment && (
+                          <p className="mt-3 text-xs text-[#6B7077] text-center">
+                            Last sold: {fmtCurrency(enrichedEstimate.growthAdjustment.originalPrice)}
+                            {enrichedEstimate.growthAdjustment.originalDate && ` (${formatDate(enrichedEstimate.growthAdjustment.originalDate)})`}
+                            {' → adjusted to '}
+                            {fmtCurrency(enrichedEstimate.growthAdjustment.adjustedPrice)}
+                          </p>
+                        )}
+                        <p className="mt-3 text-xs text-[#8A8F97] text-center leading-relaxed">
+                          {enrichedEstimate.methodology}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <SectionTitle icon={TrendingUp} title={
+                      priceSource === 'listing-guide' ? 'Price Guide' :
+                      priceSource === 'listing-price' ? 'Listing Price' :
+                      priceSource === 'last-sale' ? 'Estimated Value' :
+                      'Estimated Price Range'
+                    } />
+                    <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                      {(priceLow != null && priceHigh != null) ? (
+                        <div>
+                          <div className="flex items-end gap-4 mb-4">
+                            <div className="text-center flex-1">
+                              <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
+                              <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceLow)}</p>
+                            </div>
+                            <div className="text-center flex-1">
+                              <p className="text-xs font-medium text-[#C8A96E] uppercase tracking-wide">
+                                {priceSource === 'listing-guide' ? 'Guide' : priceSource === 'listing-price' ? 'Listed' : 'Estimated'}
+                              </p>
+                              <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
+                            </div>
+                            <div className="text-center flex-1">
+                              <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
+                              <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceHigh)}</p>
+                            </div>
+                          </div>
+                          <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
+                            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-[#C8A96E] to-gray-300" />
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#C8A96E] shadow-md" />
+                          </div>
+                          <p className="mt-3 text-sm text-[#8A8F97] text-center">
+                            {priceSource === 'listing-guide' ? 'Based on listing price guide' :
+                             priceSource === 'listing-price' ? 'Based on listing price' :
+                             priceSource === 'last-sale' ? 'Based on most recent sale' :
+                             priceLabel ? priceLabel : 'Estimated from available data'}
+                          </p>
+                        </div>
+                      ) : currentPrice != null ? (
+                        <div className="text-center">
+                          <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide mb-1">
+                            {priceSource === 'listing-price' ? 'Listing Price' : 'Guide Price'}
+                          </p>
+                          <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(currentPrice)}</p>
+                          {priceLabel && <p className="mt-2 text-sm text-[#6B7077]">{priceLabel}</p>}
+                        </div>
+                      ) : priceLabel ? (
+                        <div className="text-center">
+                          <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide mb-1">Price Guide</p>
+                          <p className="text-2xl font-bold text-[#16181D]">{priceLabel}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Rental income estimate card */}
+              {(() => {
+                const now = Date.now();
+                const recentRental = rentalHistory
+                  .filter(r => r.weeklyRent != null && r.date != null)
+                  .sort((a, b) => new Date(b.date!).getTime() - new Date(a.date!).getTime())[0];
+
+                let midRent: number | null = null;
+                let confidence: 'high' | 'medium' = 'medium';
+
+                if (recentRental?.weeklyRent) {
+                  const ageMs = now - new Date(recentRental.date!).getTime();
+                  if (ageMs < 24 * 30 * 24 * 60 * 60 * 1000) {
+                    midRent = recentRental.weeklyRent;
+                    confidence = 'high';
+                  }
+                }
+
+                if (midRent === null && enrichedEstimate && enrichment?.marketData?.houses?.grossYield) {
+                  midRent = Math.round((enrichedEstimate.priceMid * (enrichment.marketData.houses.grossYield / 100)) / 52);
+                  confidence = 'medium';
+                }
+
+                if (midRent === null) return null;
+
+                const lowRent = Math.round(midRent * 0.9);
+                const highRent = Math.round(midRent * 1.1);
+
+                return (
                   <div>
-                    <div className="flex items-end gap-4 mb-4">
-                      <div className="text-center flex-1">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Low</p>
-                        <p className="text-xl font-bold text-gray-500">{fmtCurrency(enrichedEstimate.priceLow)}</p>
+                    <div className="mb-6 flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
+                        <TrendingUp className="h-4 w-4 text-[#C8A96E]" />
                       </div>
-                      <div className="text-center flex-1">
-                        <p className="text-xs font-medium text-brand-500 uppercase tracking-wide">Estimated</p>
-                        <p className="text-3xl font-extrabold text-brand-600">{fmtCurrency(enrichedEstimate.priceMid)}</p>
-                      </div>
-                      <div className="text-center flex-1">
-                        <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">High</p>
-                        <p className="text-xl font-bold text-gray-500">{fmtCurrency(enrichedEstimate.priceHigh)}</p>
-                      </div>
+                      <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">
+                        Estimated Rental Income
+                      </h2>
+                      <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        confidence === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' : 'bg-[#F5EEDD] text-[#B8954A]'
+                      }`}>
+                        {confidence} confidence
+                      </span>
                     </div>
-                    <div className="relative h-3 rounded-full bg-gray-100 overflow-hidden">
-                      <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-brand-500 to-gray-300" />
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-brand-600 shadow-md" />
-                    </div>
-                    {enrichedEstimate.growthAdjustment && (
-                      <p className="mt-3 text-xs text-gray-500 text-center">
-                        Last sold: {fmtCurrency(enrichedEstimate.growthAdjustment.originalPrice)}
-                        {enrichedEstimate.growthAdjustment.originalDate && ` (${formatDate(enrichedEstimate.growthAdjustment.originalDate)})`}
-                        {' → adjusted to '}
-                        {fmtCurrency(enrichedEstimate.growthAdjustment.adjustedPrice)}
-                      </p>
-                    )}
-                    <p className="mt-3 text-xs text-gray-400 text-center leading-relaxed">
-                      {enrichedEstimate.methodology}
-                    </p>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <SectionTitle icon={TrendingUp} title={
-                  priceSource === 'listing-guide' ? 'Price Guide' :
-                  priceSource === 'listing-price' ? 'Listing Price' :
-                  priceSource === 'last-sale' ? 'Estimated Value' :
-                  'Estimated Price Range'
-                } />
-                <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-                  {(priceLow != null && priceHigh != null) ? (
-                    <div>
+                    <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                       <div className="flex items-end gap-4 mb-4">
                         <div className="text-center flex-1">
-                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Low</p>
-                          <p className="text-xl font-bold text-gray-500">{fmtCurrency(priceLow)}</p>
+                          <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
+                          <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${lowRent}/pw</p>
                         </div>
                         <div className="text-center flex-1">
-                          <p className="text-xs font-medium text-brand-500 uppercase tracking-wide">
-                            {priceSource === 'listing-guide' ? 'Guide' : priceSource === 'listing-price' ? 'Listed' : 'Estimated'}
-                          </p>
-                          <p className="text-3xl font-extrabold text-brand-600">{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
+                          <p className="text-xs font-medium text-[#C8A96E] uppercase tracking-wide">Estimated</p>
+                          <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${midRent}/pw</p>
                         </div>
                         <div className="text-center flex-1">
-                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">High</p>
-                          <p className="text-xl font-bold text-gray-500">{fmtCurrency(priceHigh)}</p>
+                          <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
+                          <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${highRent}/pw</p>
                         </div>
                       </div>
-                      <div className="relative h-3 rounded-full bg-gray-100 overflow-hidden">
-                        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-brand-500 to-gray-300" />
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-brand-600 shadow-md" />
-                      </div>
-                      <p className="mt-3 text-sm text-gray-400 text-center">
-                        {priceSource === 'listing-guide' ? 'Based on listing price guide' :
-                         priceSource === 'listing-price' ? 'Based on listing price' :
-                         priceSource === 'last-sale' ? 'Based on most recent sale' :
-                         priceLabel ? priceLabel : 'Estimated from available data'}
+                      <p className="text-xs text-[#8A8F97] text-center leading-relaxed">
+                        {confidence === 'high' ? 'Based on recent rental history' : 'Estimated from suburb rental yield'}
                       </p>
                     </div>
-                  ) : currentPrice != null ? (
-                    <div className="text-center">
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">
-                        {priceSource === 'listing-price' ? 'Listing Price' : 'Guide Price'}
-                      </p>
-                      <p className="text-3xl font-extrabold text-brand-600">{fmtCurrency(currentPrice)}</p>
-                      {priceLabel && <p className="mt-2 text-sm text-gray-500">{priceLabel}</p>}
-                    </div>
-                  ) : priceLabel ? (
-                    <div className="text-center">
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Price Guide</p>
-                      <p className="text-2xl font-bold text-gray-900">{priceLabel}</p>
-                    </div>
-                  ) : null}
-                </div>
-              </>
-            )}
+                  </div>
+                );
+              })()}
+            </div>
           </section>
         )}
 
@@ -583,14 +898,14 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {enrichment?.buyerDemand && (
           <section>
             <SectionTitle icon={Users} title="Buyer Demand" />
-            <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-              <div className="flex items-center gap-4 mb-5">
+            <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+              <div className="flex items-center gap-4 mb-6">
                 <DemandGauge score={enrichment.buyerDemand.score} level={enrichment.buyerDemand.level} />
                 <div>
-                  <p className="text-lg font-bold text-gray-900 capitalize">
+                  <p className="text-lg font-bold text-[#16181D] capitalize">
                     {enrichment.buyerDemand.level.replace('-', ' ')} demand
                   </p>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-[#6B7077]">
                     Based on {enrichment.buyerDemand.factors.length} market indicators
                   </p>
                 </div>
@@ -599,13 +914,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               {/* Factors */}
               <div className="space-y-2">
                 {enrichment.buyerDemand.factors.map((f, i) => (
-                  <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-2.5">
-                    <span className="text-sm text-gray-700">{f.name}</span>
+                  <div key={i} className="flex items-center justify-between rounded-lg bg-[#FBFBFC] px-4 py-2.5">
+                    <span className="text-sm text-[#33363D]">{f.name}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-900">{f.value}</span>
+                      <span className="text-sm font-semibold text-[#16181D]">{f.value}</span>
                       <span className={`h-2 w-2 rounded-full ${
-                        f.impact === 'positive' ? 'bg-green-500' :
-                        f.impact === 'negative' ? 'bg-red-400' : 'bg-amber-400'
+                        f.impact === 'positive' ? 'bg-[#2F8F6B]' :
+                        f.impact === 'negative' ? 'bg-[#C5544A]' : 'bg-[#B8954A]'
                       }`} />
                     </div>
                   </div>
@@ -623,8 +938,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             {/* Houses vs Units comparison */}
             <div className="grid gap-4 sm:grid-cols-2 mb-6">
               {/* Houses */}
-              <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-                <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Houses</h4>
+              <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                <h4 className="text-sm font-bold text-[#16181D] uppercase tracking-wide mb-4">Houses</h4>
                 <div className="space-y-3">
                   {enrichment.marketData.houses.medianPrice != null && (
                     <DataRow label="Median Price" value={fmtCurrency(enrichment.marketData.houses.medianPrice)} />
@@ -653,8 +968,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               </div>
 
               {/* Units */}
-              <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-                <h4 className="text-sm font-bold text-gray-900 uppercase tracking-wide mb-4">Units</h4>
+              <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                <h4 className="text-sm font-bold text-[#16181D] uppercase tracking-wide mb-4">Units</h4>
                 <div className="space-y-3">
                   {enrichment.marketData.units.medianPrice != null && (
                     <DataRow label="Median Price" value={fmtCurrency(enrichment.marketData.units.medianPrice)} />
@@ -704,7 +1019,35 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               </div>
             )}
 
-            <p className="mt-4 text-xs text-gray-400">
+            {/* Median trend charts */}
+            {(enrichment.marketData.houses.monthlyMedians?.length ?? 0) >= 2 && (
+              <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                <div>
+                  <h4 className="mb-3 text-sm font-semibold text-[#16181D]">
+                    Median House Price — 24 Months
+                  </h4>
+                  <SuburbPriceChart
+                    title="Median House Price"
+                    data={enrichment.marketData.houses.monthlyMedians!}
+                    type="price"
+                  />
+                </div>
+                {(enrichment.marketData.houses.monthlyRents?.length ?? 0) >= 2 && (
+                  <div>
+                    <h4 className="mb-3 text-sm font-semibold text-[#16181D]">
+                      Median Weekly Rent — 24 Months
+                    </h4>
+                    <SuburbPriceChart
+                      title="Median Rent"
+                      data={enrichment.marketData.houses.monthlyRents!}
+                      type="rent"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p className="mt-4 text-xs text-[#8A8F97]">
               Source: {enrichment.marketData.source}
             </p>
           </section>
@@ -725,150 +1068,68 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           </section>
         )}
 
-        {/* ─── Sale History ─── */}
-        {saleHistory.length > 0 && (
-          <section>
-            <SectionTitle title="Sale History" />
-            <div className="space-y-3">
-              {saleHistory.map((sale, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="text-lg font-bold text-gray-900">
-                      {sale.price != null
-                        ? fmtCurrency(sale.price)
-                        : "Price Withheld"}
-                    </span>
-                    {sale.date && (
-                      <span className="text-sm text-gray-500">
-                        {formatDate(sale.date)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {sale.type && (
-                      <span className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
-                        {sale.type}
-                      </span>
-                    )}
-                    {sale.daysOnMarket != null && (
-                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-                        {sale.daysOnMarket} days on market
-                      </span>
-                    )}
-                    {sale.isConfidential && (
-                      <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-                        Confidential
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-                    {sale.agency && (
-                      <div className="flex gap-2">
-                        <span className="text-gray-400">Agency</span>
-                        <span className="font-medium text-gray-700">{sale.agency}</span>
-                      </div>
-                    )}
-                    {sale.agentName && (
-                      <div className="flex gap-2">
-                        <span className="text-gray-400">Agent</span>
-                        <span className="font-medium text-gray-700">{sale.agentName}</span>
-                      </div>
-                    )}
-                    {sale.listingPrice != null && (
-                      <div className="flex gap-2">
-                        <span className="text-gray-400">Listed at</span>
-                        <span className="font-medium text-gray-700">{fmtCurrency(sale.listingPrice)}</span>
-                      </div>
-                    )}
-                    {sale.settlementDate && (
-                      <div className="flex gap-2">
-                        <span className="text-gray-400">Settled</span>
-                        <span className="font-medium text-gray-700">{formatDate(sale.settlementDate)}</span>
-                      </div>
-                    )}
-                    {sale.source && (
-                      <div className="flex gap-2">
-                        <span className="text-gray-400">Source</span>
-                        <span className="font-medium text-gray-700">{sale.source}</span>
-                      </div>
-                    )}
-                  </div>
-                  {sale.description && (
-                    <p className="mt-2 text-sm text-gray-500 italic line-clamp-2">
-                      {sale.description}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        {/* ─── Property Features ─── */}
+        {(() => {
+          const featureRows: Array<{ label: string; value: string }> = [];
+          if (d.propertyType != null) featureRows.push({ label: 'Type', value: String(d.propertyType).charAt(0).toUpperCase() + String(d.propertyType).slice(1) });
+          if (d.bedrooms != null) featureRows.push({ label: 'Bedrooms', value: String(d.bedrooms) });
+          if (d.bathrooms != null) featureRows.push({ label: 'Bathrooms', value: String(d.bathrooms) });
+          if (d.carSpaces != null) featureRows.push({ label: 'Car spaces', value: String(d.carSpaces) });
+          if (d.garages != null) featureRows.push({ label: 'Garage spaces', value: String(d.garages) });
+          const openSpaces = (d.carSpaces != null && d.garages != null) ? Number(d.carSpaces) - Number(d.garages) : null;
+          if (openSpaces != null && openSpaces > 0) featureRows.push({ label: 'Open car spaces', value: String(openSpaces) });
+          if (d.landArea != null) featureRows.push({ label: 'Land size', value: `${d.landArea}m²` });
+          if (d.buildingArea != null) featureRows.push({ label: 'Building area', value: `${d.buildingArea}m²` });
+          if (d.yearBuilt != null) featureRows.push({ label: 'Year built', value: String(d.yearBuilt) });
+          const connectivity = d.connectivity as Record<string, unknown> | undefined;
+          if (connectivity?.nbn) {
+            const nbn = connectivity.nbn as Record<string, unknown>;
+            if (nbn.connectionType) featureRows.push({ label: 'NBN connection', value: String(nbn.connectionType).toUpperCase() });
+          }
+          if (connectivity?.mobileCoverage) {
+            const cov = connectivity.mobileCoverage as string[];
+            if (Array.isArray(cov) && cov.length > 0) featureRows.push({ label: 'Mobile coverage', value: cov.join(', ') });
+          }
 
-        {/* ─── Rental History ─── */}
-        {rentalHistory.length > 0 && (
+          if (featureRows.length < 3) return null;
+
+          return (
+            <section>
+              <SectionTitle icon={List} title="Property Features" />
+              <div className="overflow-hidden rounded-xl border border-[#E7E9EE] bg-white ">
+                {featureRows.map((row, i) => (
+                  <div
+                    key={row.label}
+                    className={`flex items-center justify-between px-5 py-3 text-sm ${
+                      i % 2 === 0 ? 'bg-white' : 'bg-[#FBFBFC]'
+                    } ${i < featureRows.length - 1 ? 'border-b border-[#E7E9EE]' : ''}`}
+                  >
+                    <span className="text-[#6B7077]">{row.label}</span>
+                    <span className="font-medium text-[#16181D]">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })()}
+
+        {/* ─── Property History ─── */}
+        <section>
+          <SectionTitle title="Property History" />
+          <PropertyTimeline sales={saleHistory} rentals={rentalHistory} />
+        </section>
+
+        {/* ─── Comparable Sales ─── */}
+        {parsedAddress?.suburb && (
           <section>
-            <SectionTitle title="Rental History" />
-            <div className="space-y-3">
-              {rentalHistory.map((rental, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm"
-                >
-                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                    <span className="text-lg font-bold text-gray-900">
-                      {rental.weeklyRent != null
-                        ? `${fmtCurrency(rental.weeklyRent)}/wk`
-                        : "Rent N/A"}
-                    </span>
-                    {rental.date && (
-                      <span className="text-sm text-gray-500">
-                        {formatDate(rental.date)}
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {rental.leaseTerm && (
-                      <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                        {rental.leaseTerm}
-                      </span>
-                    )}
-                    {rental.daysOnMarket != null && (
-                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-                        {rental.daysOnMarket} days on market
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-                    {rental.agency && (
-                      <div className="flex gap-2">
-                        <span className="text-gray-400">Agency</span>
-                        <span className="font-medium text-gray-700">{rental.agency}</span>
-                      </div>
-                    )}
-                    {rental.agentName && (
-                      <div className="flex gap-2">
-                        <span className="text-gray-400">Manager</span>
-                        <span className="font-medium text-gray-700">{rental.agentName}</span>
-                      </div>
-                    )}
-                    {rental.bond != null && (
-                      <div className="flex gap-2">
-                        <span className="text-gray-400">Bond</span>
-                        <span className="font-medium text-gray-700">{fmtCurrency(rental.bond)}</span>
-                      </div>
-                    )}
-                  </div>
-                  {rental.description && (
-                    <p className="mt-2 text-sm text-gray-500 italic line-clamp-2">
-                      {rental.description}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+            <SectionTitle icon={Scale} title="Comparable Sales" />
+            <ComparableSales
+              suburb={parsedAddress.suburb}
+              beds={d.bedrooms != null ? Number(d.bedrooms) : undefined}
+              baths={d.bathrooms != null ? Number(d.bathrooms) : undefined}
+              propertyType={(d.propertyType as string) ?? undefined}
+              excludeSlug={(d.slug as string) ?? (d.id as string) ?? undefined}
+            />
           </section>
         )}
 
@@ -880,7 +1141,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               {features.map((f, i) => (
                 <span
                   key={i}
-                  className="rounded-full bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700"
+                  className="rounded-full bg-[#FBFBFC] px-3 py-1.5 text-sm font-medium text-[#B8954A]"
                 >
                   {f}
                 </span>
@@ -891,9 +1152,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
         {/* ─── Enrichment: Loading ─── */}
         {enrichLoading && (
-          <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-            <Loader2 className="h-5 w-5 animate-spin text-brand-500" />
-            <span className="text-sm text-gray-500">
+          <div className="flex items-center gap-3 rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+            <Loader2 className="h-5 w-5 animate-spin text-[#C8A96E]" />
+            <span className="text-sm text-[#6B7077]">
               Loading planning, schools, transport &amp; suburb data...
             </span>
           </div>
@@ -903,30 +1164,79 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {enrichment?.planning && (
           <section>
             <SectionTitle icon={Layers} title="Planning & Zoning" />
-            <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm space-y-4">
+            <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 space-y-4">
               {enrichment.planning.zone && (
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-brand-600 px-2.5 py-1 text-xs font-bold text-white">
+                    <span className="rounded-md bg-[#C8A96E] px-2.5 py-1 text-xs font-bold text-white">
                       {enrichment.planning.zone.code}
                     </span>
-                    <span className="text-lg font-semibold text-gray-900">
+                    <span className="text-lg font-semibold text-[#16181D]">
                       {enrichment.planning.zone.name}
                     </span>
                   </div>
                 </div>
               )}
 
+              {/* Risk indicator cards */}
+              {(() => {
+                const overlays = enrichment.planning.overlays;
+                const hasBushfire = overlays.some(o =>
+                  /^(BMO|BPA|BSMO)/i.test(o.code) || /bushfire/i.test(o.name)
+                );
+                const bushfireOverlay = overlays.find(o =>
+                  /^(BMO|BPA|BSMO)/i.test(o.code) || /bushfire/i.test(o.name)
+                );
+                const hasFlood = overlays.some(o =>
+                  /^(FO|LSIO|FMO)/i.test(o.code) || /flood|inundation/i.test(o.name)
+                );
+                const floodOverlay = overlays.find(o =>
+                  /^(FO|LSIO|FMO)/i.test(o.code) || /flood|inundation/i.test(o.name)
+                );
+                const hasHeritage = overlays.some(o =>
+                  /^(HO|VHR)/i.test(o.code) || /heritage/i.test(o.name)
+                );
+                const heritageOverlay = overlays.find(o =>
+                  /^(HO|VHR)/i.test(o.code) || /heritage/i.test(o.name)
+                );
+
+                const risks = [
+                  { label: 'Bushfire', found: hasBushfire, overlay: bushfireOverlay, icon: Flame, color: 'orange' },
+                  { label: 'Flood', found: hasFlood, overlay: floodOverlay, icon: Droplets, color: 'blue' },
+                  { label: 'Heritage', found: hasHeritage, overlay: heritageOverlay, icon: Landmark, color: 'purple' },
+                ];
+
+                return (
+                  <div className="grid grid-cols-3 gap-3 mb-4">
+                    {risks.map(risk => (
+                      <div
+                        key={risk.label}
+                        className={`rounded-xl border p-4 text-center ${
+                          risk.found
+                            ? 'border-[#EADFC2] bg-[#F5EEDD]'
+                            : 'border-[#CDE6D9] bg-[#E4F1EB]'
+                        }`}
+                      >
+                        <risk.icon className={`mx-auto mb-2 h-5 w-5 ${risk.found ? 'text-[#B8954A]' : 'text-[#2F8F6B]'}`} />
+                        <p className="text-xs font-semibold text-[#16181D]">{risk.label}</p>
+                        <p className={`mt-1 text-xs ${risk.found ? 'text-[#B8954A]' : 'text-[#2F8F6B]'}`}>
+                          {risk.found ? (risk.overlay ? `${risk.overlay.code}` : 'Overlay present') : 'Not found'}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Other overlays */}
               {enrichment.planning.overlays.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-500 mb-2">
-                    Planning Overlays
-                  </h4>
+                  <h4 className="text-sm font-medium text-[#6B7077] mb-2">All Planning Overlays</h4>
                   <div className="flex flex-wrap gap-2">
                     {enrichment.planning.overlays.map((o, i) => (
                       <span
                         key={i}
-                        className="rounded-full bg-amber-50 border border-amber-200 px-3 py-1 text-xs font-medium text-amber-800"
+                        className="rounded-full bg-[#F5EEDD] border border-[#EADFC2] px-3 py-1 text-xs font-medium text-[#B8954A]"
                       >
                         {o.code} — {o.name}
                       </span>
@@ -937,7 +1247,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
               {(enrichment.planning.council ||
                 enrichment.planning.planningScheme) && (
-                <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+                <div className="flex flex-wrap gap-4 text-sm text-[#6B7077]">
                   {enrichment.planning.council && (
                     <span>Council: {enrichment.planning.council}</span>
                   )}
@@ -949,7 +1259,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 </div>
               )}
 
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-[#8A8F97]">
                 Source: {enrichment.planning.source}
               </p>
             </div>
@@ -964,20 +1274,20 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               {enrichment.schools.map((school, i) => (
                 <div
                   key={i}
-                  className="flex items-start gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
+                  className="flex items-start gap-3 rounded-xl border border-[#E7E9EE] bg-white p-4 "
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-green-50">
-                    <GraduationCap className="h-5 w-5 text-green-600" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E4F1EB]">
+                    <GraduationCap className="h-5 w-5 text-[#2F8F6B]" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900">
+                    <p className="text-sm font-semibold text-[#16181D]">
                       {school.name}
                     </p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#6B7077]">
+                      <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium">
                         {school.type}
                       </span>
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium">
+                      <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium">
                         {school.sector}
                       </span>
                       <span>{school.distanceKm} km</span>
@@ -989,6 +1299,33 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           </section>
         )}
 
+        {/* ─── Nearby Childcare ─── */}
+        {enrichment?.childcare && enrichment.childcare.length > 0 && (
+          <section>
+            <SectionTitle icon={Baby} title="Nearby Childcare" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              {enrichment.childcare.map((centre, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-3 rounded-xl border border-[#E7E9EE] bg-white p-4 "
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F4F5F7]">
+                    <Baby className="h-5 w-5 text-[#6B7077]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-[#16181D]">{centre.name}</p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#6B7077]">
+                      <span>{centre.distanceKm} km</span>
+                      {centre.address && <span className="truncate">{centre.address}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-[#8A8F97]">NQS ratings not available from map data source.</p>
+          </section>
+        )}
+
         {/* ─── Transport ─── */}
         {enrichment && enrichment.transport.length > 0 && (
           <section>
@@ -997,16 +1334,16 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               {enrichment.transport.map((stop, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm"
+                  className="flex items-center gap-3 rounded-xl border border-[#E7E9EE] bg-white p-4 "
                 >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50">
-                    <Train className="h-5 w-5 text-blue-600" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E4EBF1]">
+                    <Train className="h-5 w-5 text-[#335C7D]" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-gray-900">
+                    <p className="text-sm font-semibold text-[#16181D]">
                       {stop.name}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-[#6B7077]">
                       <span className="capitalize">{stop.type}</span> ·{" "}
                       {stop.distanceKm} km
                     </p>
@@ -1083,48 +1420,109 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           </section>
         )}
 
-        {/* ─── Data Sources ─── */}
-        <section className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-3 mb-4">
-            <h2 className="text-lg font-bold text-gray-900">Data Sources</h2>
-            <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
-              {property.sources.length +
-                (enrichment?.planning ? 1 : 0) +
-                (enrichment?.schools.length ? 1 : 0) +
-                (enrichment?.suburbStats ? 1 : 0)}{" "}
-              sources
-            </span>
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-              {property.overallConfidence}% confidence
-            </span>
-          </div>
-          <div className="space-y-2">
-            {property.sources.map((src, i) => (
-              <SourceRow
-                key={i}
-                name={src.name}
-                detail={new Date(src.extractedAt).toLocaleString("en-AU")}
-                hasErrors={src.hasErrors}
-              />
-            ))}
-            {enrichment?.planning && (
-              <SourceRow name={enrichment.planning.source} detail="Zoning & overlays" />
-            )}
-            {enrichment && enrichment.schools.length > 0 && (
-              <SourceRow
-                name="OpenStreetMap (Overpass)"
-                detail={`${enrichment.schools.length} schools, ${enrichment.transport.length} transport stops`}
-              />
-            )}
-            {enrichment?.suburbStats && (
-              <SourceRow name="realestate.com.au" detail="Suburb statistics" />
-            )}
-            {enrichment?.coordinates && (
-              <SourceRow name="Nominatim (OpenStreetMap)" detail="Geocoding" />
-            )}
-          </div>
-        </section>
+        {/* Footer */}
+        <footer className="border-t border-[#E7E9EE] pt-8 pb-4">
+          <p className="text-xs text-[#6B7077] text-center">
+            All data © {new Date().getFullYear()} GEA · Grants Estate Agents · Berwick.
+            Not financial advice — always verify with a licensed professional.
+          </p>
+        </footer>
       </motion.div>
+
+      {/* ─── Photo Lightbox ─── */}
+      <AnimatePresence>
+        {selectedPhotoIndex !== null && photos.length > 0 && (
+          <motion.div
+            key="lightbox"
+            initial={prefersReducedMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90"
+            onClick={() => setSelectedPhotoIndex(null)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSelectedPhotoIndex(null);
+              if (e.key === "ArrowLeft")
+                setSelectedPhotoIndex((prev) =>
+                  prev !== null ? (prev - 1 + photos.length) % photos.length : null
+                );
+              if (e.key === "ArrowRight")
+                setSelectedPhotoIndex((prev) =>
+                  prev !== null ? (prev + 1) % photos.length : null
+                );
+            }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Photo lightbox"
+            tabIndex={-1}
+          >
+            {/* Photo counter */}
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-sm font-medium text-white backdrop-blur-sm">
+              {selectedPhotoIndex + 1} / {photos.length}
+            </div>
+
+            {/* Close button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedPhotoIndex(null);
+              }}
+              className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
+              aria-label="Close lightbox"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Previous arrow */}
+            {photos.length > 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPhotoIndex(
+                    (prev) =>
+                      prev !== null
+                        ? (prev - 1 + photos.length) % photos.length
+                        : 0
+                  );
+                }}
+                className="absolute left-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
+                aria-label="Previous photo"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+            )}
+
+            {/* Main image */}
+            <motion.img
+              key={selectedPhotoIndex}
+              initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2 }}
+              src={photos[selectedPhotoIndex]}
+              alt={`Photo ${selectedPhotoIndex + 1} of ${displayAddress}`}
+              className="max-h-[90vh] max-w-[90vw] object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+
+            {/* Next arrow */}
+            {photos.length > 1 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPhotoIndex(
+                    (prev) =>
+                      prev !== null ? (prev + 1) % photos.length : 0
+                  );
+                }}
+                className="absolute right-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
+                aria-label="Next photo"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1133,18 +1531,18 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <div className="flex items-center gap-2 text-gray-700">
+    <div className="flex items-center gap-2 text-[#33363D]">
       <span className="text-lg font-semibold">{value}</span>
-      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm text-[#6B7077]">{label}</span>
     </div>
   );
 }
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm transition-shadow duration-200 hover:shadow-md">
-      <span className="text-sm font-medium text-gray-500">{label}</span>
-      <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
+    <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 transition-shadow duration-200 hover:shadow-md">
+      <span className="text-sm font-medium text-[#6B7077]">{label}</span>
+      <p className="mt-2 text-2xl font-bold text-[#16181D]">{value}</p>
     </div>
   );
 }
@@ -1159,31 +1557,11 @@ function SectionTitle({
   return (
     <div className="mb-6 flex items-center gap-2">
       {Icon && (
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-50">
-          <Icon className="h-4 w-4 text-brand-600" />
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
+          <Icon className="h-4 w-4 text-[#C8A96E]" />
         </div>
       )}
-      <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
-    </div>
-  );
-}
-
-function SourceRow({
-  name,
-  detail,
-  hasErrors,
-}: {
-  name: string;
-  detail: string;
-  hasErrors?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-gray-50 bg-gray-50 px-4 py-2">
-      <span className="font-medium text-gray-900">{name}</span>
-      <div className="flex items-center gap-2">
-        {hasErrors && <span className="text-xs text-amber-600">partial</span>}
-        <span className="text-xs text-gray-500">{detail}</span>
-      </div>
+      <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">{title}</h2>
     </div>
   );
 }
@@ -1191,9 +1569,9 @@ function SourceRow({
 function DataRow({ label, value, color }: { label: string; value: string; color?: 'green' | 'red' }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm text-[#6B7077]">{label}</span>
       <span className={`text-sm font-semibold ${
-        color === 'green' ? 'text-green-600' : color === 'red' ? 'text-red-500' : 'text-gray-900'
+        color === 'green' ? 'text-[#2F8F6B]' : color === 'red' ? 'text-[#C5544A]' : 'text-[#16181D]'
       }`}>{value}</span>
     </div>
   );
@@ -1208,24 +1586,24 @@ function DemandGauge({
 }) {
   const color =
     level === 'very-high' || level === 'high'
-      ? 'text-green-600'
+      ? 'text-[#2F8F6B]'
       : level === 'moderate'
-      ? 'text-amber-500'
-      : 'text-red-400';
+      ? 'text-[#B8954A]'
+      : 'text-[#C5544A]';
 
   const bgColor =
     level === 'very-high' || level === 'high'
-      ? 'bg-green-50 border-green-200'
+      ? 'bg-[#E4F1EB] border-[#CDE6D9]'
       : level === 'moderate'
-      ? 'bg-amber-50 border-amber-200'
-      : 'bg-red-50 border-red-200';
+      ? 'bg-[#F5EEDD] border-[#EADFC2]'
+      : 'bg-[#F7E7E5] border-[#EFCBC7]';
 
   const strokeColor =
     level === 'very-high' || level === 'high'
-      ? '#16a34a'
+      ? '#2F8F6B'
       : level === 'moderate'
-      ? '#f59e0b'
-      : '#f87171';
+      ? '#B8954A'
+      : '#C5544A';
 
   // SVG arc for the gauge
   const radius = 28;
@@ -1238,7 +1616,7 @@ function DemandGauge({
         <path
           d="M 8 44 A 28 28 0 1 1 56 44"
           fill="none"
-          stroke="#e5e7eb"
+          stroke="#E7E9EE"
           strokeWidth="4"
           strokeLinecap="round"
         />

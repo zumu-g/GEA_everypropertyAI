@@ -29,4 +29,10 @@ export const domainSource: SourceConfig = {
     formats: ['markdown'],
   },
   enabled: true,
+  // Routed through Apify actor for reliable Cloudflare bypass.
+  // 'domain-com-au-property-scraper' accepts individual property-profile URLs.
+  options: { apifyActorId: 'shahidirfan/domain-com-au-property-scraper' },
+  // Fall back to Firecrawl then the stealth-browser service when Apify is
+  // unavailable/fails. Skipped if stealth is unconfigured.
+  fallbackBackends: ['stealth'],
 };

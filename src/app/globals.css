@@ -1,18 +1,141 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-50: #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-900: #1e3a5f;
-  --font-sans: 'Inter', system-ui, sans-serif;
+  /* ── Base — cooler & whiter (data-site palette) ──
+     Departs from GEA warm-paper baseline by design; see DESIGN.md. */
+  --color-bg: #FBFBFC;        /* page background — faintly cool near-white */
+  --color-surface: #FFFFFF;   /* cards / elevated surfaces */
+  --color-subtle: #F4F5F7;    /* fills: icon boxes, table stripes, chips */
+  --color-rule: #E7E9EE;      /* hairline borders / dividers */
+  --color-ink: #16181D;       /* cool near-black */
+  --color-ink-soft: #33363D;  /* strong secondary text */
+  --color-ink-mid: #4A4E57;   /* mid text */
+  --color-muted: #6B7077;     /* secondary text, labels, captions */
+  --color-faint: #8A8F97;     /* tertiary text, fine print */
+
+  /* ── Accents ── */
+  --color-gold: #C8A96E;      /* GEA brand accent — use sparingly */
+  --color-gold-dark: #B8954A; /* gold hover / press */
+  --color-gold-soft: #EFE3CC; /* gold selected / hover fill on light bg */
+  --color-data: #335C7D;      /* muted steel-blue — charts, links, data */
+  --color-data-soft: #E4EBF1; /* data accent fill */
+
+  /* ── Cool-toned status (must not compete with gold) ── */
+  --color-up: #2F8F6B;        /* positive / growth */
+  --color-up-soft: #E4F1EB;
+  --color-down: #C5544A;      /* negative / risk */
+  --color-down-soft: #F7E7E5;
+  --color-warn: #B8954A;      /* caution — reuse dark gold, stays in family */
+  --color-warn-soft: #F5EEDD;
+
+  /* ── Backwards-compat aliases (legacy hex names still referenced) ── */
+  --color-gea-gold: #C8A96E;
+  --color-gea-ink: #16181D;
+  --color-gea-paper: #FBFBFC;
+  --color-gea-surface: #F4F5F7;
+  --color-gea-rule: #E7E9EE;
+  --color-gea-muted: #6B7077;
+
+  /* ── Typography ── */
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Playfair Display', Georgia, serif; /* reserved for hero only */
+  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
 }
+
+/*
+  ── Spacing & rhythm contract (keep consistent across the app) ──
+  Sections:   py-20 / py-24      Content width:  max-w-5xl (mx-auto px-6)
+  Cards:      p-6 / p-8          Radii:          rounded-xl (cards) · rounded-lg (controls)
+  Borders:    hairline only (border-[#E7E9EE]) — prefer rules over shadows
+  Numbers:    always font-mono + tabular-nums
+
+  ── Type scale (apply via utility classes below) ──
+  .text-display  hero only (sans, tight, clamp 2.5–4rem)
+  .text-h1 / .text-h2 / .text-h3  section headings (sans, tracking-tight)
+  body copy: text-base / text-[15px] · labels: text-xs uppercase tracking-wide
+*/
 
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--color-gray-50, #f9fafb);
-  color: var(--color-gray-900, #111827);
+  background-color: #FBFBFC;
+  color: #16181D;
+  font-family: var(--font-sans);
+}
+
+/* ── Type scale utilities — sans-dominant, data-site hierarchy ── */
+.text-display {
+  font-family: var(--font-sans);
+  font-size: clamp(2.5rem, 5.5vw, 4rem);
+  line-height: 1.04;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}
+.text-h1 {
+  font-family: var(--font-sans);
+  font-size: clamp(1.75rem, 3.2vw, 2.25rem);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+}
+.text-h2 {
+  font-family: var(--font-sans);
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+.text-h3 {
+  font-family: var(--font-sans);
+  font-size: 1.0625rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+.text-eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+/* Reserved editorial serif — opt in explicitly for a single hero moment */
+.font-editorial {
+  font-family: var(--font-display);
+  font-weight: 400;
+}
+
+/* Skeleton shimmer animation — moves the highlight stripe left-to-right */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.6s ease-in-out infinite;
+}
+
+/* ── Print: street report ─────────────────────────────────────────────── */
+@media print {
+  @page {
+    margin: 14mm;
+    size: A4 landscape;
+  }
+  /* Preserve table backgrounds/accents if the user enables background graphics */
+  table,
+  thead,
+  th,
+  td {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Avoid splitting a property across two pages */
+  tr {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group; /* repeat header on each printed page */
+  }
 }

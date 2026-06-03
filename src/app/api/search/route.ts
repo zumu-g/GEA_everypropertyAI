@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseAddress, formatAddress } from '@/lib/utils/address';
 import type { StructuredAddress } from '@/types/property';
 
+const MAPBOX_TOKEN = process.env.MAPBOX_ACCESS_TOKEN;
 const GOOGLE_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 
 const CORS_HEADERS = {
@@ -26,8 +27,8 @@ export async function OPTIONS() {
 /**
  * GET /api/search?q=42+smith+street+sydney
  *
- * Returns address suggestions using Google Places Autocomplete,
- * or falls back to local address parsing if no API key is configured.
+ * Returns address suggestions using Mapbox (preferred) or Google Places
+ * Autocomplete, falling back to local address parsing if neither is configured.
  */
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get('q')?.trim();
@@ -40,9 +41,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const suggestions = GOOGLE_API_KEY
-      ? await fetchGoogleSuggestions(query)
-      : getLocalSuggestions(query);
+    const suggestions = MAPBOX_TOKEN
+      ? await fetchMapboxSuggestions(query)
+      : GOOGLE_API_KEY
+        ? await fetchGoogleSuggestions(query)
+        : getLocalSuggestions(query);
 
     return NextResponse.json(
       { suggestions },
@@ -59,6 +62,47 @@ export async function GET(request: NextRequest) {
       { status: 200, headers: CORS_HEADERS }
     );
   }
+}
+
+/**
+ * Fetch address suggestions from the Mapbox forward-geocoding API (autocomplete
+ * mode), restricted to AU addresses. Maps each feature to our AddressSuggestion
+ * shape via the local address parser.
+ */
+async function fetchMapboxSuggestions(query: string): Promise<AddressSuggestion[]> {
+  const url = new URL('https://api.mapbox.com/search/geocode/v6/forward');
+  url.searchParams.set('q', query);
+  url.searchParams.set('autocomplete', 'true');
+  url.searchParams.set('country', 'au');
+  url.searchParams.set('types', 'address');
+  url.searchParams.set('limit', '5');
+  url.searchParams.set('access_token', MAPBOX_TOKEN!);
+
+  const response = await fetch(url.toString(), {
+    signal: AbortSignal.timeout(5000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Mapbox geocoding API returned ${response.status}`);
+  }
+
+  const data = await response.json();
+  const features: Array<{ id?: string; properties?: { full_address?: string; place_formatted?: string } }> =
+    data?.features ?? [];
+
+  if (features.length === 0) {
+    return getLocalSuggestions(query);
+  }
+
+  return features.map((feature) => {
+    const description =
+      feature.properties?.full_address ?? feature.properties?.place_formatted ?? query;
+    return {
+      placeId: feature.id,
+      description,
+      structured: parseAddress(description),
+    };
+  });
 }
 
 /**

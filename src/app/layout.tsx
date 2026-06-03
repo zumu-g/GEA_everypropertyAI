@@ -1,17 +1,30 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { DM_Sans, Playfair_Display, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const dmSans = DM_Sans({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-sans",
+  display: "swap",
+});
+
+const playfairDisplay = Playfair_Display({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "PropertyIQ — Comprehensive Property Data",
+  title: "PropertyIQ — Every Property. Every Detail.",
   description:
-    "Comprehensive property data aggregated from 15+ sources for Australian real estate agents. Every detail. Every property. One search.",
+    "Search any Australian property and get instant data from 8+ portals. Comprehensive property intelligence for Casey & Cardinia real estate professionals.",
 };
 
 export default function RootLayout({
@@ -20,8 +33,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="min-h-screen font-sans">{children}</body>
+    <html
+      lang="en-AU"
+      className={`${dmSans.variable} ${playfairDisplay.variable} ${ibmPlexMono.variable}`}
+    >
+      <body className="min-h-screen bg-[#FBFBFC] font-sans text-[#16181D] antialiased">
+        {children}
+      </body>
     </html>
   );
 }

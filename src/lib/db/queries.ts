@@ -7,6 +7,7 @@ import type {
 } from '@/types/property';
 import type { CrawlJob } from '@/types/crawl';
 import { getSupabaseServerClient, isSupabaseConfigured } from './supabase';
+import { normaliseSuburbAlias } from '@/lib/utils/address';
 
 // ─── Types for DB records ───────────────────────────────────────────────────
 
@@ -527,6 +528,39 @@ export async function saveCachedProfile(
   }
 }
 
+/**
+ * Batch-fetch cached MergedPropertyProfiles for many slugs in one query.
+ * Unlike getCachedProfile(), this does NOT apply the 24hr TTL — for the street
+ * comparison table we surface whatever is stored (staleness is acceptable).
+ * Returns a Map keyed by address_slug; missing slugs are simply absent.
+ */
+export async function getCachedProfilesBySlugs(
+  slugs: string[]
+): Promise<Map<string, MergedPropertyProfile>> {
+  const result = new Map<string, MergedPropertyProfile>();
+  if (!isSupabaseConfigured() || slugs.length === 0) return result;
+
+  try {
+    const { data, error } = await supabase()
+      .from('property_cache')
+      .select('address_slug, raw_data')
+      .in('address_slug', slugs);
+
+    if (error) {
+      console.error('[getCachedProfilesBySlugs] Supabase error:', error.message);
+      return result;
+    }
+
+    for (const row of data ?? []) {
+      result.set(row.address_slug as string, row.raw_data as MergedPropertyProfile);
+    }
+    return result;
+  } catch (err) {
+    console.error('[getCachedProfilesBySlugs] Unexpected error:', err);
+    return result;
+  }
+}
+
 // ─── Agency Queries ──────────────────────────────────────────────────────────
 
 export interface AgencyRecord {
@@ -672,9 +706,94 @@ export async function markSuburbCrawled(
   }, { onConflict: 'suburb,state' });
 }
 
+// ─── Address Universe Queries (enumeration, e.g. G-NAF) ─────────────────────
+
+export interface AddressRecord {
+  address_slug: string;
+  raw_address: string;
+  street_number?: string;
+  street_name?: string;
+  street_type?: string;
+  suburb?: string;
+  state: string;
+  postcode?: string;
+  lat?: number;
+  lng?: number;
+  source?: string;
+}
+
+export async function insertAddresses(addresses: AddressRecord[]): Promise<void> {
+  if (!isSupabaseConfigured() || addresses.length === 0) return;
+  const CHUNK = 500;
+  for (let i = 0; i < addresses.length; i += CHUNK) {
+    const chunk = addresses.slice(i, i + CHUNK);
+    const { error } = await supabase()
+      .from('addresses')
+      .upsert(chunk, { onConflict: 'address_slug', ignoreDuplicates: true });
+    if (error) console.error('[insertAddresses] chunk error:', error.message);
+  }
+}
+
+/** Distinct addresses for a suburb from the addresses table (paginated). */
+export async function getAddressesForSuburb(
+  suburb: string,
+  state: string
+): Promise<AddressRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const out: AddressRecord[] = [];
+  const PAGE = 1000;
+  const MAX_PAGES = 50;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await supabase()
+      .from('addresses')
+      .select('*')
+      .ilike('suburb', normaliseSuburbAlias(suburb))
+      .eq('state', state.toUpperCase())
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) { console.error('[getAddressesForSuburb]', error.message); break; }
+    if (!data || data.length === 0) break;
+    out.push(...data);
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
+/** Suburbs ranked by address count (drives "biggest first" when using G-NAF). */
+export async function getSuburbAddressCounts(
+  state: string,
+  postcodes?: ReadonlySet<string>
+): Promise<Array<{ suburb: string; postcode: string; count: number }>> {
+  if (!isSupabaseConfigured()) return [];
+  const counts = new Map<string, { suburb: string; postcode: string; count: number }>();
+  const PAGE = 1000;
+  const MAX_PAGES = 500;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let q = supabase()
+      .from('addresses')
+      .select('suburb, postcode')
+      .eq('state', state.toUpperCase())
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (postcodes) q = q.in('postcode', Array.from(postcodes));
+    const { data, error } = await q;
+    if (error) { console.error('[getSuburbAddressCounts]', error.message); break; }
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      const suburb = (row.suburb ?? '').trim();
+      if (!suburb) continue;
+      const key = suburb.toLowerCase();
+      const existing = counts.get(key);
+      if (existing) existing.count++;
+      else counts.set(key, { suburb, postcode: row.postcode ?? '', count: 1 });
+    }
+    if (data.length < PAGE) break;
+  }
+  return Array.from(counts.values()).sort((a, b) => b.count - a.count);
+}
+
 // ─── Property Sales Queries ───────────────────────────────────────────────────
 
 export interface PropertySaleRecord {
+  address_slug?: string;
   raw_address: string;
   suburb?: string;
   state: string;
@@ -683,9 +802,15 @@ export interface PropertySaleRecord {
   plan_number?: string;
   land_area_sqm?: number;
   property_type?: string;
+  agency_name?: string;
+  agent_name?: string;
+  listing_url?: string;
+  image_url?: string;
   sale_price?: number;
   sale_date?: string;
   settlement_date?: string;
+  latitude?: number;
+  longitude?: number;
   source: string;
   raw_data?: Record<string, unknown>;
 }
@@ -702,21 +827,479 @@ export async function insertPropertySales(sales: PropertySaleRecord[]): Promise<
   }
 }
 
+/**
+ * Tally property_sales rows by suburb, restricted to an optional postcode set,
+ * returning suburbs ordered by sale count (descending). Drives the
+ * "biggest suburbs first" backfill order. Paginates the suburb column rather
+ * than relying on a DB group-by (no RPC required).
+ */
+export async function getSuburbSalesCounts(
+  state: string,
+  postcodes?: ReadonlySet<string>
+): Promise<Array<{ suburb: string; postcode: string; count: number }>> {
+  if (!isSupabaseConfigured()) return [];
+
+  const counts = new Map<string, { suburb: string; postcode: string; count: number }>();
+  const PAGE = 1000;
+  const MAX_PAGES = 200; // safety guard (~200k rows)
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    let q = supabase()
+      .from('property_sales')
+      .select('suburb, postcode')
+      .eq('state', state.toUpperCase())
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (postcodes) q = q.in('postcode', Array.from(postcodes));
+
+    const { data, error } = await q;
+    if (error) { console.error('[getSuburbSalesCounts]', error.message); break; }
+    if (!data || data.length === 0) break;
+
+    for (const row of data) {
+      const suburb = (row.suburb ?? '').trim();
+      if (!suburb) continue;
+      const key = suburb.toLowerCase();
+      const existing = counts.get(key);
+      if (existing) existing.count++;
+      else counts.set(key, { suburb, postcode: row.postcode ?? '', count: 1 });
+    }
+
+    if (data.length < PAGE) break;
+  }
+
+  return Array.from(counts.values()).sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Distinct addresses (by slug) for a suburb from property_sales — the address
+ * universe the backfill enqueues crawl jobs for. Paginates; not date-limited.
+ */
+export async function getSalesAddressesForSuburb(
+  suburb: string,
+  state: string
+): Promise<Array<{ address_slug: string | null; raw_address: string; suburb?: string; postcode?: string }>> {
+  if (!isSupabaseConfigured()) return [];
+  const seen = new Set<string>();
+  const out: Array<{ address_slug: string | null; raw_address: string; suburb?: string; postcode?: string }> = [];
+  const PAGE = 1000;
+  const MAX_PAGES = 50;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await supabase()
+      .from('property_sales')
+      .select('address_slug, raw_address, suburb, postcode')
+      .ilike('suburb', normaliseSuburbAlias(suburb))
+      .eq('state', state.toUpperCase())
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) { console.error('[getSalesAddressesForSuburb]', error.message); break; }
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      const key = (row.address_slug ?? row.raw_address ?? '').toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+    }
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
+/** Per-suburb crawl progress rows for a state (suburb → next_due). */
+export async function getSuburbProgress(
+  state: string
+): Promise<Array<{ suburb: string; next_due: string | null }>> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from('suburb_crawl_progress')
+    .select('suburb, next_due')
+    .eq('state', state.toUpperCase());
+  if (error) { console.error('[getSuburbProgress]', error.message); return []; }
+  return data ?? [];
+}
+
+/** Count crawl_queue rows of a job type created since an ISO timestamp (daily-cap guard). */
+export async function countRecentJobs(jobType: string, sinceIso: string): Promise<number> {
+  if (!isSupabaseConfigured()) return 0;
+  const { count, error } = await supabase()
+    .from('crawl_queue')
+    .select('id', { count: 'exact', head: true })
+    .eq('job_type', jobType)
+    .gte('created_at', sinceIso);
+  if (error) { console.error('[countRecentJobs]', error.message); return 0; }
+  return count ?? 0;
+}
+
 export async function getSalesForSuburb(
   suburb: string,
   state: string,
-  limitDays: number = 730
+  limitDays: number = 730,
+  limit: number = 200
 ): Promise<PropertySaleRecord[]> {
   if (!isSupabaseConfigured()) return [];
   const since = new Date(Date.now() - limitDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const { data, error } = await supabase()
     .from('property_sales')
     .select('*')
-    .ilike('suburb', suburb)
+    .ilike('suburb', normaliseSuburbAlias(suburb))
     .eq('state', state.toUpperCase())
     .gte('sale_date', since)
     .order('sale_date', { ascending: false })
-    .limit(200);
+    .limit(limit);
   if (error) { console.error('[getSalesForSuburb]', error.message); return []; }
   return data ?? [];
+}
+
+// ─── On-market Listings & Rentals (Domain Apify feeds) ───────────────────────
+
+export interface PropertyListingRecord {
+  raw_address: string;
+  address_slug?: string;
+  suburb?: string;
+  state: string;
+  postcode?: string;
+  display_price?: string;
+  price_low?: number;
+  price_high?: number;
+  status?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  car_spaces?: number;
+  land_area_sqm?: number;
+  property_type?: string;
+  agency_name?: string;
+  agent_name?: string;
+  listing_url?: string;
+  image_url?: string;
+  latitude?: number;
+  longitude?: number;
+  source: string;
+  last_seen_at?: string;
+  active?: boolean;
+  raw_data?: Record<string, unknown>;
+}
+
+export interface PropertyRentalRecord {
+  raw_address: string;
+  address_slug?: string;
+  suburb?: string;
+  state: string;
+  postcode?: string;
+  display_price?: string;
+  weekly_rent?: number;
+  status?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  car_spaces?: number;
+  land_area_sqm?: number;
+  property_type?: string;
+  agency_name?: string;
+  agent_name?: string;
+  listing_url?: string;
+  image_url?: string;
+  latitude?: number;
+  longitude?: number;
+  source: string;
+  last_seen_at?: string;
+  active?: boolean;
+  raw_data?: Record<string, unknown>;
+}
+
+async function upsertRows(table: string, rows: object[], onConflict: string): Promise<void> {
+  if (!isSupabaseConfigured() || rows.length === 0) return;
+  // De-dupe by the conflict key (last write wins): PostgREST rejects an upsert
+  // whose batch touches the same conflict target twice.
+  const cols = onConflict.split(',').map((c) => c.trim());
+  const byKey = new Map<string, object>();
+  for (const row of rows) {
+    const key = cols.map((c) => String((row as Record<string, unknown>)[c] ?? '')).join(' ');
+    byKey.set(key, row);
+  }
+  const deduped = [...byKey.values()];
+  const CHUNK = 500;
+  for (let i = 0; i < deduped.length; i += CHUNK) {
+    const chunk = deduped.slice(i, i + CHUNK);
+    // merge-duplicates → re-runs update in place, never insert duplicates
+    const { error } = await supabase().from(table).upsert(chunk, { onConflict, ignoreDuplicates: false });
+    if (error) console.error(`[upsert ${table}] chunk error:`, error.message);
+  }
+}
+
+export function insertPropertyListings(rows: PropertyListingRecord[]): Promise<void> {
+  return upsertRows('property_listings', rows, 'raw_address,source');
+}
+
+export function insertPropertyRentals(rows: PropertyRentalRecord[]): Promise<void> {
+  return upsertRows('property_rentals', rows, 'raw_address,source');
+}
+
+export async function getListingsForSuburb(
+  suburb: string, state: string, limit = 200
+): Promise<PropertyListingRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from('property_listings')
+    .select('*')
+    .ilike('suburb', normaliseSuburbAlias(suburb))
+    .eq('state', state.toUpperCase())
+    .eq('active', true)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) { console.error('[getListingsForSuburb]', error.message); return []; }
+  return data ?? [];
+}
+
+export async function getRentalsForSuburb(
+  suburb: string, state: string, limit = 200
+): Promise<PropertyRentalRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from('property_rentals')
+    .select('*')
+    .ilike('suburb', normaliseSuburbAlias(suburb))
+    .eq('state', state.toUpperCase())
+    .eq('active', true)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) { console.error('[getRentalsForSuburb]', error.message); return []; }
+  return data ?? [];
+}
+
+/**
+ * Active on-market listings + recent sales attributed to an agent. Matches on the
+ * comma-joined `agent_name` (ILIKE contains), optionally narrowed by agency. The
+ * caller merges/sorts/caps for the agent-listings API.
+ */
+export async function getAgentListings(opts: {
+  name: string;
+  agency?: string;
+  limit?: number;
+}): Promise<{ listings: PropertyListingRecord[]; sales: PropertySaleRecord[] }> {
+  if (!isSupabaseConfigured()) return { listings: [], sales: [] };
+  const lim = opts.limit ?? 20;
+  const nameLike = `%${opts.name}%`;
+  const agencyLike = opts.agency ? `%${opts.agency}%` : null;
+
+  let lq = supabase()
+    .from('property_listings')
+    .select('*')
+    .ilike('agent_name', nameLike)
+    .eq('active', true);
+  if (agencyLike) lq = lq.ilike('agency_name', agencyLike);
+
+  let sq = supabase()
+    .from('property_sales')
+    .select('*')
+    .ilike('agent_name', nameLike);
+  if (agencyLike) sq = sq.ilike('agency_name', agencyLike);
+
+  const [l, s] = await Promise.all([
+    lq.order('created_at', { ascending: false }).limit(lim),
+    sq.order('sale_date', { ascending: false }).limit(lim),
+  ]);
+  if (l.error) console.error('[getAgentListings listings]', l.error.message);
+  if (s.error) console.error('[getAgentListings sales]', s.error.message);
+  return { listings: l.data ?? [], sales: s.data ?? [] };
+}
+
+/**
+ * Expire on-market rows not seen in the latest sync: set active=false for rows in
+ * the given suburbs whose last_seen_at predates the run start. Scoped to the
+ * scraped suburbs so it never touches unrelated areas. `table` is
+ * 'property_listings' | 'property_rentals'.
+ */
+export async function expireNotSeen(
+  table: 'property_listings' | 'property_rentals',
+  suburbs: string[],
+  sinceIso: string,
+  state = 'VIC'
+): Promise<number> {
+  if (!isSupabaseConfigured() || suburbs.length === 0) return 0;
+  const { data, error } = await supabase()
+    .from(table)
+    .update({ active: false })
+    .in('suburb', suburbs)
+    .eq('state', state.toUpperCase())
+    .eq('active', true)
+    .lt('last_seen_at', sinceIso)
+    .select('id');
+  if (error) { console.error(`[expireNotSeen ${table}]`, error.message); return 0; }
+  return data?.length ?? 0;
+}
+
+/**
+ * Bounding-box fetch around a point for any table with latitude/longitude
+ * columns (property_sales, property_listings, property_rentals). Callers refine
+ * with a precise haversine distance in code. ~111km per degree of latitude.
+ */
+export async function getRowsNearby<T = Record<string, unknown>>(
+  table: string,
+  lat: number,
+  lng: number,
+  radiusKm: number,
+  limit = 500
+): Promise<T[]> {
+  if (!isSupabaseConfigured()) return [];
+  const latDelta = radiusKm / 111;
+  const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180) || 1);
+  const { data, error } = await supabase()
+    .from(table)
+    .select('*')
+    .gte('latitude', lat - latDelta)
+    .lte('latitude', lat + latDelta)
+    .gte('longitude', lng - lngDelta)
+    .lte('longitude', lng + lngDelta)
+    .limit(limit);
+  if (error) { console.error(`[getRowsNearby ${table}]`, error.message); return []; }
+  return (data ?? []) as T[];
+}
+
+/** Great-circle distance in km between two lat/lng points. */
+export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371;
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+// ─── Property Overrides ──────────────────────────────────────────────────────
+
+export async function getOverrides(
+  slug: string
+): Promise<Record<string, string>> {
+  if (!isSupabaseConfigured()) return {};
+
+  try {
+    const { data, error } = await supabase()
+      .from('property_overrides')
+      .select('field, value')
+      .eq('address_slug', slug);
+
+    if (error) {
+      console.error('[getOverrides] Supabase error:', error.message);
+      return {};
+    }
+
+    return Object.fromEntries((data ?? []).map(r => [r.field, r.value]));
+  } catch (err) {
+    console.error('[getOverrides] Unexpected error:', err);
+    return {};
+  }
+}
+
+export async function saveOverride(
+  slug: string,
+  field: string,
+  value: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+
+  try {
+    const { error } = await supabase()
+      .from('property_overrides')
+      .upsert(
+        { address_slug: slug, field, value, updated_at: new Date().toISOString() },
+        { onConflict: 'address_slug,field' }
+      );
+
+    if (error) {
+      console.error('[saveOverride] Supabase error:', error.message);
+    }
+  } catch (err) {
+    console.error('[saveOverride] Unexpected error:', err);
+  }
+}
+
+export async function deleteOverride(
+  slug: string,
+  field: string
+): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+
+  try {
+    const { error } = await supabase()
+      .from('property_overrides')
+      .delete()
+      .eq('address_slug', slug)
+      .eq('field', field);
+
+    if (error) {
+      console.error('[deleteOverride] Supabase error:', error.message);
+    }
+  } catch (err) {
+    console.error('[deleteOverride] Unexpected error:', err);
+  }
+}
+
+// ─── User Property Tracking ──────────────────────────────────────────────────
+
+export interface UserPropertyRecord {
+  id: string;
+  address_slug: string;
+  full_address: string;
+  claimed_at: string;
+}
+
+export async function getUserProperties(userId: string): Promise<UserPropertyRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase()
+      .from('user_properties')
+      .select('id, address_slug, full_address, claimed_at')
+      .eq('user_id', userId)
+      .order('claimed_at', { ascending: false });
+    if (error) { console.error('[getUserProperties] Supabase error:', error.message); return []; }
+    return data ?? [];
+  } catch (err) {
+    console.error('[getUserProperties] Unexpected error:', err);
+    return [];
+  }
+}
+
+export async function claimProperty(userId: string, slug: string, fullAddress: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { error } = await supabase()
+      .from('user_properties')
+      .upsert(
+        { user_id: userId, address_slug: slug, full_address: fullAddress },
+        { onConflict: 'user_id,address_slug' }
+      );
+    if (error) console.error('[claimProperty] Supabase error:', error.message);
+  } catch (err) {
+    console.error('[claimProperty] Unexpected error:', err);
+  }
+}
+
+export async function unclaimProperty(userId: string, slug: string): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  try {
+    const { error } = await supabase()
+      .from('user_properties')
+      .delete()
+      .eq('user_id', userId)
+      .eq('address_slug', slug);
+    if (error) console.error('[unclaimProperty] Supabase error:', error.message);
+  } catch (err) {
+    console.error('[unclaimProperty] Unexpected error:', err);
+  }
+}
+
+export async function isPropertyClaimed(userId: string, slug: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const { data, error } = await supabase()
+      .from('user_properties')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('address_slug', slug)
+      .maybeSingle();
+    if (error) { console.error('[isPropertyClaimed] Supabase error:', error.message); return false; }
+    return data !== null;
+  } catch (err) {
+    console.error('[isPropertyClaimed] Unexpected error:', err);
+    return false;
+  }
 }
