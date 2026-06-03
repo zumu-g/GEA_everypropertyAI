@@ -60,7 +60,32 @@ To test another engine: `STEALTH_ENGINE=patchright npm run dev` or
 `playwright`) need no separate browser download — `npx playwright install
 chromium` if running outside the Playwright Docker base image.
 
-## Deploy (Fly.io)
+## Deploy (Railway — current)
+
+Live at `https://propertyiq-scraper-production-43c1.up.railway.app` (service
+`propertyiq-scraper` in the GEA_everypropertyAI project). `railway.json` pins the
+Dockerfile builder and the `/health` check.
+
+```bash
+railway up --detach --service propertyiq-scraper   # from services/scraper/
+```
+
+Set on the service: `STEALTH_SCRAPER_SECRET`, `STEALTH_ENGINE`,
+`STEALTH_ALLOWED_HOSTS`, and the `STEALTH_PROXY_*` trio. Then point the main app
+at it: set `STEALTH_SCRAPER_URL` + the same `STEALTH_SCRAPER_SECRET` on the
+PropertyIQ service, and set `fetchBackend: 'stealth'` (or
+`fallbackBackends: ['stealth']`) on the sources that need it.
+
+> **Dockerfile gotchas** (each cost a failed build):
+> - The Playwright base image tag MUST match the `playwright`/`patchright`
+>   version in `package-lock.json` — the bundled Chromium is version-specific.
+> - `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` must be scoped to `npm ci` only:
+>   camoufox-js honours it too and will skip its own Firefox download if it's a
+>   global `ENV`, leaving the camoufox engine non-functional ("version vnull").
+> - The Railway CLI's `link`/`status` currently error with `deletedAt on
+>   VolumeInstance`; `railway up` still works once the project is linked.
+
+## Deploy (Fly.io — alternative)
 
 ```bash
 fly launch --no-deploy            # generates fly.toml from the Dockerfile
@@ -68,11 +93,6 @@ fly secrets set STEALTH_SCRAPER_SECRET=... \
                 STEALTH_PROXY_SERVER=... STEALTH_PROXY_USERNAME=... STEALTH_PROXY_PASSWORD=...
 fly deploy
 ```
-
-Then point the main app at it: set `STEALTH_SCRAPER_URL` and
-`STEALTH_SCRAPER_SECRET` in PropertyIQ's environment, and set
-`fetchBackend: 'stealth'` (or `fallbackBackends: ['stealth']`) on the sources
-that need it.
 
 ## Cost / ops notes
 
