@@ -204,6 +204,7 @@ Casey, Cardinia, and Baw Baw council areas. Includes Ray White, Barry Plant, Har
 | GET | `/api/sold-sales?suburb=...&state=...&limit=...` | Recent sold-sales feed (Valuer General) |
 | GET | `/api/on-market-listings?suburb=...&state=...` or `?lat=...&lng=...&radius=...` | Current on-market (for-sale) listings (Domain feed) |
 | GET | `/api/rental-listings?suburb=...&state=...` or `?lat=...&lng=...&radius=...` | Current rental listings (Domain feed) |
+| GET | `/api/agents/listings?name=...&agency=...` (or `?agentId=...`) | An agent's recent listings + sales (cap 20, newest first) — fixed shape for GEA_HR_recruitAI; **hard Bearer auth**, unknown agent → `{agent:null,listings:[]}` |
 | GET | `/api/street-details?q=...` | All known addresses on a street |
 | GET | `/api/enrich?address=...&suburb=...&state=...&postcode=...` | Planning, schools, transport, market data |
 | POST | `/api/ingest/domain?category=<sold\|on-market\|rent>&token=...` | Apify→Supabase ingest webhook (see `DAILY_SYNC_SETUP.md`) |
@@ -220,6 +221,10 @@ website's own same-origin browser calls are exempt (`Sec-Fetch-Site: same-origin
 `EVERYPROPERTY_API_KEYS` is unset the gate is disabled (dev). The `everypropertyai` CLI/client sends
 the key automatically from `EVERYPROPERTY_API_TOKEN`. `/api/ingest/*` and `/api/cron/*` use their own
 secrets and are not covered by this gate. Enforced in `src/middleware.ts`.
+
+`/api/agents/listings` authenticates **in-route** (fail-closed: always requires a valid Bearer token
+from `EVERYPROPERTY_API_KEYS`/`EVERYPROPERTY_API_TOKEN`, no same-origin exemption — it's
+server-to-server only), so it is not part of the middleware matcher.
 
 ## Daily Cron
 
