@@ -804,6 +804,8 @@ export interface PropertySaleRecord {
   property_type?: string;
   agency_name?: string;
   agent_name?: string;
+  listing_url?: string;
+  image_url?: string;
   sale_price?: number;
   sale_date?: string;
   settlement_date?: string;
@@ -966,6 +968,8 @@ export interface PropertyListingRecord {
   property_type?: string;
   agency_name?: string;
   agent_name?: string;
+  listing_url?: string;
+  image_url?: string;
   latitude?: number;
   longitude?: number;
   source: string;
@@ -990,6 +994,8 @@ export interface PropertyRentalRecord {
   property_type?: string;
   agency_name?: string;
   agent_name?: string;
+  listing_url?: string;
+  image_url?: string;
   latitude?: number;
   longitude?: number;
   source: string;
@@ -1056,6 +1062,43 @@ export async function getRentalsForSuburb(
     .limit(limit);
   if (error) { console.error('[getRentalsForSuburb]', error.message); return []; }
   return data ?? [];
+}
+
+/**
+ * Active on-market listings + recent sales attributed to an agent. Matches on the
+ * comma-joined `agent_name` (ILIKE contains), optionally narrowed by agency. The
+ * caller merges/sorts/caps for the agent-listings API.
+ */
+export async function getAgentListings(opts: {
+  name: string;
+  agency?: string;
+  limit?: number;
+}): Promise<{ listings: PropertyListingRecord[]; sales: PropertySaleRecord[] }> {
+  if (!isSupabaseConfigured()) return { listings: [], sales: [] };
+  const lim = opts.limit ?? 20;
+  const nameLike = `%${opts.name}%`;
+  const agencyLike = opts.agency ? `%${opts.agency}%` : null;
+
+  let lq = supabase()
+    .from('property_listings')
+    .select('*')
+    .ilike('agent_name', nameLike)
+    .eq('active', true);
+  if (agencyLike) lq = lq.ilike('agency_name', agencyLike);
+
+  let sq = supabase()
+    .from('property_sales')
+    .select('*')
+    .ilike('agent_name', nameLike);
+  if (agencyLike) sq = sq.ilike('agency_name', agencyLike);
+
+  const [l, s] = await Promise.all([
+    lq.order('created_at', { ascending: false }).limit(lim),
+    sq.order('sale_date', { ascending: false }).limit(lim),
+  ]);
+  if (l.error) console.error('[getAgentListings listings]', l.error.message);
+  if (s.error) console.error('[getAgentListings sales]', s.error.message);
+  return { listings: l.data ?? [], sales: s.data ?? [] };
 }
 
 /**

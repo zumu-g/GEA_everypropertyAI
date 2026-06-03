@@ -147,6 +147,8 @@ const CATEGORIES = {
         longitude: num(loc.longitude),
         agency_name: it.contacts?.agency?.name?.trim() || null,
         agent_name: agentNameOf(it),
+        listing_url: it.url?.trim() || null,
+        image_url: it.property?.image_urls?.[0] || null,
         source: SOURCE,
       };
     },
@@ -181,6 +183,8 @@ const CATEGORIES = {
         longitude: num(loc.longitude),
         agency_name: it.contacts?.agency?.name?.trim() || null,
         agent_name: agentNameOf(it),
+        listing_url: it.url?.trim() || null,
+        image_url: it.property?.image_urls?.[0] || null,
         source: SOURCE,
       };
     },
@@ -213,6 +217,8 @@ const CATEGORIES = {
         longitude: num(loc.longitude),
         agency_name: it.contacts?.agency?.name?.trim() || null,
         agent_name: agentNameOf(it),
+        listing_url: it.url?.trim() || null,
+        image_url: it.property?.image_urls?.[0] || null,
         source: SOURCE,
       };
     },

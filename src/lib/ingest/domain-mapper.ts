@@ -90,10 +90,11 @@ export function slugForRawAddress(raw: string): string | null {
 }
 
 type DomainItem = {
+  url?: string;
   location?: { display_address?: string; suburb?: string; state?: string; postcode?: string; latitude?: number; longitude?: number };
   pricing?: { display_price?: string };
   listing?: { tags?: { tag_text?: string } };
-  property?: { property_type?: string; land_size?: number; bedrooms?: number; bathrooms?: number; parking?: number };
+  property?: { property_type?: string; land_size?: number; bedrooms?: number; bathrooms?: number; parking?: number; image_urls?: string[] };
   contacts?: { agency?: { name?: string }; agent_names?: string; agents?: Array<{ name?: string }> };
 };
 
@@ -129,6 +130,8 @@ export function mapItem(category: IngestCategory, it: DomainItem):
     longitude: num(loc.longitude) ?? undefined,
     agency_name: it.contacts?.agency?.name?.trim() || undefined,
     agent_name: agentNameOf(it),
+    listing_url: it.url?.trim() || undefined,
+    image_url: it.property?.image_urls?.[0] || undefined,
     source: SOURCE,
   };
 
