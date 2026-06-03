@@ -75,8 +75,9 @@ export const config = {
     '/my-properties',
     '/my-properties/:path*',
     // Public data routes consumed by the CLI / external apps (NOT ingest or cron,
-    // which authenticate with their own secrets).
-    '/api/search',
+    // which authenticate with their own secrets). Note: /api/search and
+    // /api/proposal and /api/agents/listings self-authenticate in-route, so they
+    // are intentionally excluded here.
     '/api/address-suggest',
     '/api/property',
     '/api/property/:path*',

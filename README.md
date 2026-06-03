@@ -196,7 +196,7 @@ Casey, Cardinia, and Baw Baw council areas. Includes Ray White, Barry Plant, Har
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/search?q=...` | Address autocomplete (Mapbox/Google) |
+| GET | `/api/search?q=...` | Address autocomplete (Mapbox/Google), VIC-biased, ≤8 flat suggestions `{fullAddress,streetAddress,suburb,state,postcode,placeId}`; **hard Bearer auth**; `q<3 → []`, missing `q` → 400; never crawls |
 | GET | `/api/address-suggest?q=...&state=...&lat=...&lng=...` | REA autocomplete (clean suburb/state/postcode) |
 | POST | `/api/property` | Full property lookup pipeline (`maxDuration` 120s) |
 | GET | `/api/property/[slug]/override` | User overrides for a cached property |
@@ -223,9 +223,9 @@ website's own same-origin browser calls are exempt (`Sec-Fetch-Site: same-origin
 the key automatically from `EVERYPROPERTY_API_TOKEN`. `/api/ingest/*` and `/api/cron/*` use their own
 secrets and are not covered by this gate. Enforced in `src/middleware.ts`.
 
-`/api/agents/listings` authenticates **in-route** (fail-closed: always requires a valid Bearer token
-from `EVERYPROPERTY_API_KEYS`/`EVERYPROPERTY_API_TOKEN`, no same-origin exemption — it's
-server-to-server only), so it is not part of the middleware matcher.
+`/api/agents/listings`, `/api/proposal`, and `/api/search` authenticate **in-route** (fail-closed:
+always require a valid Bearer token from `EVERYPROPERTY_API_KEYS`/`EVERYPROPERTY_API_TOKEN`, no
+same-origin exemption — server-to-server only), so they are not part of the middleware matcher.
 
 ## Daily Cron
 
