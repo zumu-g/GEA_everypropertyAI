@@ -94,7 +94,17 @@ type DomainItem = {
   pricing?: { display_price?: string };
   listing?: { tags?: { tag_text?: string } };
   property?: { property_type?: string; land_size?: number; bedrooms?: number; bathrooms?: number; parking?: number };
+  contacts?: { agency?: { name?: string }; agent_names?: string; agents?: Array<{ name?: string }> };
 };
+
+/** Listing/selling agent name(s) from the Domain `contacts` block, or undefined. */
+function agentNameOf(it: DomainItem): string | undefined {
+  const c = it.contacts;
+  if (!c) return undefined;
+  if (typeof c.agent_names === 'string' && c.agent_names.trim()) return c.agent_names.trim();
+  const names = (c.agents ?? []).map((a) => a?.name?.trim()).filter(Boolean);
+  return names.length ? names.join(', ') : undefined;
+}
 
 /** Map one Apify item → a row for the given category, or null to skip. */
 export function mapItem(category: IngestCategory, it: DomainItem):
@@ -117,6 +127,8 @@ export function mapItem(category: IngestCategory, it: DomainItem):
     property_type: prop.property_type ?? undefined,
     latitude: num(loc.latitude) ?? undefined,
     longitude: num(loc.longitude) ?? undefined,
+    agency_name: it.contacts?.agency?.name?.trim() || undefined,
+    agent_name: agentNameOf(it),
     source: SOURCE,
   };
 

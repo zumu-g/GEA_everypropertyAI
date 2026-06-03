@@ -25,6 +25,8 @@ interface SoldSaleResult {
   propertyType: string | null;
   latitude: number | null;
   longitude: number | null;
+  agencyName: string | null;
+  agentName: string | null;
   source: string;
 }
 
@@ -99,6 +101,8 @@ export async function GET(request: NextRequest) {
         propertyType: s.property_type ?? null,
         latitude: s.latitude ?? null,
         longitude: s.longitude ?? null,
+        agencyName: s.agency_name ?? null,
+        agentName: s.agent_name ?? null,
         source: s.source,
       }));
 

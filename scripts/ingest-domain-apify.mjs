@@ -112,6 +112,14 @@ function titleCaseSuburb(s) {
   const out = String(s).trim().split(/\s+/).map((w) => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : '')).join(' ');
   return out || null;
 }
+// Listing/selling agent name(s) from the Domain `contacts` block, or null (mirrors agentNameOf in src/lib/ingest/domain-mapper.ts)
+function agentNameOf(it) {
+  const c = it.contacts;
+  if (!c) return null;
+  if (typeof c.agent_names === 'string' && c.agent_names.trim()) return c.agent_names.trim();
+  const names = (c.agents ?? []).map((a) => a?.name?.trim()).filter(Boolean);
+  return names.length ? names.join(', ') : null;
+}
 
 // ── Per-category config ───────────────────────────────────────────────────────
 
@@ -137,6 +145,8 @@ const CATEGORIES = {
         sale_date: parseSaleDate(it.listing?.tags?.tag_text),
         latitude: num(loc.latitude),
         longitude: num(loc.longitude),
+        agency_name: it.contacts?.agency?.name?.trim() || null,
+        agent_name: agentNameOf(it),
         source: SOURCE,
       };
     },
@@ -169,6 +179,8 @@ const CATEGORIES = {
         property_type: prop.property_type ?? null,
         latitude: num(loc.latitude),
         longitude: num(loc.longitude),
+        agency_name: it.contacts?.agency?.name?.trim() || null,
+        agent_name: agentNameOf(it),
         source: SOURCE,
       };
     },
@@ -199,6 +211,8 @@ const CATEGORIES = {
         property_type: prop.property_type ?? null,
         latitude: num(loc.latitude),
         longitude: num(loc.longitude),
+        agency_name: it.contacts?.agency?.name?.trim() || null,
+        agent_name: agentNameOf(it),
         source: SOURCE,
       };
     },

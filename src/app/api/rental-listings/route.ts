@@ -30,6 +30,8 @@ interface RentalListingResult {
   propertyType: string | null;
   latitude: number | null;
   longitude: number | null;
+  agencyName: string | null;
+  agentName: string | null;
   source: string;
 }
 
@@ -92,6 +94,8 @@ export async function GET(request: NextRequest) {
       propertyType: r.property_type ?? null,
       latitude: r.latitude ?? null,
       longitude: r.longitude ?? null,
+      agencyName: r.agency_name ?? null,
+      agentName: r.agent_name ?? null,
       source: r.source,
     }));
 

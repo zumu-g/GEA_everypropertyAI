@@ -802,6 +802,8 @@ export interface PropertySaleRecord {
   plan_number?: string;
   land_area_sqm?: number;
   property_type?: string;
+  agency_name?: string;
+  agent_name?: string;
   sale_price?: number;
   sale_date?: string;
   settlement_date?: string;
@@ -962,6 +964,8 @@ export interface PropertyListingRecord {
   car_spaces?: number;
   land_area_sqm?: number;
   property_type?: string;
+  agency_name?: string;
+  agent_name?: string;
   latitude?: number;
   longitude?: number;
   source: string;
@@ -984,6 +988,8 @@ export interface PropertyRentalRecord {
   car_spaces?: number;
   land_area_sqm?: number;
   property_type?: string;
+  agency_name?: string;
+  agent_name?: string;
   latitude?: number;
   longitude?: number;
   source: string;

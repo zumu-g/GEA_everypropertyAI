@@ -68,6 +68,8 @@ export interface SoldSaleResult {
   settlementDate?: string | null;
   landAreaSqm?: number | null;
   propertyType?: string | null;
+  agencyName?: string | null;
+  agentName?: string | null;
   source?: string | null;
 }
 
@@ -86,6 +88,8 @@ export interface OnMarketListing {
   propertyType: string | null;
   latitude: number | null;
   longitude: number | null;
+  agencyName: string | null;
+  agentName: string | null;
   source: string;
 }
 
@@ -103,6 +107,8 @@ export interface RentalListing {
   propertyType: string | null;
   latitude: number | null;
   longitude: number | null;
+  agencyName: string | null;
+  agentName: string | null;
   source: string;
 }
 
