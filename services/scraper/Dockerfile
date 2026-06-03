@@ -15,14 +15,15 @@ WORKDIR /app
 # build-time fetch and the runtime process resolve the same path.
 ENV HOME=/root
 
-# The base image already bundles the Chromium build matching this Playwright
-# version (used by both the `playwright` and `patchright` engines), so skip the
-# redundant per-package browser download during install.
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-
-# Install deps first for better layer caching.
+# Install deps first for better layer caching. The base image already bundles the
+# Chromium build matching this Playwright version (used by the `playwright` and
+# `patchright` engines), so skip the redundant per-package browser download.
+# NOTE: scope this flag to `npm ci` only — camoufox-js ALSO honours
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD and would skip its own Firefox download if it
+# were set globally (the cause of the "camoufox version vnull / not installed"
+# failures).
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
 
 # Download the custom Camoufox Firefox binary at build time, and fail the build
 # loudly if it didn't land where the runtime expects it.
