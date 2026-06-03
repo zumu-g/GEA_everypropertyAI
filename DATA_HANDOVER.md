@@ -100,6 +100,10 @@ poowong-vic-3988 korumburra-vic-3950 drouin-vic-3818 warragul-vic-3820 longwarry
 | `source`            | `'domain-apify'`                                                  |
 | dedup key           | `(raw_address, source)`                                           |
 
+> For the external API surface (agents/proposal/search endpoints), consumer config, and the Railway
+> deploy checklist, see **`INTEGRATIONS.md`**. Agent/agency + listing_url/image_url are now backfilled
+> across listings (~98–100%) and sales (~100%).
+
 ## Status / what's done  (updated 2026-06-02)
 
 - **Migrations applied.** `001_listings_rentals.sql` + `002_listing_lifecycle.sql` are live on the
