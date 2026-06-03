@@ -214,6 +214,13 @@ Suburb queries are case-insensitive and resolve reversed-name aliases (e.g. "Upp
 
 These routes are wrapped by `services/everypropertyai` for the CMA/proposal tools.
 
+**Auth:** external/cross-origin callers of the data routes must send `Authorization: Bearer <key>`
+(or `x-api-key: <key>`) matching one of `EVERYPROPERTY_API_KEYS` (comma-separated env). The PropertyIQ
+website's own same-origin browser calls are exempt (`Sec-Fetch-Site: same-origin`). If
+`EVERYPROPERTY_API_KEYS` is unset the gate is disabled (dev). The `everypropertyai` CLI/client sends
+the key automatically from `EVERYPROPERTY_API_TOKEN`. `/api/ingest/*` and `/api/cron/*` use their own
+secrets and are not covered by this gate. Enforced in `src/middleware.ts`.
+
 ## Daily Cron
 
 Configured via `vercel.json` to run at 6am daily. Crawls sold + buy listings from REA, Domain, and view.com.au for 8 default VIC suburbs (Berwick, Officer, Pakenham, Cranbourne, Narre Warren, Clyde, Clyde North, Beaconsfield).
