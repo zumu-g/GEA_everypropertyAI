@@ -85,6 +85,7 @@ export const config = {
     '/api/sold-sales',
     '/api/on-market-listings',
     '/api/rental-listings',
+    '/api/vendor-report',
     '/api/street-details',
     '/api/enrich',
   ],
