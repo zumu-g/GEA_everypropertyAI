@@ -135,19 +135,23 @@ export function mapItem(category: IngestCategory, it: DomainItem):
     source: SOURCE,
   };
 
+  const beds = smallint(prop.bedrooms) ?? undefined;
+  const baths = smallint(prop.bathrooms) ?? undefined;
+  const cars = smallint(prop.parking) ?? undefined;
+
   if (category === 'sold') {
     const salePrice = parsePrice(it.pricing?.display_price);
     if (salePrice == null) return null; // sold needs a price
     return {
       ...common,
+      bedrooms: beds,
+      bathrooms: baths,
+      car_spaces: cars,
       sale_price: salePrice,
       sale_date: parseSaleDate(it.listing?.tags?.tag_text) ?? undefined,
     } as PropertySaleRecord;
   }
 
-  const beds = smallint(prop.bedrooms) ?? undefined;
-  const baths = smallint(prop.bathrooms) ?? undefined;
-  const cars = smallint(prop.parking) ?? undefined;
   const display = it.pricing?.display_price ?? undefined;
   const status = it.listing?.tags?.tag_text ?? undefined;
 

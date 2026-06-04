@@ -802,6 +802,9 @@ export interface PropertySaleRecord {
   plan_number?: string;
   land_area_sqm?: number;
   property_type?: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  car_spaces?: number;
   agency_name?: string;
   agent_name?: string;
   listing_url?: string;

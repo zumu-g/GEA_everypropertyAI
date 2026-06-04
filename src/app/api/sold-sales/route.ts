@@ -23,6 +23,9 @@ interface SoldSaleResult {
   settlementDate: string | null;
   landAreaSqm: number | null;
   propertyType: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  carSpaces: number | null;
   latitude: number | null;
   longitude: number | null;
   agencyName: string | null;
@@ -99,6 +102,9 @@ export async function GET(request: NextRequest) {
         settlementDate: s.settlement_date ?? null,
         landAreaSqm: s.land_area_sqm ?? null,
         propertyType: s.property_type ?? null,
+        bedrooms: s.bedrooms ?? null,
+        bathrooms: s.bathrooms ?? null,
+        carSpaces: s.car_spaces ?? null,
         latitude: s.latitude ?? null,
         longitude: s.longitude ?? null,
         agencyName: s.agency_name ?? null,
