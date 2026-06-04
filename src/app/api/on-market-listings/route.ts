@@ -12,6 +12,10 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+// Upper sanity bound on a plausible asking price. Drops upstream price anomalies
+// while keeping price-less ("Contact Agent") listings, which are legitimate.
+const MAX_PLAUSIBLE_PRICE = 50_000_000;
+
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -82,7 +86,11 @@ export async function GET(request: NextRequest) {
       rows = await getListingsForSuburb(suburb, state, limit);
     }
 
-    const results: OnMarketListingResult[] = rows.map((r) => ({
+    const results: OnMarketListingResult[] = rows
+      // Lighter touch than sold-sales: only drop garbage price outliers; keep
+      // price-less listings ("Contact Agent") since those are legitimate.
+      .filter((r) => !(typeof r.price_low === 'number' && r.price_low > MAX_PLAUSIBLE_PRICE))
+      .map((r) => ({
       rawAddress: r.raw_address,
       suburb: r.suburb ?? null,
       postcode: r.postcode ?? null,

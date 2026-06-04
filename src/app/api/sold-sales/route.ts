@@ -7,6 +7,11 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+// Upper sanity bound on a plausible residential sale price. Drops upstream data
+// anomalies (e.g. a bogus $140,000,000 row) before they reach any consumer.
+// Remove/raise once the back-catalogue is re-scraped clean.
+const MAX_PLAUSIBLE_SALE_PRICE = 50_000_000;
+
 /**
  * OPTIONS /api/sold-sales — CORS preflight
  */
@@ -91,6 +96,8 @@ export async function GET(request: NextRequest) {
     const results: SoldSaleResult[] = sales
       .filter((s) => {
         if (typeof s.sale_price !== 'number') return false;
+        // Drop non-positive prices and implausible outliers (data anomalies)
+        if (s.sale_price <= 0 || s.sale_price > MAX_PLAUSIBLE_SALE_PRICE) return false;
         if (minPrice !== undefined && s.sale_price < minPrice) return false;
         if (maxPrice !== undefined && s.sale_price > maxPrice) return false;
         return true;
