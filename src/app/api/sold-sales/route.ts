@@ -30,6 +30,8 @@ interface SoldSaleResult {
   longitude: number | null;
   agencyName: string | null;
   agentName: string | null;
+  listingUrl: string | null;
+  imageUrl: string | null;
   source: string;
 }
 
@@ -109,6 +111,8 @@ export async function GET(request: NextRequest) {
         longitude: s.longitude ?? null,
         agencyName: s.agency_name ?? null,
         agentName: s.agent_name ?? null,
+        listingUrl: s.listing_url ?? null,
+        imageUrl: s.image_url ?? null,
         source: s.source,
       }));
 

@@ -33,6 +33,8 @@ interface OnMarketListingResult {
   longitude: number | null;
   agencyName: string | null;
   agentName: string | null;
+  listingUrl: string | null;
+  imageUrl: string | null;
   source: string;
 }
 
@@ -97,6 +99,8 @@ export async function GET(request: NextRequest) {
       longitude: r.longitude ?? null,
       agencyName: r.agency_name ?? null,
       agentName: r.agent_name ?? null,
+      listingUrl: r.listing_url ?? null,
+      imageUrl: r.image_url ?? null,
       source: r.source,
     }));
 
