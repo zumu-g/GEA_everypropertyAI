@@ -151,6 +151,7 @@ const CATEGORIES = {
   sold: {
     table: 'property_sales',
     conflict: 'raw_address,sale_date,sale_price,source',
+    saleType: 'sold',
     urlFor: (slug) => `https://www.domain.com.au/sold-listings/${slug}/`,
     map(it) {
       const loc = it.location ?? {};
@@ -184,6 +185,7 @@ const CATEGORIES = {
   'on-market': {
     table: 'property_listings',
     conflict: 'raw_address,source',
+    saleType: 'buy',
     urlFor: (slug) => `https://www.domain.com.au/sale/${slug}/`,
     map(it) {
       const loc = it.location ?? {};
@@ -220,6 +222,7 @@ const CATEGORIES = {
   rent: {
     table: 'property_rentals',
     conflict: 'raw_address,source',
+    saleType: 'rent',
     urlFor: (slug) => `https://www.domain.com.au/rent/${slug}/`,
     map(it) {
       const loc = it.location ?? {};
@@ -338,7 +341,17 @@ async function runActorAndGetDataset(cat) {
       // NOT `maxItems` (which it ignores → unbounded, costly runs). It bills
       // $1/1k records, so keep this modest. ~1500 ≈ ~50/suburb for the
       // Casey/Cardinia set. Override with LIMIT for a one-off deep backfill.
-      body: JSON.stringify({ startUrls, limit: Number(process.env.LIMIT) || 1500 }),
+      // NOTE: `saleType` MUST be set (buy/sold/rent) — without it the actor
+      // defaults to 'buy' and returns 0 items for sold/rent URLs. The 'any'
+      // defaults are required too (the actor returns nothing if they're absent).
+      body: JSON.stringify({
+        startUrls,
+        saleType: cat.saleType,
+        bedrooms: 'any', bathrooms: 'any', parking: 'any',
+        propertySizeMin: 'any', propertySizeMax: 'any', newEstablished: 'any',
+        excludeUnderOffer: false, enrich_data: false, get_agents: false,
+        limit: Number(process.env.LIMIT) || 1500,
+      }),
     },
   );
   if (!startRes.ok) throw new Error(`actor start HTTP ${startRes.status}: ${(await startRes.text()).slice(0, 300)}`);
