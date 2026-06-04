@@ -331,10 +331,11 @@ async function runActorAndGetDataset(cat) {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // Keep maxItems modest — the Domain batch actor bills per result (~$23 at
-      // 5000). For a Casey/Cardinia delta ~50/suburb is plenty and keeps a
-      // weekly run ~$1-2. Override with MAX_ITEMS for a one-off deep backfill.
-      body: JSON.stringify({ startUrls, maxItems: Number(process.env.MAX_ITEMS) || 1500 }),
+      // The Domain actor (fatihtahta/domain-com-au-scraper) caps with `limit`,
+      // NOT `maxItems` (which it ignores → unbounded, costly runs). It bills
+      // $1/1k records, so keep this modest. ~1500 ≈ ~50/suburb for the
+      // Casey/Cardinia set. Override with LIMIT for a one-off deep backfill.
+      body: JSON.stringify({ startUrls, limit: Number(process.env.LIMIT) || 1500 }),
     },
   );
   if (!startRes.ok) throw new Error(`actor start HTTP ${startRes.status}: ${(await startRes.text()).slice(0, 300)}`);
