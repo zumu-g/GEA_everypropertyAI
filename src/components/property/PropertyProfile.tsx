@@ -318,25 +318,55 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               leaseTerm?: string;
               description?: string;
             }>) ?? [];
-          const estimate = calculateEnrichedPriceEstimate(
-            {
-              propertyType: pd.propertyType as string,
-              bedrooms: pd.bedrooms as number | undefined,
-              bathrooms: pd.bathrooms as number | undefined,
-              carSpaces: pd.carSpaces as number | undefined,
-              landAreaSqm: (pd.landArea ?? pd.landAreaSqm) as number | undefined,
-              priceNumeric: pd.priceNumeric as number | undefined,
-              priceFrom: pd.priceFrom as number | undefined,
-              priceTo: pd.priceTo as number | undefined,
-              saleHistory: sh,
-              rentalHistory: rh,
-              listingStatus: pd.listingStatus as string | undefined,
-              currentPrice: pd.currentPrice as number | undefined,
-              estimatedValue: pd.estimatedValue as number | undefined,
-            },
-            data.marketData
-          );
-          setEnrichedEstimate(estimate);
+          const fallbackInput = {
+            propertyType: pd.propertyType as string,
+            bedrooms: pd.bedrooms as number | undefined,
+            bathrooms: pd.bathrooms as number | undefined,
+            carSpaces: pd.carSpaces as number | undefined,
+            landAreaSqm: (pd.landArea ?? pd.landAreaSqm) as number | undefined,
+            priceNumeric: pd.priceNumeric as number | undefined,
+            priceFrom: pd.priceFrom as number | undefined,
+            priceTo: pd.priceTo as number | undefined,
+            saleHistory: sh,
+            rentalHistory: rh,
+            listingStatus: pd.listingStatus as string | undefined,
+            currentPrice: pd.currentPrice as number | undefined,
+            estimatedValue: pd.estimatedValue as number | undefined,
+          };
+
+          // Comparables-based estimate (server-side — needs DB access to nearby
+          // sales). Falls back to the legacy suburb-median cascade client-side
+          // only if the endpoint is unreachable.
+          const priorSale = sh.find((s) => s.price && s.price > 50000 && !s.isConfidential && s.date);
+          const coords = (data.coordinates ?? null) as { lat: number; lng: number } | null;
+          const estParams = new URLSearchParams();
+          estParams.set('suburb', structured.suburb ?? '');
+          estParams.set('state', structured.state ?? 'VIC');
+          if (structured.postcode) estParams.set('postcode', structured.postcode);
+          if (coords?.lat != null) estParams.set('lat', String(coords.lat));
+          if (coords?.lng != null) estParams.set('lng', String(coords.lng));
+          if (fallbackInput.propertyType) estParams.set('propertyType', fallbackInput.propertyType);
+          if (fallbackInput.bedrooms != null) estParams.set('beds', String(fallbackInput.bedrooms));
+          if (fallbackInput.bathrooms != null) estParams.set('baths', String(fallbackInput.bathrooms));
+          if (fallbackInput.landAreaSqm != null) estParams.set('land', String(fallbackInput.landAreaSqm));
+          if (priorSale?.price && priorSale.date) {
+            estParams.set('priorSalePrice', String(priorSale.price));
+            estParams.set('priorSaleDate', priorSale.date);
+          }
+          if (fallbackInput.priceFrom != null) estParams.set('listingLow', String(fallbackInput.priceFrom));
+          if (fallbackInput.priceTo != null) estParams.set('listingHigh', String(fallbackInput.priceTo));
+          if (fallbackInput.priceNumeric != null) estParams.set('listingMid', String(fallbackInput.priceNumeric));
+          estParams.set('excludeAddress', fullAddr);
+
+          try {
+            const estRes = await fetch(`/api/estimate?${estParams.toString()}`);
+            const estJson = estRes.ok ? await estRes.json() : null;
+            const estimate = (estJson?.result as PriceEstimateResult | null) ??
+              calculateEnrichedPriceEstimate(fallbackInput, data.marketData);
+            setEnrichedEstimate(estimate);
+          } catch {
+            setEnrichedEstimate(calculateEnrichedPriceEstimate(fallbackInput, data.marketData));
+          }
         }
       }
     } catch (err) {
@@ -718,7 +748,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         <TrendingUp className="h-4 w-4 text-[#C8A96E]" />
                       </div>
                       <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">
-                        {enrichedEstimate.priceSource === 'listing-guide' ? 'Price Guide' :
+                        {enrichedEstimate.priceSource === 'comparables' ? 'Estimated Value (Comparables)' :
+                         enrichedEstimate.priceSource === 'listing-guide' ? 'Price Guide' :
                          enrichedEstimate.priceSource === 'listing-price' ? 'Listing Price' :
                          enrichedEstimate.priceSource === 'recent-sale' ? 'Estimated Value' :
                          enrichedEstimate.priceSource === 'sale-adjusted' || enrichedEstimate.priceSource === 'old-sale-adjusted' ? 'Estimated Value' :
