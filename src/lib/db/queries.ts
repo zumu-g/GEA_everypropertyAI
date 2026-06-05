@@ -977,6 +977,7 @@ export interface PropertyListingRecord {
   longitude?: number;
   source: string;
   last_seen_at?: string;
+  created_at?: string;
   active?: boolean;
   raw_data?: Record<string, unknown>;
 }
@@ -1003,6 +1004,7 @@ export interface PropertyRentalRecord {
   longitude?: number;
   source: string;
   last_seen_at?: string;
+  created_at?: string;
   active?: boolean;
   raw_data?: Record<string, unknown>;
 }

@@ -17,6 +17,7 @@ export interface SuburbMarketData {
     quarterlyGrowth?: number;
     annualGrowth?: number;
     medianRent?: number;
+    annualRentGrowth?: number; // % over the last 12 months of the median-rent series
     grossYield?: number;
     salesCount?: number;
     avgDaysOnMarket?: number;
@@ -30,6 +31,7 @@ export interface SuburbMarketData {
     quarterlyGrowth?: number;
     annualGrowth?: number;
     medianRent?: number;
+    annualRentGrowth?: number;
     grossYield?: number;
     salesCount?: number;
     avgDaysOnMarket?: number;
@@ -188,10 +190,18 @@ function parseMarketData(
       const houseRents = medianRent?.monthly?.houses;
       if (Array.isArray(houseRents) && houseRents.length > 0) {
         result.houses.medianRent = houseRents[houseRents.length - 1].value;
+        result.houses.monthlyRents = houseRents.map((m: { dateTime: string; value: number }) => ({
+          month: m.dateTime, value: m.value,
+        }));
+        result.houses.annualRentGrowth = annualGrowthFromSeries(result.houses.monthlyRents);
       }
       const unitRents = medianRent?.monthly?.units;
       if (Array.isArray(unitRents) && unitRents.length > 0) {
         result.units.medianRent = unitRents[unitRents.length - 1].value;
+        result.units.monthlyRents = unitRents.map((m: { dateTime: string; value: number }) => ({
+          month: m.dateTime, value: m.value,
+        }));
+        result.units.annualRentGrowth = annualGrowthFromSeries(result.units.monthlyRents);
       }
       const houseYield = rentalYield?.monthly?.houses;
       if (Array.isArray(houseYield) && houseYield.length > 0) {
@@ -242,4 +252,17 @@ function safeNum(val: unknown): number | undefined {
   if (val == null) return undefined;
   const n = typeof val === 'string' ? parseFloat(val.replace(/[,$%]/g, '')) : Number(val);
   return isNaN(n) ? undefined : n;
+}
+
+/**
+ * Percent growth over the last 12 months of a monthly value series (oldest→newest).
+ * Compares the latest point to the one ~12 months earlier. Returns undefined when
+ * fewer than 12 months are available (caller falls back to a price-growth proxy).
+ */
+function annualGrowthFromSeries(series: Array<{ month: string; value: number }>): number | undefined {
+  if (!Array.isArray(series) || series.length < 13) return undefined;
+  const latest = series[series.length - 1]?.value;
+  const yearAgo = series[series.length - 13]?.value;
+  if (!latest || !yearAgo || yearAgo <= 0) return undefined;
+  return Math.round(((latest / yearAgo) - 1) * 1000) / 10; // one decimal place
 }

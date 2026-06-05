@@ -81,6 +81,12 @@ function agentNameOf(it) {
   return names.length ? names.join(', ') : null;
 }
 function imageOf(it) { return it.heroImageUrl || it.images?.[0]?.url || null; }
+// "$580 per week" / "$620 pw" / "$520 - $560 pw" → 580 / 620 / 520 (lowest), or null
+function parseWeeklyRent(display) {
+  if (!display) return null;
+  const amts = [...String(display).matchAll(/\$\s?([\d,]+)/g)].map((m) => Number(m[1].replace(/,/g, ''))).filter((n) => Number.isFinite(n) && n > 0);
+  return amts.length ? Math.min(...amts) : null;
+}
 function soldDate(it) { return typeof it.soldAt === 'string' ? it.soldAt.split(' ')[0].split('T')[0] : null; }
 
 // ── Per-category config ───────────────────────────────────────────────────────
@@ -167,7 +173,7 @@ const CATEGORIES = {
         state: (loc.state ?? 'VIC').toUpperCase(),
         postcode: loc.postcode ?? null,
         display_price: p.display ?? null,
-        weekly_rent: num(p.value) ?? num(p.min),
+        weekly_rent: num(it.rentPerWeek) ?? num(p.value) ?? num(p.min) ?? parseWeeklyRent(p.display),
         status: it.status ?? null,
         bedrooms: smallint(it.features?.bedrooms),
         bathrooms: smallint(it.features?.bathrooms),

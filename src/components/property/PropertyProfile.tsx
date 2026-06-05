@@ -201,6 +201,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   const [property, setProperty] = useState<MergedPropertyProfile | null>(null);
   const [enrichment, setEnrichment] = useState<EnrichmentData | null>(null);
   const [enrichedEstimate, setEnrichedEstimate] = useState<PriceEstimateResult | null>(null);
+  const [rentalEstimate, setRentalEstimate] = useState<PriceEstimateResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -358,14 +359,45 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           if (fallbackInput.priceNumeric != null) estParams.set('listingMid', String(fallbackInput.priceNumeric));
           estParams.set('excludeAddress', fullAddr);
 
+          let saleMid: number | undefined;
           try {
             const estRes = await fetch(`/api/estimate?${estParams.toString()}`);
             const estJson = estRes.ok ? await estRes.json() : null;
             const estimate = (estJson?.result as PriceEstimateResult | null) ??
               calculateEnrichedPriceEstimate(fallbackInput, data.marketData);
             setEnrichedEstimate(estimate);
+            saleMid = estimate?.priceMid;
           } catch {
-            setEnrichedEstimate(calculateEnrichedPriceEstimate(fallbackInput, data.marketData));
+            const fb = calculateEnrichedPriceEstimate(fallbackInput, data.marketData);
+            setEnrichedEstimate(fb);
+            saleMid = fb?.priceMid;
+          }
+
+          // Comparables-based weekly-rent range (server-side — needs DB access to
+          // nearby rentals + 12-month suburb rent growth).
+          const priorRent = rh.find((r) => r.weeklyRent && r.weeklyRent > 50 && r.date);
+          const rentParams = new URLSearchParams();
+          rentParams.set('suburb', structured.suburb ?? '');
+          rentParams.set('state', structured.state ?? 'VIC');
+          if (structured.postcode) rentParams.set('postcode', structured.postcode);
+          if (coords?.lat != null) rentParams.set('lat', String(coords.lat));
+          if (coords?.lng != null) rentParams.set('lng', String(coords.lng));
+          if (fallbackInput.propertyType) rentParams.set('propertyType', fallbackInput.propertyType);
+          if (fallbackInput.bedrooms != null) rentParams.set('beds', String(fallbackInput.bedrooms));
+          if (fallbackInput.bathrooms != null) rentParams.set('baths', String(fallbackInput.bathrooms));
+          if (fallbackInput.landAreaSqm != null) rentParams.set('land', String(fallbackInput.landAreaSqm));
+          if (saleMid != null) rentParams.set('saleEstimateMid', String(saleMid));
+          if (priorRent?.weeklyRent && priorRent.date) {
+            rentParams.set('priorRent', String(priorRent.weeklyRent));
+            rentParams.set('priorRentDate', priorRent.date);
+          }
+          rentParams.set('excludeAddress', fullAddr);
+          try {
+            const rentRes = await fetch(`/api/estimate-rent?${rentParams.toString()}`);
+            const rentJson = rentRes.ok ? await rentRes.json() : null;
+            setRentalEstimate((rentJson?.result as PriceEstimateResult | null) ?? null);
+          } catch {
+            setRentalEstimate(null);
           }
         }
       }
@@ -858,6 +890,51 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
               {/* Rental income estimate card */}
               {(() => {
+                // Prefer the comparables-based weekly-rent range (/api/estimate-rent):
+                // nearby rentals time-adjusted by 12-month suburb rent growth.
+                if (rentalEstimate) {
+                  return (
+                    <div>
+                      <div className="mb-6 flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
+                          <TrendingUp className="h-4 w-4 text-[#C8A96E]" />
+                        </div>
+                        <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">
+                          {rentalEstimate.priceSource === 'rent-comparables'
+                            ? 'Estimated Rent (Comparables)'
+                            : 'Estimated Rent (Suburb)'}
+                        </h2>
+                        <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                          rentalEstimate.confidenceLevel === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' :
+                          rentalEstimate.confidenceLevel === 'medium' ? 'bg-[#F5EEDD] text-[#B8954A]' :
+                          'bg-[#F7E7E5] text-[#C5544A]'
+                        }`}>
+                          {rentalEstimate.confidenceLevel} confidence
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                        <div className="flex items-end gap-4 mb-4">
+                          <div className="text-center flex-1">
+                            <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
+                            <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceLow}/pw</p>
+                          </div>
+                          <div className="text-center flex-1">
+                            <p className="text-xs font-medium text-[#C8A96E] uppercase tracking-wide">Estimated</p>
+                            <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceMid}/pw</p>
+                          </div>
+                          <div className="text-center flex-1">
+                            <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
+                            <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceHigh}/pw</p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-xs text-[#8A8F97] text-center leading-relaxed">
+                          {rentalEstimate.methodology}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
                 const now = Date.now();
                 const recentRental = rentalHistory
                   .filter(r => r.weeklyRent != null && r.date != null)
