@@ -329,11 +329,31 @@ async function ingestDataset(cat, datasetId) {
 
 // ── Fresh actor run over the suburb list, then ingest its default dataset ──────
 
-async function runActorAndGetDataset(cat) {
+// Retry knobs. The Domain actor manages its own proxies internally and exposes
+// NO proxy field, so when Domain's anti-bot blocks a run it exits SUCCEEDED with
+// 0 items ("temporary access issue"). Blocking is transient — a retry almost
+// always lands data — so we never accept an empty run: we re-run (backed off)
+// up to MAX_ATTEMPTS, then optionally fail over to FALLBACK_ACTOR_ID, then throw
+// (non-zero exit) so the schedule's failure alert fires instead of silently
+// ingesting nothing.
+const MAX_ATTEMPTS = Number(process.env.RUN_MAX_ATTEMPTS) || 4;
+const MIN_ITEMS = Number(process.env.RUN_MIN_ITEMS) || 1; // a healthy run must save ≥ this many
+const FALLBACK_ACTOR_ID = process.env.FALLBACK_ACTOR_ID || null;
+
+/** Count items in an Apify dataset (cheap — reads the dataset metadata only). */
+async function datasetItemCount(datasetId) {
+  const res = await fetch(`https://api.apify.com/v2/datasets/${datasetId}?token=${APIFY_TOKEN}`);
+  if (!res.ok) throw new Error(`dataset meta HTTP ${res.status}`);
+  const { data } = await res.json();
+  return data?.itemCount ?? 0;
+}
+
+/** Start ONE actor run over the suburb list and poll to completion. Returns
+ *  { datasetId, itemCount, status }. Does not retry — that's the caller's job. */
+async function runOnce(actorId, cat) {
   const startUrls = SUBURB_SLUGS.map((slug) => ({ url: cat.urlFor(slug) }));
-  console.log(`Starting Apify actor ${ACTOR_ID} over ${startUrls.length} suburb URLs...`);
   const startRes = await fetch(
-    `https://api.apify.com/v2/acts/${ACTOR_ID}/runs?token=${APIFY_TOKEN}`,
+    `https://api.apify.com/v2/acts/${actorId}/runs?token=${APIFY_TOKEN}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -357,7 +377,7 @@ async function runActorAndGetDataset(cat) {
   if (!startRes.ok) throw new Error(`actor start HTTP ${startRes.status}: ${(await startRes.text()).slice(0, 300)}`);
   const { data: run } = await startRes.json();
   const runId = run.id;
-  console.log(`  run ${runId} started; polling...`);
+  console.log(`  run ${runId} started (actor ${actorId}); polling...`);
 
   for (;;) {
     await new Promise((r) => setTimeout(r, 10_000));
@@ -365,11 +385,47 @@ async function runActorAndGetDataset(cat) {
     if (!pRes.ok) throw new Error(`poll HTTP ${pRes.status}`);
     const { data: cur } = await pRes.json();
     console.log(`  status=${cur.status}`);
-    if (cur.status === 'SUCCEEDED') return cur.defaultDatasetId;
+    if (cur.status === 'SUCCEEDED') {
+      const itemCount = await datasetItemCount(cur.defaultDatasetId);
+      return { datasetId: cur.defaultDatasetId, itemCount, status: cur.status };
+    }
     if (['FAILED', 'ABORTED', 'TIMED-OUT'].includes(cur.status)) {
-      throw new Error(`actor run ${cur.status}`);
+      return { datasetId: cur.defaultDatasetId ?? null, itemCount: 0, status: cur.status };
     }
   }
+}
+
+/** Run the actor over the suburb list, retrying empty/blocked runs until we get
+ *  a non-empty dataset (≥ MIN_ITEMS). Never returns a 0-item dataset — throws
+ *  instead, so the caller exits non-zero and the schedule alert fires. */
+async function runActorAndGetDataset(cat) {
+  const actors = [ACTOR_ID, ...(FALLBACK_ACTOR_ID ? [FALLBACK_ACTOR_ID] : [])];
+  console.log(`Starting Apify run over ${SUBURB_SLUGS.length} suburb URLs (≥${MIN_ITEMS} items required, up to ${MAX_ATTEMPTS} attempts/actor)...`);
+
+  for (const actorId of actors) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const { datasetId, itemCount, status } = await runOnce(actorId, cat);
+      if (status === 'SUCCEEDED' && itemCount >= MIN_ITEMS) {
+        console.log(`  ✓ actor ${actorId} attempt ${attempt}: ${itemCount} items in dataset ${datasetId}`);
+        return datasetId;
+      }
+      const why = status !== 'SUCCEEDED' ? `run ${status}` : `0 usable items (likely blocked)`;
+      console.warn(`  ⚠️ actor ${actorId} attempt ${attempt}/${MAX_ATTEMPTS}: ${why}. Retrying...`);
+      if (attempt < MAX_ATTEMPTS) {
+        const backoff = Math.min(60_000, 5_000 * 2 ** (attempt - 1)); // 5s,10s,20s,40s…cap 60s
+        await new Promise((r) => setTimeout(r, backoff));
+      }
+    }
+    if (FALLBACK_ACTOR_ID && actorId === ACTOR_ID) {
+      console.warn(`  ↻ primary actor exhausted; failing over to fallback actor ${FALLBACK_ACTOR_ID}...`);
+    }
+  }
+
+  throw new Error(
+    `Scraper returned 0 items after ${MAX_ATTEMPTS} attempt(s)` +
+    `${FALLBACK_ACTOR_ID ? ' on primary + fallback actor' : ''} — Domain is blocking. ` +
+    `Aborting WITHOUT ingest so existing data is preserved and the failure alert fires.`,
+  );
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import {
   CATEGORY_TABLE,
   type IngestCategory,
 } from '@/lib/ingest/domain-mapper';
+import { retriggerDomainRun, MAX_RUN_ATTEMPTS } from '@/lib/ingest/domain-run';
 import {
   insertPropertySales,
   insertPropertyListings,
@@ -45,6 +46,11 @@ export async function POST(request: NextRequest) {
   if (!category || !(category in CATEGORY_TABLE)) {
     return NextResponse.json({ error: 'category must be sold | on-market | rent' }, { status: 400 });
   }
+
+  // Which scrape attempt this is (1 = the original scheduled run). The webhook
+  // bumps this each time it re-triggers a blocked/empty run, so we stop after
+  // MAX_RUN_ATTEMPTS instead of looping (and burning $) forever.
+  const attempt = Math.max(1, Number(searchParams.get('attempt')) || 1);
 
   const apifyToken = process.env.APIFY_API_TOKEN;
   if (!apifyToken) {
@@ -125,6 +131,48 @@ export async function POST(request: NextRequest) {
 
     offset += items.length;
     if (items.length < PAGE) break;
+  }
+
+  // ── Blocked/empty-run guard ────────────────────────────────────────────────
+  // The actor exits SUCCEEDED with 0 items when Domain's anti-bot blocks it.
+  // We must NOT treat that as a healthy run: do not expire live listings, and
+  // re-trigger a fresh run (blocking is transient) until we get data or exhaust
+  // MAX_RUN_ATTEMPTS — then return non-2xx so the schedule's failure alert fires.
+  if (processed === 0) {
+    if (attempt < MAX_RUN_ATTEMPTS) {
+      try {
+        const origin = process.env.INGEST_PUBLIC_ORIGIN || request.nextUrl.origin;
+        const runId = await retriggerDomainRun(
+          category,
+          origin,
+          token!,
+          attempt + 1,
+        );
+        return NextResponse.json({
+          category, datasetId, processed: 0,
+          status: 'retrying',
+          attempt,
+          retriggeredRunId: runId,
+          message: `Empty/blocked run — re-triggered attempt ${attempt + 1}/${MAX_RUN_ATTEMPTS}.`,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'unknown';
+        return NextResponse.json(
+          { category, datasetId, status: 'retrigger-failed', attempt, error: message },
+          { status: 502 },
+        );
+      }
+    }
+    // Exhausted: surface a failure (non-2xx) so notifications fire. No expiry.
+    return NextResponse.json(
+      {
+        category, datasetId, processed: 0,
+        status: 'blocked',
+        attempt,
+        message: `Scraper returned 0 items after ${MAX_RUN_ATTEMPTS} attempts — Domain is blocking. Existing data left untouched.`,
+      },
+      { status: 502 },
+    );
   }
 
   // Upsert (dedup via the table's UNIQUE key).
