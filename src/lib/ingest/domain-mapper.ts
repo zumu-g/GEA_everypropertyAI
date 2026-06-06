@@ -123,9 +123,13 @@ export function slugForRawAddress(raw: string): string | null {
 
 type DomainItem = {
   url?: string;
+  dateListed?: string;
+  date_listed?: string;
+  listedDate?: string;
+  listed_date?: string;
   location?: { display_address?: string; suburb?: string; state?: string; postcode?: string; latitude?: number; longitude?: number };
   pricing?: { display_price?: string };
-  listing?: { tags?: { tag_text?: string } };
+  listing?: { tags?: { tag_text?: string }; date_listed?: string; dateListed?: string; date_available?: string; dateAvailable?: string };
   property?: { property_type?: string; land_size?: number; bedrooms?: number; bathrooms?: number; parking?: number; image_urls?: string[] };
   contacts?: { agency?: { name?: string }; agent_names?: string; agents?: Array<{ name?: string }> };
 };
