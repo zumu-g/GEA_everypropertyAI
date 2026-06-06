@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured, getSupabaseServerClient } from '@/lib/db/supabase';
 import { propertyCache } from '@/lib/cache';
+import { classifyFreshness, type FeedCategory } from '@/lib/feeds/freshness';
 
 /**
  * GET /api/admin/crawl-status
@@ -124,6 +125,30 @@ export async function GET() {
         .eq('source', 'vic-vg-aggregate'),
     ]);
 
+    // Feed health + freshness (migration 007). Joins the per-run health record
+    // with a live SLA classification so the dashboard shows blocked/broken/stale.
+    const { data: feedHealthRows } = await supabase
+      .from('feed_health')
+      .select('category, last_run_at, source_used, items, newest_row_at, status');
+    const healthByCategory = new Map(
+      (feedHealthRows ?? []).map((r) => [r.category as FeedCategory, r]),
+    );
+    const nowMs = Date.now();
+    const feeds = (['sold', 'on-market', 'rent'] as FeedCategory[]).map((category) => {
+      const h = healthByCategory.get(category);
+      const freshness = classifyFreshness(category, (h?.newest_row_at as string) ?? null, nowMs);
+      return {
+        category,
+        last_run_at: h?.last_run_at ?? null,
+        source_used: h?.source_used ?? null,
+        last_run_items: h?.items ?? null,
+        run_status: h?.status ?? 'unknown',
+        freshness: freshness.status,
+        age_hours: freshness.ageHours,
+        sla_hours: freshness.slaHours,
+      };
+    });
+
     return NextResponse.json({
       queue: {
         pending: queuePending.count ?? 0,
@@ -147,6 +172,7 @@ export async function GET() {
         wa_landgate: salesWa.count ?? 0,
         vic_vg: salesVic.count ?? 0,
       },
+      feeds,
       cache: {
         in_memory_size: propertyCache.size,
       },

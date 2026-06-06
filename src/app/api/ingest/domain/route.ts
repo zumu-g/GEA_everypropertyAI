@@ -11,6 +11,7 @@ import {
   insertPropertySales,
   insertPropertyListings,
   insertPropertyRentals,
+  writeFeedHealth,
   insertAddresses,
   expireNotSeen,
   type PropertySaleRecord,
@@ -80,6 +81,9 @@ export async function POST(request: NextRequest) {
 
   const runStart = new Date().toISOString();
   const { table } = CATEGORY_TABLE[category];
+  // Which fetch source produced this batch (for feed_health). The Web Unlocker
+  // runner passes ?source=...; the legacy Apify webhook path defaults to 'apify'.
+  const feedSource = searchParams.get('source') ?? (directItems ? 'direct' : 'apify');
 
   const sales: PropertySaleRecord[] = [];
   const listings: PropertyListingRecord[] = [];
@@ -182,12 +186,13 @@ export async function POST(request: NextRequest) {
       }
     }
     // Exhausted: surface a failure (non-2xx) so notifications fire. No expiry.
+    await writeFeedHealth({ category, source_used: feedSource, items: 0, status: 'blocked' });
     return NextResponse.json(
       {
         category, datasetId, processed: 0,
         status: 'blocked',
         attempt,
-        message: `Scraper returned 0 items after ${MAX_RUN_ATTEMPTS} attempts — Domain is blocking. Existing data left untouched.`,
+        message: `Scraper returned 0 items${directItems ? ' (all sources dry)' : ` after ${MAX_RUN_ATTEMPTS} attempts — Domain is blocking`}. Existing data left untouched.`,
       },
       { status: 502 },
     );
@@ -207,6 +212,14 @@ export async function POST(request: NextRequest) {
     expired = await expireNotSeen(table as 'property_listings' | 'property_rentals', [...suburbs], runStart);
   }
 
+  await writeFeedHealth({
+    category,
+    source_used: feedSource,
+    items: processed,
+    newest_row_at: runStart,
+    status: 'ok',
+  });
+
   return NextResponse.json({
     category,
     table,
@@ -217,5 +230,6 @@ export async function POST(request: NextRequest) {
     addressesAugmented: addressBySlug.size,
     suburbs: [...suburbs],
     expired,
+    source: feedSource,
   });
 }
