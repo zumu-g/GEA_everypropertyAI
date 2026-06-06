@@ -47,6 +47,16 @@ export function parseSaleDate(tagText: unknown): string | null {
  * then OMITS `listed_date` from the row so the DB `DEFAULT now()` (first-seen)
  * stands and daily re-scrapes never reset it. See migration 006 + the plan.
  */
+function validYmd(y: string, mm: string, dd: string): string | null {
+  // Reject calendar-invalid dates (e.g. 2099-13-45) so we never persist a value
+  // Postgres TIMESTAMPTZ would reject (which would silently drop the whole row).
+  const yi = Number(y), mi = Number(mm), di = Number(dd);
+  if (mi < 1 || mi > 12 || di < 1 || di > 31) return null;
+  const d = new Date(Date.UTC(yi, mi - 1, di));
+  if (d.getUTCFullYear() !== yi || d.getUTCMonth() !== mi - 1 || d.getUTCDate() !== di) return null;
+  return `${y}-${mm}-${dd}`;
+}
+
 export function parseListedDate(it: unknown): string | null {
   const obj = (it ?? {}) as Record<string, unknown>;
   const listing = (obj.listing ?? {}) as Record<string, unknown>;
@@ -59,12 +69,19 @@ export function parseListedDate(it: unknown): string | null {
     const s = String(c).trim();
     // ISO-ish: 2024-10-07 or 2024-10-07T...
     const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    if (iso) {
+      const v = validYmd(iso[1], iso[2], iso[3]);
+      if (v) return v;
+      continue;
+    }
     // "07 Oct 2024"
     const m = s.match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/);
     if (m) {
       const mm = MONTHS[m[2].toLowerCase()];
-      if (mm) return `${m[3]}-${mm}-${m[1].padStart(2, '0')}`;
+      if (mm) {
+        const v = validYmd(m[3], mm, m[1].padStart(2, '0'));
+        if (v) return v;
+      }
     }
   }
   return null;

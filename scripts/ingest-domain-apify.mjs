@@ -128,6 +128,13 @@ function parseWeeklyRent(display) {
 // Real listing date if the item carries one, else null → caller omits listed_date
 // so the DB DEFAULT now() (first-seen) stands. Mirrors parseListedDate in
 // src/lib/ingest/domain-mapper.ts.
+function validYmd(y, mm, dd) {
+  const yi = Number(y), mi = Number(mm), di = Number(dd);
+  if (mi < 1 || mi > 12 || di < 1 || di > 31) return null;
+  const d = new Date(Date.UTC(yi, mi - 1, di));
+  if (d.getUTCFullYear() !== yi || d.getUTCMonth() !== mi - 1 || d.getUTCDate() !== di) return null;
+  return `${y}-${mm}-${dd}`;
+}
 function parseListedDate(it) {
   const obj = it ?? {};
   const listing = obj.listing ?? {};
@@ -139,11 +146,11 @@ function parseListedDate(it) {
     if (c == null || c === '') continue;
     const s = String(c).trim();
     const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    if (iso) { const v = validYmd(iso[1], iso[2], iso[3]); if (v) return v; continue; }
     const m = s.match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/);
     if (m) {
       const mm = MONTHS[m[2].toLowerCase()];
-      if (mm) return `${m[3]}-${mm}-${m[1].padStart(2, '0')}`;
+      if (mm) { const v = validYmd(m[3], mm, m[1].padStart(2, '0')); if (v) return v; }
     }
   }
   return null;

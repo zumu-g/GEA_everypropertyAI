@@ -60,9 +60,16 @@ export async function GET(request: NextRequest) {
   const lat = searchParams.get('lat') ? Number(searchParams.get('lat')) : undefined;
   const lng = searchParams.get('lng') ? Number(searchParams.get('lng')) : undefined;
   const radius = searchParams.get('radius') ? Number(searchParams.get('radius')) : 2;
-  const sinceDays = searchParams.get('sinceDays') ? Number(searchParams.get('sinceDays')) : undefined;
-  const minRent = searchParams.get('minRent') ? Number(searchParams.get('minRent')) : undefined;
-  const maxRent = searchParams.get('maxRent') ? Number(searchParams.get('maxRent')) : undefined;
+  // Sanitise numeric filters: ignore non-finite / out-of-range values rather than
+  // letting NaN (always-false comparisons) or a negative window silently distort results.
+  const posNum = (v: string | null): number | undefined => {
+    if (v === null) return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const sinceDays = posNum(searchParams.get('sinceDays'));
+  const minRent = posNum(searchParams.get('minRent'));
+  const maxRent = posNum(searchParams.get('maxRent'));
   const limit = Math.min(searchParams.get('limit') ? Number(searchParams.get('limit')) : 200, 1000);
 
   // Predicates for geo mode (suburb mode pushes these into the DB query).

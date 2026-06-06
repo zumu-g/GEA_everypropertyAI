@@ -32,6 +32,15 @@ describe('parseListedDate', () => {
     expect(parseListedDate({ dateListed: 'soon' })).toBeNull();
     expect(parseListedDate(null)).toBeNull();
   });
+
+  it('returns null for a human-date with an unrecognised month abbreviation', () => {
+    expect(parseListedDate({ dateListed: '07 Xyz 2024' })).toBeNull();
+  });
+
+  it('rejects calendar-invalid dates that pass the digit regex', () => {
+    expect(parseListedDate({ dateListed: '2099-13-45' })).toBeNull();
+    expect(parseListedDate({ dateListed: '2024-02-30' })).toBeNull();
+  });
 });
 
 describe('mapItem listed_date population', () => {
@@ -60,10 +69,11 @@ describe('mapItem listed_date population', () => {
     expect(Object.prototype.hasOwnProperty.call(row, 'listed_date')).toBe(false);
   });
 
-  it('re-mapping the same real-dated item is idempotent on listed_date', () => {
-    const item = { ...baseItem, dateListed: '2024-10-07' };
-    expect(mapItem('rent', item)).toMatchObject({ listed_date: '2024-10-07' });
-    expect(mapItem('rent', item)).toMatchObject({ listed_date: '2024-10-07' });
+  it('re-mapping a date-less item omits listed_date both times (re-scrape never resets first-seen)', () => {
+    // The DB upsert preserves the existing value only because the key is absent;
+    // a date-less re-scrape must therefore never emit listed_date.
+    expect(Object.prototype.hasOwnProperty.call(mapItem('rent', baseItem), 'listed_date')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(mapItem('rent', baseItem), 'listed_date')).toBe(false);
   });
 
   it('does not add listed_date to a sold item', () => {

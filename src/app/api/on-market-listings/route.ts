@@ -67,7 +67,9 @@ export async function GET(request: NextRequest) {
   const lat = searchParams.get('lat') ? Number(searchParams.get('lat')) : undefined;
   const lng = searchParams.get('lng') ? Number(searchParams.get('lng')) : undefined;
   const radius = searchParams.get('radius') ? Number(searchParams.get('radius')) : 2;
-  const sinceDays = searchParams.get('sinceDays') ? Number(searchParams.get('sinceDays')) : undefined;
+  // Ignore non-finite / negative sinceDays rather than silently distorting the window.
+  const sinceDaysRaw = searchParams.get('sinceDays') !== null ? Number(searchParams.get('sinceDays')) : undefined;
+  const sinceDays = sinceDaysRaw !== undefined && Number.isFinite(sinceDaysRaw) && sinceDaysRaw >= 0 ? sinceDaysRaw : undefined;
   const limit = Math.min(searchParams.get('limit') ? Number(searchParams.get('limit')) : 200, 1000);
 
   // "Just listed" window: keep only rows listed within sinceDays. Prefer the real
@@ -100,7 +102,8 @@ export async function GET(request: NextRequest) {
           && haversineKm(lat!, lng!, r.latitude, r.longitude) <= radius)
         .slice(0, limit);
     } else {
-      rows = (await getListingsForSuburb(suburb, state, limit)).filter(withinWindow);
+      // Suburb mode pushes the sinceDays window into the DB query (before the limit).
+      rows = await getListingsForSuburb(suburb, state, limit, { sinceDays });
     }
 
     const results: OnMarketListingResult[] = rows
