@@ -36,6 +36,8 @@ one build/link step noted below.
 - everypropertyai property "<address>"   → full merged profile
 - everypropertyai comps --suburb <s> --state <st> [--beds n --baths n]
 - everypropertyai sold --suburb <s> --state <st> [--limit n]
+- everypropertyai rentals --suburb <s> [--min-rent n --max-rent n] [--listed-within 1m|3m|6m|12m|2y] [--limit n]
+- everypropertyai listings --suburb <s> [--listed-within 1m|3m|6m|12m|2y] [--limit n]
 - everypropertyai search "<address>"     → address suggestions
 
 CMA pack JSON shape:

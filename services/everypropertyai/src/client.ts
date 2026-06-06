@@ -181,6 +181,7 @@ export class PropertyIQClient {
     lat?: number;
     lng?: number;
     radius?: number;
+    sinceDays?: number;
     limit?: number;
   }): Promise<{ suburb: string | null; state: string; count: number; results: OnMarketListing[] }> {
     return this.request("/api/on-market-listings", { query: { state: "VIC", ...params } });
@@ -192,6 +193,9 @@ export class PropertyIQClient {
     lat?: number;
     lng?: number;
     radius?: number;
+    sinceDays?: number;
+    minRent?: number;
+    maxRent?: number;
     limit?: number;
   }): Promise<{ suburb: string | null; state: string; count: number; results: RentalListing[] }> {
     return this.request("/api/rental-listings", { query: { state: "VIC", ...params } });

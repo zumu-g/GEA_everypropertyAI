@@ -91,6 +91,7 @@ export interface OnMarketListing {
   agencyName: string | null;
   agentName: string | null;
   source: string;
+  listedDate: string | null;
 }
 
 export interface RentalListing {
@@ -110,6 +111,7 @@ export interface RentalListing {
   agencyName: string | null;
   agentName: string | null;
   source: string;
+  listedDate: string | null;
 }
 
 export interface StreetRow {
