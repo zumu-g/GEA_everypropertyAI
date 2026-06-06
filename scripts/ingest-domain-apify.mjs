@@ -125,6 +125,37 @@ function parseWeeklyRent(display) {
   return amts.length ? Math.min(...amts) : null;
 }
 
+// Real listing date if the item carries one, else null → caller omits listed_date
+// so the DB DEFAULT now() (first-seen) stands. Mirrors parseListedDate in
+// src/lib/ingest/domain-mapper.ts.
+function validYmd(y, mm, dd) {
+  const yi = Number(y), mi = Number(mm), di = Number(dd);
+  if (mi < 1 || mi > 12 || di < 1 || di > 31) return null;
+  const d = new Date(Date.UTC(yi, mi - 1, di));
+  if (d.getUTCFullYear() !== yi || d.getUTCMonth() !== mi - 1 || d.getUTCDate() !== di) return null;
+  return `${y}-${mm}-${dd}`;
+}
+function parseListedDate(it) {
+  const obj = it ?? {};
+  const listing = obj.listing ?? {};
+  const candidates = [
+    obj.dateListed, obj.date_listed, obj.listedDate, obj.listed_date,
+    listing.date_listed, listing.dateListed, listing.date_available, listing.dateAvailable,
+  ];
+  for (const c of candidates) {
+    if (c == null || c === '') continue;
+    const s = String(c).trim();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) { const v = validYmd(iso[1], iso[2], iso[3]); if (v) return v; continue; }
+    const m = s.match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/);
+    if (m) {
+      const mm = MONTHS[m[2].toLowerCase()];
+      if (mm) { const v = validYmd(m[3], mm, m[1].padStart(2, '0')); if (v) return v; }
+    }
+  }
+  return null;
+}
+
 function num(v) { return typeof v === 'number' ? v : null; }
 function smallint(v) {
   const n = typeof v === 'number' ? v : Number(v);
@@ -194,8 +225,10 @@ const CATEGORIES = {
       if (!rawAddress) return null;
       const display = it.pricing?.display_price ?? null;
       const { low, high } = parsePriceRange(display);
+      const listedDate = parseListedDate(it);
       return {
         raw_address: rawAddress,
+        ...(listedDate ? { listed_date: listedDate } : {}),
         suburb: titleCaseSuburb(loc.suburb),
         state: (loc.state ?? 'VIC').toUpperCase(),
         postcode: loc.postcode ?? null,
@@ -230,8 +263,10 @@ const CATEGORIES = {
       const rawAddress = (loc.display_address ?? '').trim();
       if (!rawAddress) return null;
       const display = it.pricing?.display_price ?? null;
+      const listedDate = parseListedDate(it);
       return {
         raw_address: rawAddress,
+        ...(listedDate ? { listed_date: listedDate } : {}),
         suburb: titleCaseSuburb(loc.suburb),
         state: (loc.state ?? 'VIC').toUpperCase(),
         postcode: loc.postcode ?? null,

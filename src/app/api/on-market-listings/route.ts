@@ -40,6 +40,9 @@ interface OnMarketListingResult {
   listingUrl: string | null;
   imageUrl: string | null;
   source: string;
+  createdAt: string | null;
+  lastSeenAt: string | null;
+  listedDate: string | null;
 }
 
 /**
@@ -54,6 +57,7 @@ interface OnMarketListingResult {
  *   state   — optional (defaults to "VIC")
  *   lat,lng — radius mode: centre point
  *   radius  — radius mode: km (default 2)
+ *   sinceDays — optional: only listings first seen within the last N days ("just listed")
  *   limit   — optional, max rows (default 200, capped at 1000)
  */
 export async function GET(request: NextRequest) {
@@ -63,7 +67,21 @@ export async function GET(request: NextRequest) {
   const lat = searchParams.get('lat') ? Number(searchParams.get('lat')) : undefined;
   const lng = searchParams.get('lng') ? Number(searchParams.get('lng')) : undefined;
   const radius = searchParams.get('radius') ? Number(searchParams.get('radius')) : 2;
+  // Ignore non-finite / negative sinceDays rather than silently distorting the window.
+  const sinceDaysRaw = searchParams.get('sinceDays') !== null ? Number(searchParams.get('sinceDays')) : undefined;
+  const sinceDays = sinceDaysRaw !== undefined && Number.isFinite(sinceDaysRaw) && sinceDaysRaw >= 0 ? sinceDaysRaw : undefined;
   const limit = Math.min(searchParams.get('limit') ? Number(searchParams.get('limit')) : 200, 1000);
+
+  // "Just listed" window: keep only rows listed within sinceDays. Prefer the real
+  // listed_date, falling back to created_at (first-seen) for rows predating it.
+  const sinceMs = sinceDays && sinceDays > 0 ? Date.now() - sinceDays * 86_400_000 : null;
+  const withinWindow = (r: PropertyListingRecord) => {
+    if (sinceMs === null) return true;
+    const stamp = r.listed_date ?? r.created_at;
+    if (!stamp) return false;
+    const t = new Date(stamp).getTime();
+    return Number.isFinite(t) && t >= sinceMs;
+  };
 
   const hasGeo = lat !== undefined && lng !== undefined && Number.isFinite(lat) && Number.isFinite(lng);
   if (!suburb && !hasGeo) {
@@ -79,11 +97,13 @@ export async function GET(request: NextRequest) {
       const box = await getRowsNearby<PropertyListingRecord>('property_listings', lat!, lng!, radius);
       rows = box
         .filter((r) => r.active !== false)
+        .filter(withinWindow)
         .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number'
           && haversineKm(lat!, lng!, r.latitude, r.longitude) <= radius)
         .slice(0, limit);
     } else {
-      rows = await getListingsForSuburb(suburb, state, limit);
+      // Suburb mode pushes the sinceDays window into the DB query (before the limit).
+      rows = await getListingsForSuburb(suburb, state, limit, { sinceDays });
     }
 
     const results: OnMarketListingResult[] = rows
@@ -110,6 +130,9 @@ export async function GET(request: NextRequest) {
       listingUrl: r.listing_url ?? null,
       imageUrl: r.image_url ?? null,
       source: r.source,
+      createdAt: r.created_at ?? null,
+      lastSeenAt: r.last_seen_at ?? null,
+      listedDate: r.listed_date ?? null,
     }));
 
     return NextResponse.json(

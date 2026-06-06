@@ -19,6 +19,7 @@ Install: `npm install` (from this directory). Requires the PropertyIQ app to be 
 npm run cli -- property "9 Gloucester Ave, Berwick VIC 3806"
 npm run cli -- comps --suburb Berwick --state VIC --beds 4 --baths 2
 npm run cli -- sold --suburb Berwick --limit 25
+npm run cli -- rentals --suburb Berwick --min-rent 400 --max-rent 650 --listed-within 6m
 npm run cli -- cma "9 Gloucester Ave, Berwick VIC 3806"
 npm run cli -- proposal "9 Gloucester Ave, Berwick VIC 3806"
 ```

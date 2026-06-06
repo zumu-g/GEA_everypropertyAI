@@ -23,6 +23,12 @@ Other data routes (`/api/sold-sales`, `/api/on-market-listings`, `/api/rental-li
 **middleware** (same key, but with a same-origin exemption for the PropertyIQ website). See
 `README.md` API section.
 
+`/api/rental-listings` supports `minRent` / `maxRent` (weekly rent) and `sinceDays` (listed within
+the last N days, by `listed_date`); `/api/on-market-listings` supports `sinceDays`. The CMA CLI
+exposes these as `rentals --min-rent/--max-rent/--listed-within 1m|3m|6m|12m|2y` and
+`listings --listed-within …`. `listed_date` is the scraped Domain listing date when available, else
+the row's first-seen timestamp (migration `006_listed_date.sql`).
+
 ## Consumer config (set on each sibling app's Railway service)
 
 Both GEA_HR_recruitAI and GEA_ST_proposals:

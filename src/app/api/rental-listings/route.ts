@@ -35,6 +35,7 @@ interface RentalListingResult {
   listingUrl: string | null;
   imageUrl: string | null;
   source: string;
+  listedDate: string | null;
 }
 
 /**
@@ -59,7 +60,31 @@ export async function GET(request: NextRequest) {
   const lat = searchParams.get('lat') ? Number(searchParams.get('lat')) : undefined;
   const lng = searchParams.get('lng') ? Number(searchParams.get('lng')) : undefined;
   const radius = searchParams.get('radius') ? Number(searchParams.get('radius')) : 2;
+  // Sanitise numeric filters: ignore non-finite / out-of-range values rather than
+  // letting NaN (always-false comparisons) or a negative window silently distort results.
+  const posNum = (v: string | null): number | undefined => {
+    if (v === null) return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const sinceDays = posNum(searchParams.get('sinceDays'));
+  const minRent = posNum(searchParams.get('minRent'));
+  const maxRent = posNum(searchParams.get('maxRent'));
   const limit = Math.min(searchParams.get('limit') ? Number(searchParams.get('limit')) : 200, 1000);
+
+  // Predicates for geo mode (suburb mode pushes these into the DB query).
+  const sinceMs = sinceDays && sinceDays > 0 ? Date.now() - sinceDays * 86_400_000 : null;
+  const matchesFilters = (r: PropertyRentalRecord) => {
+    if (typeof minRent === 'number' && !(typeof r.weekly_rent === 'number' && r.weekly_rent >= minRent)) return false;
+    if (typeof maxRent === 'number' && !(typeof r.weekly_rent === 'number' && r.weekly_rent <= maxRent)) return false;
+    if (sinceMs !== null) {
+      const stamp = r.listed_date ?? r.created_at;
+      if (!stamp) return false;
+      const t = new Date(stamp).getTime();
+      if (!Number.isFinite(t) || t < sinceMs) return false;
+    }
+    return true;
+  };
 
   const hasGeo = lat !== undefined && lng !== undefined && Number.isFinite(lat) && Number.isFinite(lng);
   if (!suburb && !hasGeo) {
@@ -75,11 +100,12 @@ export async function GET(request: NextRequest) {
       const box = await getRowsNearby<PropertyRentalRecord>('property_rentals', lat!, lng!, radius);
       rows = box
         .filter((r) => r.active !== false)
+        .filter(matchesFilters)
         .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number'
           && haversineKm(lat!, lng!, r.latitude, r.longitude) <= radius)
         .slice(0, limit);
     } else {
-      rows = await getRentalsForSuburb(suburb, state, limit);
+      rows = await getRentalsForSuburb(suburb, state, limit, { sinceDays, minRent, maxRent });
     }
 
     const results: RentalListingResult[] = rows.map((r) => ({
@@ -101,6 +127,7 @@ export async function GET(request: NextRequest) {
       listingUrl: r.listing_url ?? null,
       imageUrl: r.image_url ?? null,
       source: r.source,
+      listedDate: r.listed_date ?? null,
     }));
 
     return NextResponse.json(

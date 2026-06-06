@@ -66,13 +66,14 @@ server.tool(
 
 server.tool(
   "on_market_listings",
-  "Current on-market (for-sale) listings in a suburb or around a lat/lng point (Domain feed).",
+  "Current on-market (for-sale) listings in a suburb or around a lat/lng point (Domain feed). sinceDays filters to listings listed within the last N days.",
   {
     suburb: z.string().optional(),
     state: z.string().optional(),
     lat: z.number().optional(),
     lng: z.number().optional(),
     radius: z.number().optional(),
+    sinceDays: z.number().optional(),
     limit: z.number().optional(),
   },
   (args) => safe(() => client.onMarketListings(args)),
@@ -80,13 +81,16 @@ server.tool(
 
 server.tool(
   "rental_listings",
-  "Current on-market rental listings in a suburb or around a lat/lng point (Domain feed).",
+  "Current on-market rental listings in a suburb or around a lat/lng point (Domain feed). Filter by weekly rent (minRent/maxRent) and recency (sinceDays = listed within the last N days).",
   {
     suburb: z.string().optional(),
     state: z.string().optional(),
     lat: z.number().optional(),
     lng: z.number().optional(),
     radius: z.number().optional(),
+    sinceDays: z.number().optional(),
+    minRent: z.number().optional(),
+    maxRent: z.number().optional(),
     limit: z.number().optional(),
   },
   (args) => safe(() => client.rentalListings(args)),

@@ -978,6 +978,7 @@ export interface PropertyListingRecord {
   source: string;
   last_seen_at?: string;
   created_at?: string;
+  listed_date?: string;
   active?: boolean;
   raw_data?: Record<string, unknown>;
 }
@@ -1005,6 +1006,7 @@ export interface PropertyRentalRecord {
   source: string;
   last_seen_at?: string;
   created_at?: string;
+  listed_date?: string;
   active?: boolean;
   raw_data?: Record<string, unknown>;
 }
@@ -1037,32 +1039,68 @@ export function insertPropertyRentals(rows: PropertyRentalRecord[]): Promise<voi
   return upsertRows('property_rentals', rows, 'raw_address,source');
 }
 
+export interface ListingQueryFilters {
+  /** Only listings listed within the last N days (by listed_date, falling back to created_at). */
+  sinceDays?: number;
+}
+
 export async function getListingsForSuburb(
-  suburb: string, state: string, limit = 200
+  suburb: string, state: string, limit = 200, filters: ListingQueryFilters = {}
 ): Promise<PropertyListingRecord[]> {
   if (!isSupabaseConfigured()) return [];
-  const { data, error } = await supabase()
+  // Push the date predicate into the query so it applies BEFORE the limit
+  // (filtering post-limit would silently drop matches beyond the cap).
+  let q = supabase()
     .from('property_listings')
     .select('*')
     .ilike('suburb', normaliseSuburbAlias(suburb))
     .eq('state', state.toUpperCase())
-    .eq('active', true)
+    .eq('active', true);
+  if (filters.sinceDays && filters.sinceDays > 0) {
+    const sinceIso = new Date(Date.now() - filters.sinceDays * 86_400_000).toISOString();
+    q = q.or(listedSinceOrClause(sinceIso));
+  }
+  const { data, error } = await q
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) { console.error('[getListingsForSuburb]', error.message); return []; }
   return data ?? [];
 }
 
+// A row is "listed within N days" when COALESCE(listed_date, created_at) >= since
+// — i.e. the real scraped date if known, else first-seen. Expressed as a PostgREST
+// .or() so it pushes into the DB query (before the limit) rather than post-filtering.
+function listedSinceOrClause(sinceIso: string): string {
+  return `listed_date.gte.${sinceIso},and(listed_date.is.null,created_at.gte.${sinceIso})`;
+}
+
+export interface RentalQueryFilters {
+  /** Only rentals listed within the last N days (by listed_date, falling back to created_at). */
+  sinceDays?: number;
+  /** weekly_rent lower/upper bounds (inclusive). */
+  minRent?: number;
+  maxRent?: number;
+}
+
 export async function getRentalsForSuburb(
-  suburb: string, state: string, limit = 200
+  suburb: string, state: string, limit = 200, filters: RentalQueryFilters = {}
 ): Promise<PropertyRentalRecord[]> {
   if (!isSupabaseConfigured()) return [];
-  const { data, error } = await supabase()
+  // Push the rent/date predicates into the query so they apply BEFORE the limit
+  // (filtering post-limit would silently drop matches beyond the cap).
+  let q = supabase()
     .from('property_rentals')
     .select('*')
     .ilike('suburb', normaliseSuburbAlias(suburb))
     .eq('state', state.toUpperCase())
-    .eq('active', true)
+    .eq('active', true);
+  if (typeof filters.minRent === 'number') q = q.gte('weekly_rent', filters.minRent);
+  if (typeof filters.maxRent === 'number') q = q.lte('weekly_rent', filters.maxRent);
+  if (filters.sinceDays && filters.sinceDays > 0) {
+    const sinceIso = new Date(Date.now() - filters.sinceDays * 86_400_000).toISOString();
+    q = q.or(listedSinceOrClause(sinceIso));
+  }
+  const { data, error } = await q
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) { console.error('[getRentalsForSuburb]', error.message); return []; }

@@ -90,7 +90,12 @@ export interface OnMarketListing {
   longitude: number | null;
   agencyName: string | null;
   agentName: string | null;
+  listingUrl: string | null;
+  imageUrl: string | null;
   source: string;
+  createdAt: string | null;
+  lastSeenAt: string | null;
+  listedDate: string | null;
 }
 
 export interface RentalListing {
@@ -109,7 +114,10 @@ export interface RentalListing {
   longitude: number | null;
   agencyName: string | null;
   agentName: string | null;
+  listingUrl: string | null;
+  imageUrl: string | null;
   source: string;
+  listedDate: string | null;
 }
 
 export interface StreetRow {

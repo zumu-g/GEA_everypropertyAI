@@ -8,6 +8,23 @@ function print(result: unknown) {
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
 }
 
+// Friendly "listed within" buckets → lookback days (mirrors the sold --since-days
+// convention; the API takes sinceDays).
+const LISTED_WITHIN_DAYS: Record<string, number> = {
+  "1m": 30, "3m": 90, "6m": 180, "12m": 365, "2y": 730,
+};
+function listedWithinToDays(bucket?: string): number | undefined {
+  if (bucket === undefined) return undefined;
+  const days = LISTED_WITHIN_DAYS[bucket.toLowerCase()];
+  if (days === undefined) {
+    process.stderr.write(
+      `Error: invalid --listed-within "${bucket}". Use one of: ${Object.keys(LISTED_WITHIN_DAYS).join(", ")}\n`,
+    );
+    process.exit(1);
+  }
+  return days;
+}
+
 async function run(fn: () => Promise<unknown>) {
   try {
     print(await fn());
@@ -93,6 +110,7 @@ program
   .option("--lat <n>", "centre latitude (radius mode)", Number)
   .option("--lng <n>", "centre longitude (radius mode)", Number)
   .option("--radius <n>", "radius in km (radius mode)", Number)
+  .option("--listed-within <bucket>", "only listings listed within 1m|3m|6m|12m|2y")
   .option("--limit <n>", "max rows", Number)
   .action((o) =>
     run(() =>
@@ -102,6 +120,7 @@ program
         lat: o.lat,
         lng: o.lng,
         radius: o.radius,
+        sinceDays: listedWithinToDays(o.listedWithin),
         limit: o.limit,
       }),
     ),
@@ -115,6 +134,9 @@ program
   .option("--lat <n>", "centre latitude (radius mode)", Number)
   .option("--lng <n>", "centre longitude (radius mode)", Number)
   .option("--radius <n>", "radius in km (radius mode)", Number)
+  .option("--min-rent <n>", "min weekly rent", Number)
+  .option("--max-rent <n>", "max weekly rent", Number)
+  .option("--listed-within <bucket>", "only rentals listed within 1m|3m|6m|12m|2y")
   .option("--limit <n>", "max rows", Number)
   .action((o) =>
     run(() =>
@@ -124,6 +146,9 @@ program
         lat: o.lat,
         lng: o.lng,
         radius: o.radius,
+        minRent: o.minRent,
+        maxRent: o.maxRent,
+        sinceDays: listedWithinToDays(o.listedWithin),
         limit: o.limit,
       }),
     ),
