@@ -38,6 +38,38 @@ export function parseSaleDate(tagText: unknown): string | null {
   return `${m[3]}-${mm}-${m[1].padStart(2, '0')}`;
 }
 
+/**
+ * Best-effort real listing date for an on-market/rent item → "YYYY-MM-DD" (or null).
+ *
+ * The Domain Apify item does not expose a dedicated, reliable "date listed" field,
+ * so we probe the plausible candidates and parse either an ISO date or a
+ * "07 Oct 2020"-style string. When none is present we return null — the caller
+ * then OMITS `listed_date` from the row so the DB `DEFAULT now()` (first-seen)
+ * stands and daily re-scrapes never reset it. See migration 006 + the plan.
+ */
+export function parseListedDate(it: unknown): string | null {
+  const obj = (it ?? {}) as Record<string, unknown>;
+  const listing = (obj.listing ?? {}) as Record<string, unknown>;
+  const candidates: unknown[] = [
+    obj.dateListed, obj.date_listed, obj.listedDate, obj.listed_date,
+    listing.date_listed, listing.dateListed, listing.date_available, listing.dateAvailable,
+  ];
+  for (const c of candidates) {
+    if (c == null || c === '') continue;
+    const s = String(c).trim();
+    // ISO-ish: 2024-10-07 or 2024-10-07T...
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    // "07 Oct 2024"
+    const m = s.match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/);
+    if (m) {
+      const mm = MONTHS[m[2].toLowerCase()];
+      if (mm) return `${m[3]}-${mm}-${m[1].padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
+
 /** "$245,000" → 245000 (or null). */
 export function parsePrice(display: unknown): number | null {
   if (!display) return null;
@@ -155,10 +187,16 @@ export function mapItem(category: IngestCategory, it: DomainItem):
   const display = it.pricing?.display_price ?? undefined;
   const status = it.listing?.tags?.tag_text ?? undefined;
 
+  // Real listing date if the item carries one; otherwise OMIT so the DB default
+  // (first-seen) fills it on insert and re-scrapes leave it untouched.
+  const listedDate = parseListedDate(it);
+  const listedField = listedDate ? { listed_date: listedDate } : {};
+
   if (category === 'on-market') {
     const { low, high } = parsePriceRange(display);
     return {
       ...common,
+      ...listedField,
       display_price: display,
       price_low: low ?? undefined,
       price_high: high ?? undefined,
@@ -172,6 +210,7 @@ export function mapItem(category: IngestCategory, it: DomainItem):
   // rent
   return {
     ...common,
+    ...listedField,
     display_price: display,
     weekly_rent: parseWeeklyRent(display) ?? undefined,
     status,

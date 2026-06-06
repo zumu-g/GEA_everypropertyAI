@@ -978,6 +978,7 @@ export interface PropertyListingRecord {
   source: string;
   last_seen_at?: string;
   created_at?: string;
+  listed_date?: string;
   active?: boolean;
   raw_data?: Record<string, unknown>;
 }
@@ -1005,6 +1006,7 @@ export interface PropertyRentalRecord {
   source: string;
   last_seen_at?: string;
   created_at?: string;
+  listed_date?: string;
   active?: boolean;
   raw_data?: Record<string, unknown>;
 }

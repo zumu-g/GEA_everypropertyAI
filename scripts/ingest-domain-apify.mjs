@@ -125,6 +125,30 @@ function parseWeeklyRent(display) {
   return amts.length ? Math.min(...amts) : null;
 }
 
+// Real listing date if the item carries one, else null → caller omits listed_date
+// so the DB DEFAULT now() (first-seen) stands. Mirrors parseListedDate in
+// src/lib/ingest/domain-mapper.ts.
+function parseListedDate(it) {
+  const obj = it ?? {};
+  const listing = obj.listing ?? {};
+  const candidates = [
+    obj.dateListed, obj.date_listed, obj.listedDate, obj.listed_date,
+    listing.date_listed, listing.dateListed, listing.date_available, listing.dateAvailable,
+  ];
+  for (const c of candidates) {
+    if (c == null || c === '') continue;
+    const s = String(c).trim();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const m = s.match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/);
+    if (m) {
+      const mm = MONTHS[m[2].toLowerCase()];
+      if (mm) return `${m[3]}-${mm}-${m[1].padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
+
 function num(v) { return typeof v === 'number' ? v : null; }
 function smallint(v) {
   const n = typeof v === 'number' ? v : Number(v);
@@ -194,8 +218,10 @@ const CATEGORIES = {
       if (!rawAddress) return null;
       const display = it.pricing?.display_price ?? null;
       const { low, high } = parsePriceRange(display);
+      const listedDate = parseListedDate(it);
       return {
         raw_address: rawAddress,
+        ...(listedDate ? { listed_date: listedDate } : {}),
         suburb: titleCaseSuburb(loc.suburb),
         state: (loc.state ?? 'VIC').toUpperCase(),
         postcode: loc.postcode ?? null,
@@ -230,8 +256,10 @@ const CATEGORIES = {
       const rawAddress = (loc.display_address ?? '').trim();
       if (!rawAddress) return null;
       const display = it.pricing?.display_price ?? null;
+      const listedDate = parseListedDate(it);
       return {
         raw_address: rawAddress,
+        ...(listedDate ? { listed_date: listedDate } : {}),
         suburb: titleCaseSuburb(loc.suburb),
         state: (loc.state ?? 'VIC').toUpperCase(),
         postcode: loc.postcode ?? null,
