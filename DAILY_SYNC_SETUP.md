@@ -1,5 +1,18 @@
 # Daily property-data sync — setup
 
+> **CURRENT (2026-06-09): Bright Data Web Unlocker + GitHub Actions.**
+> The Domain Apify batch actor is permanently blocked by Domain's anti-bot (every run
+> SUCCEEDED with 0 items), so the daily sync now runs via **`.github/workflows/daily-domain-scrape.yml`**:
+> a cron workflow (21:00 UTC ≈ 7am Melbourne) that runs `scripts/ingest-domain-webunlocker.mjs`
+> for `sold` + `on-market`, fetching each Casey/Cardinia suburb's Domain page through Bright Data
+> Web Unlocker (managed anti-bot, ~$1.50/1k requests ≈ $5/mo) and upserting directly to Supabase.
+> The old Apify schedule `casey-cardinia-daily-7am` (`3nkBuED2E3SoLMbgZ`) is **DISABLED**.
+> Required GitHub repo secrets: `BRIGHTDATA_WEB_UNLOCKER_TOKEN`, `BRIGHTDATA_WEB_UNLOCKER_ZONE`,
+> `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. Run manually: Actions tab → "Daily Domain
+> scrape" → Run workflow. The Apify-actor approach below is retained for historical reference only.
+
+---
+
 Cost-effective, daily-updating Supabase database for sold + on-market (+ weekly rentals),
 driven by the **batch** Domain Apify actor (`0EXe0hsmDKWLI3JF9`, ~$1/1000 results) on an Apify
 schedule, with a webhook into the app that dedups + links + expires.

@@ -1,0 +1,41 @@
+name: Daily Domain scrape (Casey/Cardinia)
+
+# Scrapes Domain sold + on-market for the Casey/Cardinia suburbs via Bright Data
+# Web Unlocker and upserts into Supabase. Replaces the dead proxy-less Apify daily
+# schedule (which returned 0 items — Domain blocking).
+#
+# Schedule: 21:00 UTC daily = 7am AEST (Melbourne). NOTE: GitHub cron is UTC-only,
+# so during AEDT (Oct–Apr) this fires at 8am Melbourne — acceptable for a daily delta.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   BRIGHTDATA_WEB_UNLOCKER_TOKEN, BRIGHTDATA_WEB_UNLOCKER_ZONE,
+#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+
+on:
+  schedule:
+    - cron: '0 21 * * *'
+  workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
+
+concurrency:
+  group: daily-domain-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BRIGHTDATA_WEB_UNLOCKER_TOKEN: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_TOKEN }}
+      BRIGHTDATA_WEB_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_ZONE }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The runner uses only Node built-ins (fetch/fs/url/path) — no npm install needed.
+      - name: Scrape sold
+        run: node scripts/ingest-domain-webunlocker.mjs sold
+      - name: Scrape on-market
+        run: node scripts/ingest-domain-webunlocker.mjs on-market
