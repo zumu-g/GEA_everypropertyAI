@@ -7,6 +7,16 @@ name: Daily Domain scrape (Casey/Cardinia)
 # Schedule: 21:00 UTC daily = 7am AEST (Melbourne). NOTE: GitHub cron is UTC-only,
 # so during AEDT (Oct–Apr) this fires at 8am Melbourne — acceptable for a daily delta.
 #
+# Sharding: the 29 suburbs are split into 4 parallel jobs (matrix), each scraping a
+# disjoint slug slice for both categories. A full sequential sweep is ~58 fetches
+# (~75 min) which exceeded a single job's timeout; sharding cuts wall-clock to the
+# slowest shard (~15–20 min) and isolates failures. Each shard passes its slice via
+# the SLUGS env override the runner already supports. The runner upserts per-suburb,
+# so a shard killed mid-run still persists every suburb it fetched.
+#
+# To rebalance, edit the `slugs` lists below — every suburb must appear in exactly
+# one shard.
+#
 # Required repo secrets (Settings → Secrets and variables → Actions):
 #   BRIGHTDATA_WEB_UNLOCKER_TOKEN, BRIGHTDATA_WEB_UNLOCKER_ZONE,
 #   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
@@ -16,26 +26,41 @@ on:
     - cron: '0 21 * * *'
   workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
 
+# Allow the 4 shards of a single run to proceed in parallel (shard name is part of
+# the key), while preventing a new run from overlapping an in-flight one.
 concurrency:
-  group: daily-domain-scrape
+  group: daily-domain-scrape-${{ github.run_id }}-${{ matrix.name }}
   cancel-in-progress: false
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 30   # one shard is ~7–8 suburbs × 2 categories — generous headroom
+    strategy:
+      fail-fast: false    # one shard failing must not cancel the others
+      matrix:
+        include:
+          - name: shard0
+            slugs: 'berwick-vic-3806,narre-warren-vic-3805,narre-warren-south-vic-3805,cranbourne-vic-3977,cranbourne-east-vic-3977,cranbourne-north-vic-3977,cranbourne-west-vic-3977,hallam-vic-3803'
+          - name: shard1
+            slugs: 'hampton-park-vic-3976,doveton-vic-3177,endeavour-hills-vic-3802,lynbrook-vic-3975,lyndhurst-vic-3975,clyde-vic-3978,clyde-north-vic-3978'
+          - name: shard2
+            slugs: 'pakenham-vic-3810,officer-vic-3809,beaconsfield-vic-3807,beaconsfield-upper-vic-3808,emerald-vic-3782,cockatoo-vic-3781,gembrook-vic-3783'
+          - name: shard3
+            slugs: 'koo-wee-rup-vic-3981,nar-nar-goon-vic-3812,bunyip-vic-3815,garfield-vic-3814,tynong-vic-3813,cardinia-vic-3978,lang-lang-vic-3984'
     env:
       BRIGHTDATA_WEB_UNLOCKER_TOKEN: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_TOKEN }}
       BRIGHTDATA_WEB_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_ZONE }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SLUGS: ${{ matrix.slugs }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       # The runner uses only Node built-ins (fetch/fs/url/path) — no npm install needed.
-      - name: Scrape sold
+      - name: Scrape sold (${{ matrix.name }})
         run: node scripts/ingest-domain-webunlocker.mjs sold
-      - name: Scrape on-market
+      - name: Scrape on-market (${{ matrix.name }})
         run: node scripts/ingest-domain-webunlocker.mjs on-market
