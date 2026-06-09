@@ -412,9 +412,15 @@ function basicExtract(markdown: string, source: string): ExtractedPropertyData {
     raw.currentPrice = allPrices[0];
   }
 
-  // Price label
-  const priceLabelMatch = markdown.match(/((?:offers?\s+(?:over|above|from)|auction|contact\s+agent|price\s+guide|guide|expressions?\s+of\s+interest)[^\n]{0,60})/i);
-  if (priceLabelMatch) raw.priceLabel = priceLabelMatch[1].trim();
+  // Price label. The tail stops at markdown emphasis (`*`), JSON/markup (`{`, `<`,
+  // `}`), pipes and newlines so we capture a clean human label (e.g. "Auction",
+  // "Price guide $750,000") rather than leaking adjacent raw markup like
+  // `Auction:** {"dateTime":{...}}`.
+  const priceLabelMatch = markdown.match(/((?:offers?\s+(?:over|above|from)|auction|contact\s+agent|price\s+guide|guide|expressions?\s+of\s+interest)[^\n*{}<>|]{0,40})/i);
+  if (priceLabelMatch) {
+    const label = priceLabelMatch[1].replace(/[\s:*-]+$/, '').trim();
+    if (label) raw.priceLabel = label;
+  }
 
   // Year built
   const yearMatch = markdown.match(/(?:built|year\s*built|constructed)\s*(?:in\s*)?(\d{4})/i);
@@ -436,6 +442,30 @@ function basicExtract(markdown: string, source: string): ExtractedPropertyData {
   const imgMatches = [...markdown.matchAll(/(?:https?:\/\/[^\s"')]+\.(?:jpg|jpeg|png|webp))/gi)];
   if (imgMatches.length > 0) {
     raw.photos = [...new Set(imgMatches.map((m) => m[0]))].slice(0, 20);
+  }
+
+  // Sale history — best-effort from "sold" lines that pair a price with a date.
+  // Property-history sections render as e.g. "Sold $1,234,000 - 12 Mar 2021" or
+  // "Sold - May 2019 - $980,000". Capture both orderings; dedupe on date+price.
+  const sales: { date?: string; price?: number; type?: string }[] = [];
+  const DATE = '((?:\\d{1,2}\\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?\\s+\\d{4}|\\d{4})';
+  const PRICE = '\\$\\s*([\\d,]+)';
+  const priceFirst = new RegExp(`sold[^\\n$]{0,30}?${PRICE}[^\\n]{0,30}?${DATE}`, 'gi');
+  const dateFirst = new RegExp(`sold[^\\n]{0,30}?${DATE}[^\\n$]{0,30}?${PRICE}`, 'gi');
+  const pushSale = (priceStr: string, date: string) => {
+    const price = parseInt(priceStr.replace(/,/g, ''), 10);
+    if (price >= 50_000 && price <= 50_000_000) sales.push({ date: date.trim(), price, type: 'sold' });
+  };
+  for (const m of markdown.matchAll(priceFirst)) pushSale(m[1], m[2]);
+  for (const m of markdown.matchAll(dateFirst)) pushSale(m[2], m[1]);
+  if (sales.length > 0) {
+    const seen = new Set<string>();
+    raw.saleHistory = sales.filter((s) => {
+      const k = `${s.date}_${s.price}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   }
 
   return { source, raw, extractedAt: new Date() };

@@ -9,7 +9,13 @@ export const PROPERTY_EXTRACTION_SYSTEM_PROMPT = `You are an expert Australian p
 
 IMPORTANT RULES:
 - Return ONLY valid JSON. No explanation, no markdown fences, no commentary.
+- ONLY extract values that appear VERBATIM in the provided content. Every value you
+  return is verified against the source text downstream and SILENTLY DISCARDED if it
+  cannot be found there — so inventing data wastes effort and helps no one.
 - If a field cannot be found, OMIT it entirely — do NOT guess, fabricate, or set to null.
+- NEVER invent agent names, agencies, prices, dates, or counts. Do NOT emit placeholder
+  values (e.g. "Jane Doe", "John Smith"), rounded guesses, or inferred figures. Returning
+  fewer fields is always correct; a complete-looking but invented record is a failure.
 - Dates should be ISO-8601 format (YYYY-MM-DD) where possible.
 - Prices should be plain numbers (no dollar signs, no commas).
 - Areas should be in square metres as numbers.

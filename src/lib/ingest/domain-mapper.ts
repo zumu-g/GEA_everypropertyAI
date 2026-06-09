@@ -138,7 +138,7 @@ export function slugForRawAddress(raw: string): string | null {
   }
 }
 
-type DomainItem = {
+export type DomainItem = {
   url?: string;
   dateListed?: string;
   date_listed?: string;

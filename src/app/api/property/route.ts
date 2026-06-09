@@ -76,9 +76,10 @@ export async function POST(request: NextRequest) {
 
   const slug = toSlug(address);
 
-  // 1. Check in-memory cache
+  // 1. Check in-memory cache. A full (non-fast) request must NOT be served a
+  // previously-cached fast partial — fall through to a complete crawl instead.
   const cached = propertyCache.get(slug);
-  if (cached) {
+  if (cached && (fast || cached.crawlMode !== 'fast')) {
     const overrides = await getOverrides(slug);
     const finalProfile = applyOverrides(cached, overrides);
     return NextResponse.json(
@@ -93,9 +94,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 1b. Try Supabase cache (persistent, survives restarts)
+  // 1b. Try Supabase cache (persistent, survives restarts). Same fast-partial
+  // guard as the in-memory cache above.
   const supabaseCached = await getCachedProfile(slug);
-  if (supabaseCached) {
+  if (supabaseCached && (fast || supabaseCached.crawlMode !== 'fast')) {
     propertyCache.set(slug, supabaseCached); // warm in-memory cache
     const overrides = await getOverrides(slug);
     const finalProfile = applyOverrides(supabaseCached, overrides);

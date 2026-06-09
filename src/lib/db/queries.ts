@@ -1039,6 +1039,35 @@ export function insertPropertyRentals(rows: PropertyRentalRecord[]): Promise<voi
   return upsertRows('property_rentals', rows, 'raw_address,source');
 }
 
+export interface FeedHealthUpdate {
+  category: 'sold' | 'on-market' | 'rent';
+  source_used?: string;
+  items: number;
+  newest_row_at?: string | null;
+  status: 'ok' | 'blocked' | 'broken';
+}
+
+/** Upsert a feed_health row after an ingest run (migration 007). Fail-soft. */
+export async function writeFeedHealth(h: FeedHealthUpdate): Promise<void> {
+  if (!isSupabaseConfigured()) return;
+  const nowIso = new Date().toISOString();
+  const { error } = await supabase()
+    .from('feed_health')
+    .upsert(
+      {
+        category: h.category,
+        last_run_at: nowIso,
+        source_used: h.source_used ?? null,
+        items: h.items,
+        newest_row_at: h.newest_row_at ?? null,
+        status: h.status,
+        updated_at: nowIso,
+      },
+      { onConflict: 'category' },
+    );
+  if (error) console.error('[writeFeedHealth]', error.message);
+}
+
 export interface ListingQueryFilters {
   /** Only listings listed within the last N days (by listed_date, falling back to created_at). */
   sinceDays?: number;

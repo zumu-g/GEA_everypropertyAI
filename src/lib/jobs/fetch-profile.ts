@@ -13,6 +13,8 @@ import { crawlProperty } from '@/lib/firecrawl/orchestrator';
 import { extractPropertyData } from '@/lib/extraction/extractor';
 import { scrapeAndExtract } from '@/lib/firecrawl/client';
 import { mergePropertyData } from '@/lib/extraction/merger';
+import { groundFields } from '@/lib/extraction/grounding';
+import { geocodeAddress } from '@/lib/enrichment/geocoding';
 import { saveCachedProfile, getCachedProfile } from '@/lib/db/queries';
 import type { ExtractedPropertyData } from '@/types/property';
 
@@ -70,6 +72,21 @@ export async function fetchAndCacheProfile(
   return run;
 }
 
+/**
+ * Drop any extracted field whose value isn't present in the source content it
+ * came from. Grounds both `.raw` and (when present) the schema-parsed `.data`.
+ * The resolved address/coordinates are seeded separately after merge and are
+ * never passed through grounding (trusted non-LLM source).
+ */
+function groundExtraction(
+  ext: ExtractedPropertyData,
+  sourceText: string
+): ExtractedPropertyData {
+  const raw = groundFields(ext.raw ?? {}, sourceText);
+  const data = ext.data ? groundFields(ext.data, sourceText) : undefined;
+  return { ...ext, raw, data };
+}
+
 async function doFetchAndCacheProfile(
   address: StructuredAddress,
   slug: string,
@@ -93,20 +110,38 @@ async function doFetchAndCacheProfile(
   const fullAddress = formatAddress(address);
   const extractions: ExtractedPropertyData[] = await Promise.all(
     successful.map(async (r) => {
+      let ext: ExtractedPropertyData | undefined;
       if (EXTRACTION_PROVIDER === 'firecrawl' && r.url) {
         const fc = await scrapeAndExtract(r.url, r.source);
-        if (fc && Object.keys(fc.raw).length > 0) return fc;
+        if (fc && Object.keys(fc.raw).length > 0) ext = fc;
       }
-      return extractPropertyData(r.markdown ?? '', r.source, fullAddress);
+      if (!ext) ext = await extractPropertyData(r.markdown ?? '', r.source, fullAddress);
+      // Grounding: keep only values provably present in this source's scraped
+      // content. Eliminates LLM-fabricated fields (whether from our own extractor
+      // or Firecrawl's LLM-backed /extract) before they can reach the merge.
+      return groundExtraction(ext, r.markdown ?? '');
     })
   );
 
   // Step 3: merge into a unified profile
   const profile = mergePropertyData(extractions);
+  profile.crawlMode = fast ? 'fast' : 'full';
+
+  // Whether the *crawl* yielded anything — computed before we seed the resolved
+  // address, so an address-only profile (empty crawl) is still treated as empty
+  // and left uncached for retry, rather than masking a failed crawl.
+  const crawlEmpty =
+    profile.sources.length === 0 || Object.keys(profile.data).length === 0;
+
+  // Step 3b: seed the authoritative resolved address + coordinates. The scrapers
+  // don't reliably emit a structured address (the Firecrawl schema has no address
+  // field, and the regex fallback doesn't populate one), so the merged address was
+  // always {}. The caller-resolved StructuredAddress is the source of truth — overlay
+  // it, and geocode for coordinates (Mapbox) since address-suggest returns none.
+  await seedResolvedAddress(profile, address);
 
   // Step 4: cache — never cache an empty lookup (would block re-crawl for 24h)
-  const empty = profile.sources.length === 0 || Object.keys(profile.data).length === 0;
-  if (empty) {
+  if (crawlEmpty) {
     console.warn(`[fetch-profile] Empty profile for "${slug}" — not caching`);
     return { profile, slug, empty: true };
   }
@@ -117,4 +152,46 @@ async function doFetchAndCacheProfile(
   );
 
   return { profile, slug, empty: false };
+}
+
+/**
+ * Overlay the caller-resolved address (the source of truth) onto the merged
+ * profile and attach geocoded coordinates. Mutates `profile.data.address` and
+ * the flat `latitude`/`longitude` fields. Always runs — even on an empty crawl —
+ * so consumers (e.g. findAI) always get a populated, structured address.
+ */
+async function seedResolvedAddress(
+  profile: PropertyProfile,
+  address: StructuredAddress
+): Promise<void> {
+  // Prefer coordinates already on the resolved address; otherwise geocode.
+  let coordinates = address.coordinates;
+  if (!coordinates) {
+    const geo = await geocodeAddress(formatAddress(address)).catch(() => null);
+    if (geo) coordinates = { latitude: geo.lat, longitude: geo.lng };
+  }
+
+  const extracted = (profile.data.address ?? {}) as Record<string, unknown>;
+  const resolvedAddress: Record<string, unknown> = {
+    // Extracted address fields (e.g. lot/plan) are kept, but the resolved values win.
+    ...extracted,
+    streetNumber: address.streetNumber,
+    streetName: address.streetName,
+    streetType: address.streetType,
+    suburb: address.suburb,
+    state: address.state,
+    postcode: address.postcode,
+    displayAddress: address.displayAddress ?? formatAddress(address),
+    ...(address.localGovernmentArea ? { localGovernmentArea: address.localGovernmentArea } : {}),
+    ...(coordinates ? { coordinates } : {}),
+  };
+
+  profile.data.address = resolvedAddress;
+  profile.fieldConfidences['address'] = { confidence: 100, contributedBy: ['resolved-address'] };
+
+  // Mirror coordinates to the flat lat/lng fields the merger/consumers also read.
+  if (coordinates) {
+    profile.data.latitude = coordinates.latitude;
+    profile.data.longitude = coordinates.longitude;
+  }
 }

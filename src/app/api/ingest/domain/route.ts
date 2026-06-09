@@ -11,6 +11,7 @@ import {
   insertPropertySales,
   insertPropertyListings,
   insertPropertyRentals,
+  writeFeedHealth,
   insertAddresses,
   expireNotSeen,
   type PropertySaleRecord,
@@ -52,27 +53,37 @@ export async function POST(request: NextRequest) {
   // MAX_RUN_ATTEMPTS instead of looping (and burning $) forever.
   const attempt = Math.max(1, Number(searchParams.get('attempt')) || 1);
 
-  const apifyToken = process.env.APIFY_API_TOKEN;
-  if (!apifyToken) {
-    return NextResponse.json({ error: 'APIFY_API_TOKEN not set' }, { status: 500 });
+  // Read the body once: it carries either a pushed { items: [...] } batch
+  // (direct-items mode — used by the Web Unlocker feed runner, which does its own
+  // fetch + extract + fallback) or the Apify webhook payload (dataset mode).
+  let body: { items?: unknown; resource?: { defaultDatasetId?: string }; datasetId?: string } | null = null;
+  try { body = await request.json(); } catch { /* no body */ }
+
+  const directItems: unknown[] | null = Array.isArray(body?.items) ? body!.items as unknown[] : null;
+
+  let datasetId = searchParams.get('datasetId') ?? undefined;
+  if (!directItems && !datasetId) {
+    datasetId = body?.resource?.defaultDatasetId ?? body?.datasetId;
   }
 
-  // Dataset id from query or the Apify webhook payload.
-  let datasetId = searchParams.get('datasetId') ?? undefined;
-  if (!datasetId) {
-    try {
-      const body = await request.json();
-      datasetId = body?.resource?.defaultDatasetId ?? body?.datasetId;
-    } catch {
-      /* no body */
+  const apifyToken = process.env.APIFY_API_TOKEN;
+  if (!directItems) {
+    if (!apifyToken) {
+      return NextResponse.json({ error: 'APIFY_API_TOKEN not set' }, { status: 500 });
     }
-  }
-  if (!datasetId) {
-    return NextResponse.json({ error: 'datasetId required (query or webhook payload)' }, { status: 400 });
+    if (!datasetId) {
+      return NextResponse.json(
+        { error: 'datasetId or items[] required (query, webhook payload, or direct push)' },
+        { status: 400 },
+      );
+    }
   }
 
   const runStart = new Date().toISOString();
   const { table } = CATEGORY_TABLE[category];
+  // Which fetch source produced this batch (for feed_health). The Web Unlocker
+  // runner passes ?source=...; the legacy Apify webhook path defaults to 'apify'.
+  const feedSource = searchParams.get('source') ?? (directItems ? 'direct' : 'apify');
 
   const sales: PropertySaleRecord[] = [];
   const listings: PropertyListingRecord[] = [];
@@ -82,18 +93,10 @@ export async function POST(request: NextRequest) {
   let processed = 0;
   let skipped = 0;
 
-  const PAGE = 1000;
-  let offset = 0;
-  for (;;) {
-    const url = `${APIFY_BASE}/datasets/${datasetId}/items?token=${apifyToken}&clean=true&offset=${offset}&limit=${PAGE}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      return NextResponse.json({ error: `Apify items HTTP ${res.status}` }, { status: 502 });
-    }
-    const items = (await res.json()) as unknown[];
-    if (!Array.isArray(items) || items.length === 0) break;
-
-    for (const it of items) {
+  // Map + service-area-guard + accumulate one batch of raw items. Shared by the
+  // direct-items push and the Apify dataset paging so both modes persist identically.
+  const ingestItems = (rawItems: unknown[]) => {
+    for (const it of rawItems) {
       const row = mapItem(category, it as Parameters<typeof mapItem>[1]);
       if (!row) { skipped++; continue; }
       // Hard service-area guard: never store anything outside Casey/Cardinia,
@@ -128,9 +131,25 @@ export async function POST(request: NextRequest) {
         rentals.push({ ...(row as PropertyRentalRecord), last_seen_at: runStart, active: true });
       }
     }
+  };
 
-    offset += items.length;
-    if (items.length < PAGE) break;
+  if (directItems) {
+    ingestItems(directItems);
+  } else {
+    const PAGE = 1000;
+    let offset = 0;
+    for (;;) {
+      const url = `${APIFY_BASE}/datasets/${datasetId}/items?token=${apifyToken}&clean=true&offset=${offset}&limit=${PAGE}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        return NextResponse.json({ error: `Apify items HTTP ${res.status}` }, { status: 502 });
+      }
+      const items = (await res.json()) as unknown[];
+      if (!Array.isArray(items) || items.length === 0) break;
+      ingestItems(items);
+      offset += items.length;
+      if (items.length < PAGE) break;
+    }
   }
 
   // ── Blocked/empty-run guard ────────────────────────────────────────────────
@@ -139,7 +158,10 @@ export async function POST(request: NextRequest) {
   // re-trigger a fresh run (blocking is transient) until we get data or exhaust
   // MAX_RUN_ATTEMPTS — then return non-2xx so the schedule's failure alert fires.
   if (processed === 0) {
-    if (attempt < MAX_RUN_ATTEMPTS) {
+    // Direct-items mode: the feed runner already did its own retries + source
+    // fallback before pushing, so a 0 here means "all sources dry" — just report
+    // blocked (no retrigger, no expiry).
+    if (attempt < MAX_RUN_ATTEMPTS && !directItems) {
       try {
         const origin = process.env.INGEST_PUBLIC_ORIGIN || request.nextUrl.origin;
         const runId = await retriggerDomainRun(
@@ -164,12 +186,13 @@ export async function POST(request: NextRequest) {
       }
     }
     // Exhausted: surface a failure (non-2xx) so notifications fire. No expiry.
+    await writeFeedHealth({ category, source_used: feedSource, items: 0, status: 'blocked' });
     return NextResponse.json(
       {
         category, datasetId, processed: 0,
         status: 'blocked',
         attempt,
-        message: `Scraper returned 0 items after ${MAX_RUN_ATTEMPTS} attempts — Domain is blocking. Existing data left untouched.`,
+        message: `Scraper returned 0 items${directItems ? ' (all sources dry)' : ` after ${MAX_RUN_ATTEMPTS} attempts — Domain is blocking`}. Existing data left untouched.`,
       },
       { status: 502 },
     );
@@ -189,6 +212,14 @@ export async function POST(request: NextRequest) {
     expired = await expireNotSeen(table as 'property_listings' | 'property_rentals', [...suburbs], runStart);
   }
 
+  await writeFeedHealth({
+    category,
+    source_used: feedSource,
+    items: processed,
+    newest_row_at: runStart,
+    status: 'ok',
+  });
+
   return NextResponse.json({
     category,
     table,
@@ -199,5 +230,6 @@ export async function POST(request: NextRequest) {
     addressesAugmented: addressBySlug.size,
     suburbs: [...suburbs],
     expired,
+    source: feedSource,
   });
 }
