@@ -176,7 +176,10 @@ async function main() {
   const slugs = process.env.SLUGS ? process.env.SLUGS.split(',').map(s=>s.trim()).filter(Boolean) : SUBURB_SLUGS.slice(0, maxSuburbs);
   console.log(`\n=== ${category} via Web Unlocker (${slugs.length} suburbs) ===`);
 
-  const rows = [];
+  // Upsert each suburb's rows as they're parsed, rather than accumulating the
+  // whole sweep and writing once at the end. This persists partial progress: an
+  // interrupted run (e.g. job timeout) keeps every suburb fetched before the kill.
+  let totalUpserted = 0;
   let zeroYield = [];
   for (const slug of slugs) {
     const url = `https://www.domain.com.au/${cfg.path}/${slug}/`;
@@ -184,18 +187,23 @@ async function main() {
       const html = await fetchPage(url);
       const nodes = extractListings(html);
       const mapped = nodes.map(n=>mapListing(category, n)).filter(Boolean).filter(r=>inArea(r.suburb));
-      rows.push(...mapped);
-      console.log(`  ${slug}: ${nodes.length} listings → ${mapped.length} in-area`);
-      if (mapped.length === 0) zeroYield.push(slug);
+      if (mapped.length === 0) {
+        zeroYield.push(slug);
+        console.log(`  ${slug}: ${nodes.length} listings → 0 in-area`);
+        continue;
+      }
+      // A failed upsert for one suburb must not abort the sweep — upsert() logs
+      // chunk errors and returns a count without throwing on non-2xx responses.
+      const upserted = await upsert(cfg.table, cfg.conflict, mapped);
+      totalUpserted += upserted;
+      console.log(`  ${slug}: ${nodes.length} listings → ${mapped.length} in-area → ${upserted} upserted`);
     } catch (e) {
       console.error(`  ${slug}: FAILED ${e.message}`);
       zeroYield.push(slug);
     }
   }
 
-  console.log(`\nTotal in-area rows: ${rows.length}. Upserting into ${cfg.table}...`);
-  const upserted = await upsert(cfg.table, cfg.conflict, rows);
-  console.log(`Upserted ${upserted} rows. Zero-yield suburbs: ${zeroYield.length ? zeroYield.join(', ') : 'none'}`);
+  console.log(`\nUpserted ${totalUpserted} rows into ${cfg.table}. Zero-yield suburbs: ${zeroYield.length ? zeroYield.join(', ') : 'none'}`);
 }
 
 main().catch(e=>{ console.error(e); process.exit(1); });
