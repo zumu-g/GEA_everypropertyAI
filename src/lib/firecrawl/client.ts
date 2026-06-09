@@ -125,6 +125,19 @@ export async function scrapeAndExtract(
       return null;
     }
 
+    // Normalise Firecrawl schema field names to the flat keys the merger reads.
+    // Without this, area/price fields are silently dropped on the merge.
+    const FIELD_ALIASES: Record<string, string> = {
+      landAreaSqm: 'landArea',
+      buildingAreaSqm: 'buildingArea',
+      priceText: 'priceLabel',
+    };
+    for (const [from, to] of Object.entries(FIELD_ALIASES)) {
+      if (json[from] !== undefined && json[to] === undefined) {
+        json[to] = json[from];
+      }
+    }
+
     return { source, raw: json, extractedAt: new Date() };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown extract error';

@@ -672,4 +672,10 @@ export interface MergedPropertyProfile {
     hasErrors: boolean;
   }[];
   mergedAt: Date;
+  /**
+   * Which crawl produced this profile. 'fast' is a quick partial (high-value
+   * sources only) cached so a full request can detect it and force a complete
+   * crawl rather than serving the thin partial. Absent on legacy cached entries.
+   */
+  crawlMode?: 'fast' | 'full';
 }
