@@ -26,10 +26,11 @@ on:
     - cron: '0 21 * * *'
   workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
 
-# Allow the 4 shards of a single run to proceed in parallel (shard name is part of
-# the key), while preventing a new run from overlapping an in-flight one.
+# Workflow-level concurrency groups the whole run, so a new scheduled run waits for
+# an in-flight one rather than overlapping. The 4 shards within a single run still
+# parallelise (job-level concurrency can't key on matrix and would serialise them).
 concurrency:
-  group: daily-domain-scrape-${{ github.run_id }}-${{ matrix.name }}
+  group: daily-domain-scrape
   cancel-in-progress: false
 
 jobs:
