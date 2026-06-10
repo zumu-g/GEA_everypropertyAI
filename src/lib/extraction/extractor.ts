@@ -1,5 +1,6 @@
 import type { ExtractedPropertyData, PropertySummary } from '@/types/property';
 import { propertyExtractionSchema } from './schemas';
+import { extractionMatchesTarget } from './address-match';
 import {
   PROPERTY_EXTRACTION_SYSTEM_PROMPT,
   PROPERTY_EXTRACTION_USER_PROMPT,
@@ -169,28 +170,6 @@ async function callAnthropic(
 
 // ─── Address Validation ─────────────────────────────────────────────────────
 
-/**
- * Check if extracted address roughly matches the target address.
- * Returns true if they match or if we can't determine (benefit of the doubt).
- */
-function addressMatchesTarget(extracted: Record<string, unknown>, targetAddress: string): boolean {
-  const extractedAddr = extracted.address as Record<string, unknown> | undefined;
-  const extractedDisplay = String(extractedAddr?.displayAddress ?? extractedAddr?.streetNumber ?? '').toLowerCase();
-  const target = targetAddress.toLowerCase();
-
-  // Extract street number and name from target for comparison
-  const targetParts = target.match(/(\d+)\s+(\w+)/);
-  if (!targetParts) return true; // Can't validate, allow through
-
-  const [, streetNum, streetName] = targetParts;
-
-  // If extracted data has address info, verify it matches
-  if (extractedAddr?.streetNumber && String(extractedAddr.streetNumber) !== streetNum) return false;
-  if (extractedAddr?.streetName && !String(extractedAddr.streetName).toLowerCase().includes(streetName)) return false;
-
-  return true;
-}
-
 // ─── Extraction Functions ───────────────────────────────────────────────────
 
 /**
@@ -231,9 +210,14 @@ export async function extractPropertyData(
       return basicExtract(markdown, source);
     }
 
-    // Post-extraction address validation
-    if (targetAddress && !addressMatchesTarget(rawJson, targetAddress)) {
-      console.warn(`[extractor] Extracted address does not match target "${targetAddress}" for ${source} — data may be for wrong property`);
+    // Post-extraction address validation. Enforcement (dropping a mismatched
+    // extraction) happens at the merge gate in fetch-profile.ts, which covers
+    // both this LLM path and the Firecrawl-native path; here we just surface it.
+    if (
+      targetAddress &&
+      extractionMatchesTarget({ source, raw: rawJson, extractedAt: new Date() }, targetAddress) === 'mismatch'
+    ) {
+      console.warn(`[extractor] Extracted address contradicts target "${targetAddress}" for ${source} — will be dropped before merge`);
     }
 
     // Validate against Zod schema

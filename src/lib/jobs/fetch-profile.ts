@@ -13,6 +13,7 @@ import { crawlProperty } from '@/lib/firecrawl/orchestrator';
 import { extractPropertyData } from '@/lib/extraction/extractor';
 import { scrapeAndExtract } from '@/lib/firecrawl/client';
 import { mergePropertyData } from '@/lib/extraction/merger';
+import { partitionByAddressMatch } from '@/lib/extraction/address-match';
 import { groundFields } from '@/lib/extraction/grounding';
 import { geocodeAddress } from '@/lib/enrichment/geocoding';
 import { saveCachedProfile, getCachedProfile, getFeedSeedBySlug } from '@/lib/db/queries';
@@ -124,8 +125,18 @@ async function doFetchAndCacheProfile(
     })
   );
 
+  // Step 2b: address guard — drop any extraction whose address CONFIDENTLY
+  // contradicts the target (a neighbouring listing that blended in via a guessed
+  // REA URL). 'abstain' (no usable address) is kept; the Apify item-selection
+  // gate is the primary defence there. Covers both the LLM and Firecrawl-native
+  // extraction paths (plan 008).
+  const { kept: matched, droppedCount } = partitionByAddressMatch(extractions, address);
+  if (droppedCount > 0) {
+    console.warn(`[fetch-profile] Dropped ${droppedCount} extraction(s) for "${slug}" — address contradicted target`);
+  }
+
   // Step 3: merge into a unified profile
-  const profile = mergePropertyData(extractions);
+  const profile = mergePropertyData(matched);
   profile.crawlMode = fast ? 'fast' : 'full';
 
   // Whether the *crawl* yielded anything — computed before we seed the resolved
