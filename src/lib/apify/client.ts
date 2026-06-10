@@ -1,4 +1,5 @@
 import type { CrawlResult } from '@/types/crawl';
+import type { StructuredAddress } from '@/types/property';
 import { actorItemsToMarkdown } from './format';
 
 const APIFY_BASE = 'https://api.apify.com/v2';
@@ -66,7 +67,8 @@ export async function scrapeWithApify(
   url: string,
   source: string,
   actorId: string,
-  extraInput?: Record<string, unknown>
+  extraInput?: Record<string, unknown>,
+  targetAddress?: string | StructuredAddress
 ): Promise<CrawlResult> {
   try {
     const token = getToken();
@@ -128,7 +130,7 @@ export async function scrapeWithApify(
       source,
       url,
       status: 'success',
-      markdown: actorItemsToMarkdown(items),
+      markdown: actorItemsToMarkdown(items, targetAddress),
       metadata: { apifyRunId: run.id, itemCount: items.length },
       crawledAt: new Date(),
     };

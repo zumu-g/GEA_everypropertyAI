@@ -110,7 +110,8 @@ export async function crawlProperty(
               target,
               source.name,
               apifyActorId,
-              source.options?.apifyInput as Record<string, unknown> | undefined
+              source.options?.apifyInput as Record<string, unknown> | undefined,
+              address
             )
           : Promise.resolve<CrawlResult>({
               source: source.name,

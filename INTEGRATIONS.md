@@ -48,6 +48,10 @@ the row's first-seen timestamp (migration `006_listed_date.sql`).
   profile (`source: 'queued'`, confidence 0) and is **not** cached, so it can be retried.
 - **`fast: true`** is the only background/partial path: a trimmed crawl answers immediately
   while the full crawl fills the cache. Response shape, auth and CORS are unchanged.
+- **Cache-bust:** `POST /api/property { address, refresh: true }` (or `?refresh=1`) skips the cache,
+  evicts the stale record (in-memory + Supabase `property_cache`), and re-crawls — use it to correct a
+  wrong cached profile. Manual fallback when operating Supabase directly:
+  `DELETE FROM property_cache WHERE address_slug = '<slug>';` (e.g. `120-moondarra-drive-berwick-vic-3806`).
 
 ## Consumer config (set on each sibling app's Railway service)
 
