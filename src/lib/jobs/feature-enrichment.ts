@@ -15,8 +15,10 @@
 
 import type { PlanningData } from '@/lib/enrichment/planning';
 import type { NearbyTransport } from '@/lib/enrichment/transport';
+import type { SchoolZones } from '@/lib/enrichment/school-zones';
 import { fetchPlanningData } from '@/lib/enrichment/planning';
 import { fetchNearbyTransport } from '@/lib/enrichment/transport';
+import { resolveSchoolZones } from '@/lib/enrichment/school-zones';
 import {
   selectFeatureEnrichmentCandidates,
   getFreshFeatureSlugs,
@@ -24,7 +26,7 @@ import {
   type PropertyFeatureRow,
 } from '@/lib/db/queries';
 
-export const FEATURE_SOURCE = 'vic-planning+nominatim';
+export const FEATURE_SOURCE = 'vic-planning+nominatim+det-zones';
 
 export interface FeatureEnrichmentResult {
   scanned: number;
@@ -41,6 +43,7 @@ export function buildFeatureRow(
   slug: string,
   planning: PlanningData | null,
   transport: NearbyTransport[],
+  zones: SchoolZones,
   fetchedAtIso: string
 ): PropertyFeatureRow {
   const row: PropertyFeatureRow = { address_slug: slug, source: FEATURE_SOURCE, fetched_at: fetchedAtIso };
@@ -58,6 +61,9 @@ export function buildFeatureRow(
     row.nearest_station_name = station.name;
     row.nearest_station_km = station.distanceKm;
   }
+
+  if (zones.primary) row.school_zone_primary = zones.primary;
+  if (zones.secondary) row.school_zone_secondary = zones.secondary;
 
   return row;
 }
@@ -85,7 +91,16 @@ export async function enrichFeaturesForPoint(
     }),
   ]);
 
-  return buildFeatureRow(slug, planning, transport, fetchedAtIso);
+  // School zones are a local (no-network) lookup, but isolate it too so a
+  // reference-data/parse problem can never fail the row (R4).
+  let zones: SchoolZones = {};
+  try {
+    zones = resolveSchoolZones(lat, lng);
+  } catch (e) {
+    console.warn(`[feature-enrichment] school-zone lookup failed for ${slug}:`, e);
+  }
+
+  return buildFeatureRow(slug, planning, transport, zones, fetchedAtIso);
 }
 
 /**
