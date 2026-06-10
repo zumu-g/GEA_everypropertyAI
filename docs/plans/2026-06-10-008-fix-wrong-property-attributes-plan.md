@@ -1,6 +1,6 @@
 ---
 title: "fix: /api/property attaches a neighbour's listing attributes (wrong-property match)"
-status: active
+status: completed
 date: 2026-06-10
 type: fix
 ---
