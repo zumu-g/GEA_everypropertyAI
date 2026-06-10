@@ -29,6 +29,26 @@ exposes these as `rentals --min-rent/--max-rent/--listed-within 1m|3m|6m|12m|2y`
 `listings --listed-within …`. `listed_date` is the scraped Domain listing date when available, else
 the row's first-seen timestamp (migration `006_listed_date.sql`).
 
+### `/api/property` contract (per-property profile)
+
+`POST /api/property { address, fast? }` returns `{ profile, source, addressSlug }`.
+
+- **`fast: false` (default) is a single synchronous call — no polling.** The pipeline
+  (crawl → extract → merge → seed) runs to completion within the request (≤110s) and the
+  response carries the final profile. Callers (the `proposal`/`property` CMA CLI) read it
+  directly; there is no background job to poll.
+- **Profiles are seeded from our own feeds.** When the live crawl yields nothing (Domain
+  bot-block / unconfigured sources in prod), the profile is gap-filled from
+  `property_sales` → `property_listings` → `property_rentals` (best/most-recent row for the
+  `address_slug`) as a low-confidence `property-feed` source: property type, beds, baths,
+  car spaces, land area, a price band (`priceLow/Mid/High`) and a hero photo. So any address
+  present in our feeds returns populated attributes with `overallConfidence > 0`, independent
+  of crawl health. A real crawl extraction always wins (the feed only fills gaps).
+- An address absent from every feed **and** with a failed crawl returns an address-only
+  profile (`source: 'queued'`, confidence 0) and is **not** cached, so it can be retried.
+- **`fast: true`** is the only background/partial path: a trimmed crawl answers immediately
+  while the full crawl fills the cache. Response shape, auth and CORS are unchanged.
+
 ## Consumer config (set on each sibling app's Railway service)
 
 Both GEA_HR_recruitAI and GEA_ST_proposals:

@@ -1039,6 +1039,57 @@ export function insertPropertyRentals(rows: PropertyRentalRecord[]): Promise<voi
   return upsertRows('property_rentals', rows, 'raw_address,source');
 }
 
+// ─── Feed-seed lookup (per-property profile fallback) ────────────────────────
+
+export type FeedKind = 'sold' | 'on-market' | 'rent';
+
+export interface FeedSeed {
+  feed: FeedKind;
+  /** The raw feed row (select('*')) — column shapes per PropertySale/Listing/RentalRecord. */
+  row: Record<string, unknown>;
+}
+
+/**
+ * Fetch the single best feed row for an `address_slug` to seed a property
+ * profile when the live crawl yields nothing. Precedence: sold → on-market →
+ * rent; most recent row within a category. Selects all columns (so newer
+ * attribute columns are picked up without a code change) and fails soft —
+ * Supabase unconfigured or any query error returns null rather than throwing.
+ *
+ * Mirrors how the healthy direct-DB endpoints read these tables; the returned
+ * row is mapped into merger field keys by `mapFeedRowToProfileFields`.
+ */
+export async function getFeedSeedBySlug(slug: string): Promise<FeedSeed | null> {
+  if (!isSupabaseConfigured() || !slug) return null;
+
+  const lookups: Array<{ feed: FeedKind; table: string; orderBy: string }> = [
+    { feed: 'sold', table: 'property_sales', orderBy: 'sale_date' },
+    { feed: 'on-market', table: 'property_listings', orderBy: 'last_seen_at' },
+    { feed: 'rent', table: 'property_rentals', orderBy: 'last_seen_at' },
+  ];
+
+  for (const { feed, table, orderBy } of lookups) {
+    try {
+      const { data, error } = await supabase()
+        .from(table)
+        .select('*')
+        .eq('address_slug', slug)
+        .order(orderBy, { ascending: false, nullsFirst: false })
+        .limit(1);
+      if (error) {
+        console.warn(`[getFeedSeedBySlug] ${table} error:`, error.message);
+        continue;
+      }
+      const row = data?.[0] as Record<string, unknown> | undefined;
+      if (row) return { feed, row };
+    } catch (e) {
+      console.warn(`[getFeedSeedBySlug] ${table} threw:`, e);
+    }
+  }
+
+  return null;
+}
+
 export interface FeedHealthUpdate {
   category: 'sold' | 'on-market' | 'rent';
   source_used?: string;
