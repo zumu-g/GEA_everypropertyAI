@@ -15,7 +15,8 @@ import { scrapeAndExtract } from '@/lib/firecrawl/client';
 import { mergePropertyData } from '@/lib/extraction/merger';
 import { groundFields } from '@/lib/extraction/grounding';
 import { geocodeAddress } from '@/lib/enrichment/geocoding';
-import { saveCachedProfile, getCachedProfile } from '@/lib/db/queries';
+import { saveCachedProfile, getCachedProfile, getFeedSeedBySlug } from '@/lib/db/queries';
+import { mapFeedRowToProfileFields, applyFeedSeed } from '@/lib/jobs/feed-seed';
 import type { ExtractedPropertyData } from '@/types/property';
 
 // When 'firecrawl', use Firecrawl's native /extract (structured JSON) instead of
@@ -133,6 +134,12 @@ async function doFetchAndCacheProfile(
   const crawlEmpty =
     profile.sources.length === 0 || Object.keys(profile.data).length === 0;
 
+  // Step 3a: seed structured attributes from our own feeds (sold → on-market →
+  // rent). Gap-fill only — a value the crawl already merged is never overwritten
+  // (crawl wins), so the feed only fills what the crawl left empty. This makes
+  // the profile useful even when the live crawl yields nothing in prod.
+  const feedSeeded = await seedFromFeed(profile, slug);
+
   // Step 3b: seed the authoritative resolved address + coordinates. The scrapers
   // don't reliably emit a structured address (the Firecrawl schema has no address
   // field, and the regex fallback doesn't populate one), so the merged address was
@@ -140,8 +147,17 @@ async function doFetchAndCacheProfile(
   // it, and geocode for coordinates (Mapbox) since address-suggest returns none.
   await seedResolvedAddress(profile, address);
 
+  // A profile carrying feed-seeded attributes is NOT empty even when the crawl
+  // failed — recompute its confidence (the merger left it at 0) so consumers
+  // (proposal CLI, CMA pack) get a non-zero score. Only an address-with-no-feed
+  // profile stays empty and uncached (retryable).
+  const isEmpty = crawlEmpty && !feedSeeded;
+  if (feedSeeded) {
+    profile.overallConfidence = recomputeOverallConfidence(profile);
+  }
+
   // Step 4: cache — never cache an empty lookup (would block re-crawl for 24h)
-  if (crawlEmpty) {
+  if (isEmpty) {
     console.warn(`[fetch-profile] Empty profile for "${slug}" — not caching`);
     return { profile, slug, empty: true };
   }
@@ -194,4 +210,29 @@ async function seedResolvedAddress(
     profile.data.latitude = coordinates.latitude;
     profile.data.longitude = coordinates.longitude;
   }
+}
+
+/**
+ * Gap-fill the merged profile's attribute fields from our own feed rows
+ * (sold → on-market → rent) for this slug, registered as a low-confidence
+ * `property-feed` source. Only fills fields the crawl did NOT already set, so a
+ * real crawl extraction always wins. Mutates `profile`; returns true when at
+ * least one field was seeded. Fail-soft: no feed row (or Supabase off) → false.
+ */
+async function seedFromFeed(profile: PropertyProfile, slug: string): Promise<boolean> {
+  const seed = await getFeedSeedBySlug(slug).catch((e) => {
+    console.warn('[fetch-profile] feed-seed lookup failed:', e);
+    return null;
+  });
+  if (!seed) return false;
+
+  const fields = mapFeedRowToProfileFields(seed.row, seed.feed);
+  return applyFeedSeed(profile, fields);
+}
+
+/** Round-mean of all per-field confidences (matches the merger's measure). */
+function recomputeOverallConfidence(profile: PropertyProfile): number {
+  const values = Object.values(profile.fieldConfidences).map((fc) => fc.confidence);
+  if (values.length === 0) return 0;
+  return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 }
