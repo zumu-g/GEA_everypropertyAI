@@ -60,6 +60,35 @@ EVERYPROPERTY_API_TOKEN=<the epai_… key>     # sent as Authorization: Bearer
 - proposals → `GET /api/search?q=<partial>` for type-ahead, then `GET /api/proposal?address=<fullAddress>`
 - weeklycampaign_vendor (GEA_reports_weeklycampaign_vendor) → `GET /api/vendor-report?lat=<lat>&lng=<lng>` (or `?address=<addr>`) → 3 closest solds + 3 newest listings within 500m
 
+### API keys (per-consumer, append-only)
+
+Each consumer app gets its **own** key so it can be rotated or revoked independently of the others.
+Convention: `epai_<consumer>_<random>` (e.g. `epai_cma_…` for GEA_ST_CMA, `epai_wcv_…` for the vendor
+report, `epai_crm_…` for the GEA CRM). The random suffix is CSPRNG entropy (≈32 hex chars).
+
+**The allowlist is `EVERYPROPERTY_API_KEYS`** — a comma-separated list on the everypropertyAI service.
+The **middleware** (`src/middleware.ts`, gates `/api/address-suggest`, `/api/property`, sold/listing
+feeds, …) checks **only `EVERYPROPERTY_API_KEYS`**; the in-route self-auth routes (`/api/search`,
+`/api/proposal`, `/api/agents/listings`) check **`EVERYPROPERTY_API_KEYS ∪ EVERYPROPERTY_API_TOKEN`**.
+So a consumer key must live in **`EVERYPROPERTY_API_KEYS`** to work on *every* endpoint — putting it
+only in the server's `EVERYPROPERTY_API_TOKEN` would 401 on the middleware-gated routes.
+
+**Invariant:** a consumer's `EVERYPROPERTY_API_TOKEN` (set on the consumer app) must exactly equal one
+value in the server's `EVERYPROPERTY_API_KEYS`.
+
+Manage keys **append-only** — never overwrite the whole list (that revokes everyone):
+
+- **Provision** a consumer: generate `epai_<consumer>_<32hex>`; **append** it (comma-separated) to
+  `EVERYPROPERTY_API_KEYS` in `.env.local` (local) and the `geaeverypropertyai-production` Railway
+  service variables, then redeploy; set the same value as the consumer app's `EVERYPROPERTY_API_TOKEN`.
+- **Rotate** a consumer: append the new key, switch the consumer's `EVERYPROPERTY_API_TOKEN` to it,
+  then remove the old value from `EVERYPROPERTY_API_KEYS` and redeploy.
+- **Revoke** a consumer: remove just that one value from `EVERYPROPERTY_API_KEYS` and redeploy — other
+  consumers are unaffected.
+
+Never commit a real key value — committed files (incl. this one and `.env.local.example`) use
+placeholders only. Don't paste real `epai_…` values into logs or PRs.
+
 ### Troubleshooting: enrich gets `401 Unauthorized` from `/api/address-suggest`
 
 `/api/address-suggest` is **middleware-gated** (unlike `/api/search` / `/api/proposal` /
