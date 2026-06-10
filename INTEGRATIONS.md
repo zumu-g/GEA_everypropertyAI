@@ -4,7 +4,13 @@ Authenticated HTTP API consumed server-to-server by sibling GEA apps
 (GEA_HR_recruitAI, GEA_ST_proposals). This is the pick-up doc: what's built, what each
 consumer needs, and the outstanding deploy config.
 
-Public base URL (Railway): `https://geaeverypropertyai-production.up.railway.app`
+Public base URLs (all resolve to the same Railway service):
+- **API (consumers):** `https://api.everypropertyai.com`
+- **App (UI):** `https://everypropertyai.com`
+- **Fallback (still live):** `https://geaeverypropertyai-production.up.railway.app`
+
+New consumers should use `https://api.everypropertyai.com`. The `*.up.railway.app` host
+remains active as a fallback, so existing consumers keep working until they migrate.
 
 ## Authenticated endpoints (all built + verified)
 
@@ -33,8 +39,9 @@ the row's first-seen timestamp (migration `006_listed_date.sql`).
 
 Both GEA_HR_recruitAI and GEA_ST_proposals:
 ```
-EVERYPROPERTY_API_URL=https://geaeverypropertyai-production.up.railway.app
+EVERYPROPERTY_API_URL=https://api.everypropertyai.com
 EVERYPROPERTY_API_TOKEN=<the epai_… key>     # sent as Authorization: Bearer
+# Fallback (still works): https://geaeverypropertyai-production.up.railway.app
 ```
 - recruitAI → `GET /api/agents/listings?name=<agent>`
 - proposals → `GET /api/search?q=<partial>` for type-ahead, then `GET /api/proposal?address=<fullAddress>`
