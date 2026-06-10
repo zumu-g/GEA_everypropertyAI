@@ -529,6 +529,21 @@ export async function saveCachedProfile(
 }
 
 /**
+ * Delete a cached profile row from Supabase property_cache (cache invalidation,
+ * plan 008). Fail-soft: no-ops when Supabase is unconfigured and never throws,
+ * so a `?refresh=1` request can force a re-crawl without depending on the DB.
+ */
+export async function deleteCachedProfile(slug: string): Promise<void> {
+  if (!isSupabaseConfigured() || !slug) return;
+  try {
+    const { error } = await supabase().from('property_cache').delete().eq('address_slug', slug);
+    if (error) console.error('[deleteCachedProfile] Supabase error:', error.message);
+  } catch (err) {
+    console.error('[deleteCachedProfile] Unexpected error:', err);
+  }
+}
+
+/**
  * Batch-fetch cached MergedPropertyProfiles for many slugs in one query.
  * Unlike getCachedProfile(), this does NOT apply the 24hr TTL — for the street
  * comparison table we surface whatever is stored (staleness is acceptable).

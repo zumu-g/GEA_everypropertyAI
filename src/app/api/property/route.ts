@@ -3,7 +3,7 @@ import type { StructuredAddress, MergedPropertyProfile as PropertyProfile } from
 import { propertyCache } from '@/lib/cache';
 import { toSlug } from '@/lib/utils/address';
 import { fetchAndCacheProfile } from '@/lib/jobs/fetch-profile';
-import { getCachedProfile, getOverrides } from '@/lib/db/queries';
+import { getCachedProfile, getOverrides, deleteCachedProfile } from '@/lib/db/queries';
 
 // Allow headroom for the stealth fallback (browser fetch ~10-15s/portal) on a
 // fresh, uncached lookup. Cached lookups return instantly. Declared maxDuration
@@ -54,7 +54,7 @@ export async function OPTIONS() {
  * by orchestrating: cache check -> crawl -> extract -> merge -> cache.
  */
 export async function POST(request: NextRequest) {
-  let body: { address: StructuredAddress; fast?: boolean };
+  let body: { address: StructuredAddress; fast?: boolean; refresh?: boolean };
 
   try {
     body = await request.json();
@@ -66,6 +66,11 @@ export async function POST(request: NextRequest) {
   }
 
   const { address, fast = false } = body;
+  // Cache-bust: `?refresh=1` (or `{refresh:true}`) skips the cache read, evicts
+  // the stale record (in-memory + Supabase), and re-runs the pipeline so a wrong
+  // cached profile can be corrected (plan 008).
+  const refresh =
+    body.refresh === true || ['1', 'true'].includes(request.nextUrl.searchParams.get('refresh') ?? '');
 
   if (!address || (!address.streetName && !address.displayAddress)) {
     return NextResponse.json(
@@ -76,9 +81,15 @@ export async function POST(request: NextRequest) {
 
   const slug = toSlug(address);
 
+  // On refresh, evict both caches up front so the pipeline re-crawls and overwrites.
+  if (refresh) {
+    propertyCache.invalidate(slug);
+    await deleteCachedProfile(slug);
+  }
+
   // 1. Check in-memory cache. A full (non-fast) request must NOT be served a
   // previously-cached fast partial — fall through to a complete crawl instead.
-  const cached = propertyCache.get(slug);
+  const cached = refresh ? undefined : propertyCache.get(slug);
   if (cached && (fast || cached.crawlMode !== 'fast')) {
     const overrides = await getOverrides(slug);
     const finalProfile = applyOverrides(cached, overrides);
@@ -95,8 +106,8 @@ export async function POST(request: NextRequest) {
   }
 
   // 1b. Try Supabase cache (persistent, survives restarts). Same fast-partial
-  // guard as the in-memory cache above.
-  const supabaseCached = await getCachedProfile(slug);
+  // guard as the in-memory cache above. Skipped on refresh.
+  const supabaseCached = refresh ? null : await getCachedProfile(slug);
   if (supabaseCached && (fast || supabaseCached.crawlMode !== 'fast')) {
     propertyCache.set(slug, supabaseCached); // warm in-memory cache
     const overrides = await getOverrides(slug);

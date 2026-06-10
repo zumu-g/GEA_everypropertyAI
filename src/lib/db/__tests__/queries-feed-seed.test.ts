@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Per-table fake rows the mocked Supabase client will return, set per test.
 const tableRows: Record<string, unknown[]> = {};
+const deletedTables: string[] = [];
 let configured = true;
 
 vi.mock('../supabase', () => ({
@@ -21,13 +22,15 @@ function makeFakeClient() {
         eq: () => builder,
         order: () => builder,
         limit: () => Promise.resolve({ data: tableRows[table] ?? [], error: null }),
+        // delete chain: .delete().eq() resolves
+        delete: () => ({ eq: () => { deletedTables.push(table); return Promise.resolve({ error: null }); } }),
       };
       return builder;
     },
   };
 }
 
-import { getFeedSeedBySlug } from '../queries';
+import { getFeedSeedBySlug, deleteCachedProfile } from '../queries';
 
 beforeEach(() => {
   configured = true;
@@ -73,5 +76,25 @@ describe('getFeedSeedBySlug', () => {
 
   it('returns null for an empty slug', async () => {
     expect(await getFeedSeedBySlug('')).toBeNull();
+  });
+});
+
+describe('deleteCachedProfile (cache invalidation, plan 008)', () => {
+  beforeEach(() => { configured = true; deletedTables.length = 0; });
+
+  it('deletes the property_cache row for a slug', async () => {
+    await deleteCachedProfile('120-moondarra-drive-berwick-vic-3806');
+    expect(deletedTables).toContain('property_cache');
+  });
+
+  it('no-ops (no delete) when Supabase is unconfigured (fail-soft)', async () => {
+    configured = false;
+    await expect(deleteCachedProfile('s')).resolves.toBeUndefined();
+    expect(deletedTables).toHaveLength(0);
+  });
+
+  it('no-ops for an empty slug', async () => {
+    await deleteCachedProfile('');
+    expect(deletedTables).toHaveLength(0);
   });
 });
