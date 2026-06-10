@@ -1,6 +1,6 @@
 ---
 title: "fix: /api/property returns empty profiles — seed from our own feed data"
-status: active
+status: completed
 date: 2026-06-10
 type: fix
 ---
