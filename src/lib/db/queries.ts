@@ -1137,6 +1137,89 @@ export async function updateRowById(
   return true;
 }
 
+// ─── External features (property_features, migration 009 / plan U3) ──────────
+
+/** A row in property_features — free external AVM signals keyed by address_slug. */
+export interface PropertyFeatureRow {
+  address_slug: string;
+  planning_zone_code?: string | null;
+  planning_zone_name?: string | null;
+  planning_lga?: string | null;
+  planning_overlays?: unknown;
+  nearest_station_name?: string | null;
+  nearest_station_km?: number | null;
+  // Deferred signals (populated by later enrichers — see migration 009).
+  seifa_irsad_decile?: number | null;
+  parcel_land_area_sqm?: number | null;
+  school_zone_primary?: string | null;
+  school_zone_secondary?: string | null;
+  source?: string | null;
+  fetched_at?: string | null;
+}
+
+/**
+ * Distinct addresses (slug + coordinates) from property_sales that can be
+ * feature-enriched: an address_slug and a latitude to drive the geo lookups.
+ * Paginated by the caller. The job dedupes slugs and skips fresh ones.
+ */
+export async function selectFeatureEnrichmentCandidates(
+  offset: number,
+  limit: number
+): Promise<Array<{ address_slug: string; latitude: number; longitude: number; state: string }>> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from('property_sales')
+    .select('address_slug, latitude, longitude, state')
+    .not('address_slug', 'is', null)
+    .not('latitude', 'is', null)
+    .not('longitude', 'is', null)
+    .range(offset, offset + limit - 1);
+  if (error) { console.error('[selectFeatureEnrichmentCandidates]', error.message); return []; }
+  return (data ?? []) as Array<{ address_slug: string; latitude: number; longitude: number; state: string }>;
+}
+
+/**
+ * Return the set of address_slugs already enriched within `ttlMs` (skip-fresh
+ * guard for the batch job). Missing/stale slugs are simply absent. Fail-soft.
+ */
+export async function getFreshFeatureSlugs(
+  slugs: string[],
+  ttlMs: number
+): Promise<Set<string>> {
+  if (!isSupabaseConfigured() || slugs.length === 0) return new Set();
+  const cutoff = new Date(Date.now() - ttlMs).toISOString();
+  const { data, error } = await supabase()
+    .from('property_features')
+    .select('address_slug, fetched_at')
+    .in('address_slug', slugs)
+    .gte('fetched_at', cutoff);
+  if (error) { console.error('[getFreshFeatureSlugs]', error.message); return new Set(); }
+  return new Set((data ?? []).map((r) => r.address_slug as string));
+}
+
+/** Upsert property_features rows on the address_slug key (merge in place). Fail-soft. */
+export async function upsertPropertyFeatures(rows: PropertyFeatureRow[]): Promise<number> {
+  if (!isSupabaseConfigured() || rows.length === 0) return 0;
+  const stamped = rows.map((r) => ({ ...r, updated_at: new Date().toISOString() }));
+  const { error } = await supabase()
+    .from('property_features')
+    .upsert(stamped, { onConflict: 'address_slug', ignoreDuplicates: false });
+  if (error) { console.error('[upsertPropertyFeatures]', error.message); return 0; }
+  return rows.length;
+}
+
+/** Read a single property_features row by slug, or null. Fail-soft. */
+export async function getPropertyFeaturesBySlug(slug: string): Promise<PropertyFeatureRow | null> {
+  if (!isSupabaseConfigured() || !slug) return null;
+  const { data, error } = await supabase()
+    .from('property_features')
+    .select('*')
+    .eq('address_slug', slug)
+    .limit(1);
+  if (error) { console.error('[getPropertyFeaturesBySlug]', error.message); return null; }
+  return (data?.[0] as PropertyFeatureRow | undefined) ?? null;
+}
+
 export interface FeedHealthUpdate {
   category: 'sold' | 'on-market' | 'rent';
   source_used?: string;
