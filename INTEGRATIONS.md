@@ -130,17 +130,16 @@ instead of a bare `returned 401`.
 
 | Var | For | Status |
 |---|---|---|
-| `EVERYPROPERTY_API_KEYS` | API-key auth (the `epai_…` value; comma-sep for multiple consumers) | ✅ set |
-| `NEXT_PUBLIC_SUPABASE_URL` = `https://xulylioakpkvfywskmpk.supabase.co` | DB reads (listings/sales/agents) | ⛔ **set this — current gap** |
-| `SUPABASE_SERVICE_ROLE_KEY` | DB reads (server-only secret) | ⛔ **set this — current gap** |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | middleware `/my-properties` auth | ⛔ set this |
-| `MAPBOX_ACCESS_TOKEN` (or `GOOGLE_PLACES_API_KEY`) | `/api/search` quality (else local-parse fallback) | set if not present |
-| `APIFY_API_TOKEN` + LLM key (OpenRouter/Anthropic) | `/api/proposal` uncached live crawl | set if not present |
+| `EVERYPROPERTY_API_KEYS` | API-key auth (comma-sep allowlist; per-consumer keys `epai_cma_`, `epai_wcv_`, `epai_crm_`, …) | ✅ set |
+| `NEXT_PUBLIC_SUPABASE_URL` = `https://xulylioakpkvfywskmpk.supabase.co` | DB reads (listings/sales/agents) | ✅ set |
+| `SUPABASE_SERVICE_ROLE_KEY` | DB reads (server-only secret) | ✅ set |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | middleware `/my-properties` auth | ✅ set |
+| `MAPBOX_ACCESS_TOKEN` (or `GOOGLE_PLACES_API_KEY`) | `/api/search` quality (else local-parse fallback) | ✅ set |
+| `APIFY_API_TOKEN` + LLM key (OpenRouter/Anthropic) | `/api/proposal` uncached live crawl | ✅ set |
 
-> **Current blocker:** the Supabase env vars are not set on Railway, so `/api/agents/listings`,
-> `/api/proposal`, and the data routes return empty (`count:0` / `agent:null`) even though the
-> Supabase DB is fully populated. Copy the keys from this repo's `.env.local` (or Supabase →
-> Project Settings → API) into the Railway service Variables. This is the #1 thing to do next.
+> **Status (2026-06-10):** all required env vars are set on Railway; the data routes return real data
+> (verified live — `/api/agents/listings`, `/api/search`, `/api/address-suggest` all 200 with a valid
+> key). The earlier "Supabase not set" blocker is resolved.
 
 ## Data state (Supabase `xulylioakpkvfywskmpk`, all migrations 001–004 applied)
 - `property_sales`: ~44.6k rows; `agency_name`/`agent_name` ~100%, `listing_url`/`image_url` ~100%.
@@ -150,14 +149,17 @@ instead of a bare `returned 401`.
 - Suburb casing normalised; reversed-name aliases resolve (e.g. "Upper Beaconsfield").
 
 ## Outstanding (pick up here)
-1. **Set the Supabase env vars on the everypropertyAI Railway service** → endpoints return real data.
-2. (Optional) Set `MAPBOX_ACCESS_TOKEN` + `APIFY_API_TOKEN`/LLM key on Railway for full `/api/search`
-   + `/api/proposal` quality.
-3. **Rentals backfill** — raise the Apify monthly cap, then run the rent ingest
-   (`PICKUP_listings_rentals.md`).
-4. Re-test live once env is set:
-   `curl "$BASE/api/agents/listings?name=Sam%20Noorbakhsh" -H "Authorization: Bearer <token>"`
-   should return ~20 listings; `/api/proposal?address=…` and `/api/search?q=…` likewise.
+Prod env + data routes are live (see status note above). Remaining:
+1. **CRM enrich smoke test** — GEA_crmAI now uses its dedicated `epai_crm_…` key (server-verified). After
+   its redeploy, run "Enrich from everypropertyAI" on a real address and confirm it returns attributes
+   (the 401 is resolved server-side; this confirms the CRM loads/sends the token at call time).
+2. **Rentals backfill** — `property_rentals` is empty; raise the Apify monthly cap, then run the rent
+   ingest (`PICKUP_listings_rentals.md`).
+3. **Merge the AVM data-foundation branch** (`feat/avm-data-foundation-rebased`): plan 002 U1–U4
+   (attribute persistence, floor-area capture, external `property_features` + enrichment, market-time
+   price index) and plan 005 (school-zone enrichment). Not yet on `main`.
+4. **Generate the school-zone reference data** (plan 005 U1) — needs GDAL/`ogr2ogr` +
+   `scripts/prep-school-zones.md`; until then `school_zone_*` stay null (fail-soft).
 
-> Secrets (the `epai_…` token, Supabase keys) are intentionally NOT stored in this repo — they live
+> Secrets (the `epai_…` keys, Supabase keys) are intentionally NOT stored in this repo — they live
 > in `.env.local` (gitignored) and the Railway service Variables.
