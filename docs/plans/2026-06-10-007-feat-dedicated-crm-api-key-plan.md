@@ -1,6 +1,6 @@
 ---
 title: "feat: dedicated, independently-revocable CRM API key (append-only)"
-status: active
+status: completed
 date: 2026-06-10
 type: feat
 ---
