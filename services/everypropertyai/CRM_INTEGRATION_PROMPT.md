@@ -30,8 +30,14 @@ on that record. Work only in this repo except for the one build/link step noted 
   "/Users/stuartgrant_mbp13/Library/Mobile Documents/com~apple~CloudDocs/GEA_Projects/GEA_/GEA_everypropertyAI/propertyiq/services/everypropertyai"
 - It is a thin CLI/MCP wrapper over the PropertyIQ HTTP API. It needs the PropertyIQ app
   reachable via the env var EVERYPROPERTY_API_URL (default http://localhost:3007). A deployed
-  URL can be set later: EVERYPROPERTY_API_URL=[PROPERTYIQ_PROD_URL]. An optional
-  EVERYPROPERTY_API_TOKEN bearer is supported if the data routes get shared-secret auth.
+  URL can be set later: EVERYPROPERTY_API_URL=[PROPERTYIQ_PROD_URL].
+- **Auth is REQUIRED against the deployed service** (not optional): set EVERYPROPERTY_API_TOKEN to a
+  key that is present in the everypropertyAI server's EVERYPROPERTY_API_KEYS allowlist — the client
+  sends it as `Authorization: Bearer <token>`. Gated routes (e.g. `/api/address-suggest`, which the
+  enrich flow calls via `resolveAddress`) return `401 Unauthorized — missing or invalid API key` when
+  the token is unset or not in the allowlist. **Invariant: the consumer's EVERYPROPERTY_API_TOKEN must
+  match one of the server's EVERYPROPERTY_API_KEYS.** See INTEGRATIONS.md → "Troubleshooting: enrich
+  gets 401" for the diagnosis curl matrix.
 - Integration mode for THIS project = CLI (shell out, parse JSON). Do NOT add an MCP server,
   do NOT reimplement any scraping/merge/data logic, do NOT copy PropertyIQ source.
 

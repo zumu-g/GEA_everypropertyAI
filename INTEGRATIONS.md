@@ -60,6 +60,39 @@ EVERYPROPERTY_API_TOKEN=<the epai_… key>     # sent as Authorization: Bearer
 - proposals → `GET /api/search?q=<partial>` for type-ahead, then `GET /api/proposal?address=<fullAddress>`
 - weeklycampaign_vendor (GEA_reports_weeklycampaign_vendor) → `GET /api/vendor-report?lat=<lat>&lng=<lng>` (or `?address=<addr>`) → 3 closest solds + 3 newest listings within 500m
 
+### Troubleshooting: enrich gets `401 Unauthorized` from `/api/address-suggest`
+
+`/api/address-suggest` is **middleware-gated** (unlike `/api/search` / `/api/proposal` /
+`/api/agents/listings`, which self-authenticate in-route). A server-to-server consumer (e.g. the
+CRM enrich action) **must** send `Authorization: Bearer <key>` where `<key>` is one of the server's
+`EVERYPROPERTY_API_KEYS`. **Invariant:** the consumer's `EVERYPROPERTY_API_TOKEN` must be a value
+present in the everypropertyAI service's `EVERYPROPERTY_API_KEYS`.
+
+A `401 {"error":"Unauthorized — missing or invalid API key"}` has two causes — diagnose which with
+this matrix (replace placeholders; never paste real `epai_…` values into shared logs):
+
+```sh
+BASE=https://geaeverypropertyai-production.up.railway.app
+
+# 1. No auth header → expect 401 (confirms the gate is on)
+curl -s -o /dev/null -w "%{http_code}\n" "$BASE/api/address-suggest?q=120+Moondarra"
+
+# 2. With the CONSUMER's token → 200 = token is fine (cause was unset/not-threaded env);
+#                                401 = the token is wrong/stale (not in the allowlist)
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer <consumer-token>" \
+  "$BASE/api/address-suggest?q=120+Moondarra"
+
+# 3. With a KNOWN-GOOD server key → 200 confirms the server allowlist; the consumer value just
+#                                   needs to match what this key is
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer <server-key>" \
+  "$BASE/api/address-suggest?q=120+Moondarra"
+```
+
+**Fix:** set `EVERYPROPERTY_API_TOKEN` in the consumer app (CRM) to a key listed in the server's
+`EVERYPROPERTY_API_KEYS` — or add the consumer's key to that allowlist and redeploy the service. The
+`services/everypropertyai` client now reports which cause it hit (no token attached vs token rejected)
+instead of a bare `returned 401`.
+
 ## everypropertyAI Railway service — required env vars
 
 | Var | For | Status |

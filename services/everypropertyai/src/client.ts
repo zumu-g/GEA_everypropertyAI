@@ -106,6 +106,20 @@ export class PropertyIQClient {
       );
     }
     const text = await res.text();
+    if (res.status === 401) {
+      // Auth failure: make the cause + remediation explicit rather than an opaque
+      // "returned 401". The two real causes (no token attached vs a token the
+      // server rejects) need different fixes, so report which one happened.
+      const cause = this.token
+        ? "a token was attached but the server rejected it — it is not in the server's EVERYPROPERTY_API_KEYS"
+        : "no API token was attached — set EVERYPROPERTY_API_TOKEN (or pass { token })";
+      throw new PropertyIQError(
+        `everypropertyai: ${url.pathname} returned 401 (${cause}). ` +
+          `The token must be one of the server's EVERYPROPERTY_API_KEYS.`,
+        401,
+        text,
+      );
+    }
     if (!res.ok) {
       throw new PropertyIQError(`${url.pathname} returned ${res.status}`, res.status, text);
     }
