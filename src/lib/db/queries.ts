@@ -1102,6 +1102,41 @@ export async function getFeedSeedBySlug(slug: string): Promise<FeedSeed | null> 
   return null;
 }
 
+export type AvmBackfillTable = 'property_sales' | 'property_listings' | 'property_rentals';
+
+/**
+ * Rows that still lack a building area but have an address_slug to look up a
+ * cached profile for. Drives the AVM attribute backfill (migration 008 + U2).
+ * Paginated by the caller via offset/limit.
+ */
+export async function selectAvmBackfillCandidates(
+  table: AvmBackfillTable,
+  offset: number,
+  limit: number
+): Promise<Array<{ id: string; address_slug: string }>> {
+  if (!isSupabaseConfigured()) return [];
+  const { data, error } = await supabase()
+    .from(table)
+    .select('id, address_slug')
+    .is('building_area_sqm', null)
+    .not('address_slug', 'is', null)
+    .range(offset, offset + limit - 1);
+  if (error) { console.error(`[selectAvmBackfillCandidates ${table}]`, error.message); return []; }
+  return (data ?? []) as Array<{ id: string; address_slug: string }>;
+}
+
+/** Patch a single row by id. Returns true on success. Fail-soft. */
+export async function updateRowById(
+  table: AvmBackfillTable,
+  id: string,
+  patch: Record<string, unknown>
+): Promise<boolean> {
+  if (!isSupabaseConfigured() || Object.keys(patch).length === 0) return false;
+  const { error } = await supabase().from(table).update(patch).eq('id', id);
+  if (error) { console.error(`[updateRowById ${table}]`, error.message); return false; }
+  return true;
+}
+
 export interface FeedHealthUpdate {
   category: 'sold' | 'on-market' | 'rent';
   source_used?: string;
