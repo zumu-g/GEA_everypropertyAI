@@ -812,6 +812,10 @@ export interface PropertySaleRecord {
   sale_price?: number;
   sale_date?: string;
   settlement_date?: string;
+  building_area_sqm?: number;
+  year_built?: number;
+  features?: unknown;
+  field_confidence?: Record<string, number>;
   latitude?: number;
   longitude?: number;
   source: string;
@@ -968,6 +972,10 @@ export interface PropertyListingRecord {
   bathrooms?: number;
   car_spaces?: number;
   land_area_sqm?: number;
+  building_area_sqm?: number;
+  year_built?: number;
+  features?: unknown;
+  field_confidence?: Record<string, number>;
   property_type?: string;
   agency_name?: string;
   agent_name?: string;
@@ -996,6 +1004,10 @@ export interface PropertyRentalRecord {
   bathrooms?: number;
   car_spaces?: number;
   land_area_sqm?: number;
+  building_area_sqm?: number;
+  year_built?: number;
+  features?: unknown;
+  field_confidence?: Record<string, number>;
   property_type?: string;
   agency_name?: string;
   agent_name?: string;

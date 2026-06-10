@@ -147,7 +147,13 @@ export type DomainItem = {
   location?: { display_address?: string; suburb?: string; state?: string; postcode?: string; latitude?: number; longitude?: number };
   pricing?: { display_price?: string };
   listing?: { tags?: { tag_text?: string }; date_listed?: string; dateListed?: string; date_available?: string; dateAvailable?: string };
-  property?: { property_type?: string; land_size?: number; bedrooms?: number; bathrooms?: number; parking?: number; image_urls?: string[] };
+  property?: {
+    property_type?: string; land_size?: number; bedrooms?: number; bathrooms?: number;
+    parking?: number; image_urls?: string[];
+    // AVM attributes — absent from Domain's search feed, but plumbed through so
+    // any richer source that supplies them persists (migration 008).
+    building_size?: number; year_built?: number; features?: unknown;
+  };
   contacts?: { agency?: { name?: string }; agent_names?: string; agents?: Array<{ name?: string }> };
 };
 
@@ -178,6 +184,9 @@ export function mapItem(category: IngestCategory, it: DomainItem):
     state: (loc.state ?? 'VIC').toUpperCase(),
     postcode: loc.postcode ?? undefined,
     land_area_sqm: num(prop.land_size) ?? undefined,
+    building_area_sqm: num(prop.building_size) ?? undefined,
+    year_built: smallint(prop.year_built) ?? undefined,
+    features: Array.isArray(prop.features) && prop.features.length ? prop.features : undefined,
     property_type: prop.property_type ?? undefined,
     latitude: num(loc.latitude) ?? undefined,
     longitude: num(loc.longitude) ?? undefined,

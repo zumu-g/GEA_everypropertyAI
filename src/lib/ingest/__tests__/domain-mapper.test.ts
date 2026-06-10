@@ -43,6 +43,45 @@ describe('parseListedDate', () => {
   });
 });
 
+describe('mapItem AVM attribute plumbing (migration 008)', () => {
+  it('persists building_size, year_built and features when a source supplies them', () => {
+    const row = mapItem('sold', {
+      ...baseItem,
+      pricing: { display_price: '$950,000' },
+      property: { ...baseItem.property, building_size: 212, year_built: 1998, features: ['pool', 'solar'] },
+    });
+    expect(row).toMatchObject({
+      building_area_sqm: 212,
+      year_built: 1998,
+      features: ['pool', 'solar'],
+    });
+  });
+
+  it('omits the AVM attributes when the source lacks them (Domain search feed)', () => {
+    const row = mapItem('sold', { ...baseItem, pricing: { display_price: '$950,000' } })!;
+    expect(row.building_area_sqm).toBeUndefined();
+    expect(row.year_built).toBeUndefined();
+    expect(row.features).toBeUndefined();
+  });
+
+  it('omits features for an empty array (no empty JSONB persisted)', () => {
+    const row = mapItem('on-market', {
+      ...baseItem,
+      property: { ...baseItem.property, features: [] },
+    })!;
+    expect(row.features).toBeUndefined();
+  });
+
+  it('ignores a non-integer year_built rather than persisting a bad value', () => {
+    const row = mapItem('sold', {
+      ...baseItem,
+      pricing: { display_price: '$950,000' },
+      property: { ...baseItem.property, year_built: 19.5 as unknown as number },
+    })!;
+    expect(row.year_built).toBeUndefined();
+  });
+});
+
 describe('mapItem listed_date population', () => {
   it('sets listed_date on a rental when a real date is present', () => {
     const row = mapItem('rent', { ...baseItem, dateListed: '2024-10-07' });
