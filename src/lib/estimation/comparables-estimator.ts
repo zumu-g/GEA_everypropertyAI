@@ -22,6 +22,11 @@
  */
 
 import type { PriceEstimateResult, MarketDataInput } from './price-estimator';
+import { monthsSince, timeAdjust, timeAdjustToToday, type IndexPoint } from './time-adjust';
+
+// Re-export the time-adjustment primitives (their canonical home is now
+// time-adjust.ts) so existing importers/tests of this module keep working.
+export { monthsSince, timeAdjust };
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -82,8 +87,6 @@ export const MIN_PLAUSIBLE_SALE_PRICE = 50_000;
 export const MIN_COMPS = 3;
 export const IDEAL_COMPS = 8;
 
-const GROWTH_CLAMP_LO = 0.33;
-const GROWTH_CLAMP_HI = 3.0;
 const WEIGHT_EPSILON = 1e-4;
 
 // ── Property-type bucketing ───────────────────────────────────────────────────
@@ -99,21 +102,6 @@ export function typeBucket(propertyType?: string | null): TypeBucket {
   if (UNIT_TYPES.some((u) => t.includes(u))) return 'unit';
   if (HOUSE_TYPES.some((h) => t.includes(h))) return 'house';
   return 'unknown';
-}
-
-// ── Date / growth helpers (mirror price-estimator.ts) ─────────────────────────
-
-/** Whole calendar months between `date` and now (>= 0). Matches price-estimator.ts. */
-export function monthsSince(date: string, now: Date = new Date()): number {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return 0;
-  return Math.max(0, (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth()));
-}
-
-/** Time-adjust a sale price to today using compounded monthly growth, clamped. */
-export function timeAdjust(price: number, monthsAgo: number, monthlyGrowth: number): number {
-  const adj = price * Math.pow(1 + monthlyGrowth, monthsAgo);
-  return Math.round(Math.max(price * GROWTH_CLAMP_LO, Math.min(price * GROWTH_CLAMP_HI, adj)));
 }
 
 // ── Similarity weighting ───────────────────────────────────────────────────────
@@ -206,6 +194,9 @@ export function estimateFromComparables(
   const annualGrowth = segment?.annualGrowth ?? 0;
   const monthlyGrowth = annualGrowth / 12 / 100;
   const suburbMedian = segment?.medianPrice;
+  // Price-index series for time-adjustment (U4); when absent/thin the helper
+  // falls back to constant-growth compounding (legacy behaviour).
+  const priceIndex: IndexPoint[] | undefined = segment?.monthlyMedians;
 
   // Step A — clean & time-adjust.
   const cleaned: WeightedComp[] = [];
@@ -213,7 +204,7 @@ export function estimateFromComparables(
     if (!c.saleDate) continue;
     if (!(c.salePrice > MIN_PLAUSIBLE_SALE_PRICE && c.salePrice <= MAX_PLAUSIBLE_SALE_PRICE)) continue;
     const monthsAgo = monthsSince(c.saleDate, now);
-    const adjustedPrice = timeAdjust(c.salePrice, monthsAgo, monthlyGrowth);
+    const adjustedPrice = timeAdjustToToday(c.salePrice, c.saleDate, priceIndex, monthlyGrowth, now);
     const weight = similarityWeight(subject, c);
     cleaned.push({ ...c, monthsAgo, adjustedPrice, weight });
   }
@@ -267,8 +258,11 @@ export function estimateFromComparables(
   };
 
   if (subject.priorSale?.price && subject.priorSale.date) {
-    const m = monthsSince(subject.priorSale.date, now);
-    pushCheck('Prior sale (adjusted)', timeAdjust(subject.priorSale.price, m, monthlyGrowth), 0.15);
+    pushCheck(
+      'Prior sale (adjusted)',
+      timeAdjustToToday(subject.priorSale.price, subject.priorSale.date, priceIndex, monthlyGrowth, now),
+      0.15,
+    );
   }
   const listingMid =
     subject.activeListing?.priceMid ??

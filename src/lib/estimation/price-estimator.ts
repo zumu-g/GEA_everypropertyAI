@@ -36,12 +36,15 @@ export interface MarketDataInput {
     annualGrowth?: number;
     medianRent?: number;
     grossYield?: number;
+    /** Monthly median-price series (price index source for time-adjustment, U4). */
+    monthlyMedians?: Array<{ month: string; value: number }>;
   };
   units?: {
     medianPrice?: number;
     annualGrowth?: number;
     medianRent?: number;
     grossYield?: number;
+    monthlyMedians?: Array<{ month: string; value: number }>;
   };
 }
 

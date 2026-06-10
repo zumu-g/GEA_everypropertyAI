@@ -163,4 +163,28 @@ describe('estimateFromComparables', () => {
     expect(withDivergentPrior.confidenceBand).toBeGreaterThanOrEqual(base.confidenceBand);
     expect(withDivergentPrior.confidenceScore).toBeLessThan(base.confidenceScore);
   });
+
+  it('a rising price-index series adjusts older comps up vs a flat market (U4)', () => {
+    // 13 monthly points ending at NOW, +20% over the trailing 12 months.
+    const monthlyMedians = Array.from({ length: 13 }, (_, i) => {
+      const d = new Date(NOW.getFullYear(), NOW.getMonth() - (12 - i), 1);
+      return {
+        month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        value: 700_000 + (140_000 * i) / 12,
+      };
+    });
+    const compsAgo = Array.from({ length: 6 }, (_, i) => comp(800_000, { distanceKm: 0.4, monthsAgo: 12 }, i));
+
+    const flat = estimateFromComparables(SUBJECT, compsAgo, { houses: { medianPrice: 800_000, annualGrowth: 0 } }, NOW)!;
+    const indexed = estimateFromComparables(
+      SUBJECT,
+      compsAgo,
+      { houses: { medianPrice: 800_000, annualGrowth: 0, monthlyMedians } },
+      NOW,
+    )!;
+
+    // Same comps a year ago: the rising index lifts the central estimate ~20%.
+    expect(indexed.priceMid).toBeGreaterThan(flat.priceMid);
+    expect(indexed.priceMid).toBeGreaterThan(900_000);
+  });
 });
