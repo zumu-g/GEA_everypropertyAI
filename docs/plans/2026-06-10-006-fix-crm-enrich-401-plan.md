@@ -1,6 +1,6 @@
 ---
 title: "fix: CRM enrich gets 401 from /api/address-suggest — diagnose key + harden client"
-status: active
+status: completed
 date: 2026-06-10
 type: fix
 ---
