@@ -22,6 +22,10 @@ interface ScrapeOptions {
   timeout?: number;
   /** Max fetch attempts (transient 4xx/5xx are retried with backoff). */
   maxAttempts?: number;
+  /** Render JS before returning HTML (needed for client-rendered Next.js pages). */
+  render?: boolean;
+  /** Two-letter exit-node country (e.g. 'au'). */
+  country?: string;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -64,14 +68,26 @@ export async function scrapeWithWebUnlocker(
           Authorization: `Bearer ${WU_TOKEN}`,
         },
         // format:'raw' → the response body IS the rendered HTML of `url`.
-        body: JSON.stringify({ zone: WU_ZONE, url, format: 'raw' }),
+        body: JSON.stringify({
+          zone: WU_ZONE,
+          url,
+          format: 'raw',
+          ...(options.render ? { render: true } : {}),
+          ...(options.country ? { country: options.country } : {}),
+        }),
         signal: AbortSignal.timeout(timeout),
       });
 
       if (res.ok) {
         const html = await res.text();
         if (!html) {
-          lastError = 'Web Unlocker returned empty body';
+          // A block is reported as HTTP 200 + empty body + x-brd-error header
+          // (e.g. "captcha or protection page found"). Retriable — the next
+          // attempt gets a different exit node.
+          const brdError = res.headers.get('x-brd-error');
+          lastError = brdError
+            ? `Web Unlocker blocked: ${brdError}`
+            : 'Web Unlocker returned empty body';
         } else {
           return {
             source,

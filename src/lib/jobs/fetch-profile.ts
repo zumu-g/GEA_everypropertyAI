@@ -112,6 +112,13 @@ async function doFetchAndCacheProfile(
   const fullAddress = formatAddress(address);
   const extractions: ExtractedPropertyData[] = await Promise.all(
     successful.map(async (r) => {
+      // Deterministic extraction parsed straight from the page's embedded JSON
+      // (e.g. Domain's __NEXT_DATA__ Apollo state via Web Unlocker). Exact
+      // values from a structured store — no LLM pass, no grounding needed.
+      const structured = r.metadata?.structuredExtraction as ExtractedPropertyData | undefined;
+      if (structured && Object.keys(structured.raw ?? {}).length > 0) {
+        return structured;
+      }
       let ext: ExtractedPropertyData | undefined;
       if (EXTRACTION_PROVIDER === 'firecrawl' && r.url) {
         const fc = await scrapeAndExtract(r.url, r.source);

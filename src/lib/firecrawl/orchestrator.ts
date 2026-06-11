@@ -3,6 +3,7 @@ import type { CrawlResult, FetchBackend } from '@/types/crawl';
 import { scrapeUrl } from './client';
 import { scrapeWithApify } from '@/lib/apify/client';
 import { scrapeWithStealth, isStealthConfigured } from '@/lib/stealth/client';
+import { scrapeWithWebUnlocker, isWebUnlockerConfigured } from '@/lib/webunlocker/client';
 import { getActiveSources, getAllSourcesForAddress, getFastSources } from './sources';
 import { toAddressSlug } from './address';
 
@@ -96,7 +97,35 @@ export async function crawlProperty(
 
     // Dispatch a single backend. Unavailable backends return a 'failed' result
     // (no actor id / stealth unconfigured) so the fallback loop can move on.
-    const dispatch = (backend: FetchBackend, target: string): Promise<CrawlResult> => {
+    const dispatch = async (backend: FetchBackend, target: string): Promise<CrawlResult> => {
+      if (backend === 'web-unlocker') {
+        // Web Unlocker returns raw HTML; render through an AU exit (the property
+        // sites are AU-geofenced, client-rendered Next.js apps). Convert to
+        // markdown via the source's parser — a shell/404 page (parser returns
+        // null) is a failure so the fallback chain continues.
+        const wu = await scrapeWithWebUnlocker(target, source.name, {
+          timeout: scrapeOptions?.timeout,
+          render: true,
+          country: 'au',
+        });
+        if (wu.status !== 'success' || !wu.html) return wu;
+        const markdown = source.htmlToMarkdown ? source.htmlToMarkdown(wu.html) : wu.html;
+        if (!markdown) {
+          return {
+            ...wu,
+            status: 'failed',
+            error: 'page fetched but contained no property data (shell/404)',
+          };
+        }
+        // Deterministic extraction (when the source supports it) rides along on
+        // metadata; fetch-profile uses it instead of the LLM extractor.
+        const structured = source.htmlToExtraction?.(wu.html) ?? null;
+        return {
+          ...wu,
+          markdown,
+          metadata: { ...wu.metadata, ...(structured ? { structuredExtraction: structured } : {}) },
+        };
+      }
       if (backend === 'stealth') {
         return scrapeWithStealth(target, source.name, {
           waitFor: scrapeOptions?.waitFor,
@@ -145,6 +174,7 @@ export async function crawlProperty(
           if (fast && fb !== 'stealth') continue;
           if (fb === 'apify' && !apifyActorId) continue;
           if (fb === 'stealth' && !isStealthConfigured()) continue;
+          if (fb === 'web-unlocker' && !isWebUnlockerConfigured()) continue;
           console.log(`[orchestrator] ${source.name} falling back to ${fb}`);
           result = await dispatch(fb, url);
           if (result.status === 'success') break;

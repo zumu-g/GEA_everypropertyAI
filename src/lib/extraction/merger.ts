@@ -19,6 +19,7 @@ const SCALAR_FIELDS = [
   'landArea',
   'buildingArea',
   'yearBuilt',
+  'lotPlan',
   'currentPrice',
   'priceLabel',
   'estimatedValue',
@@ -363,7 +364,21 @@ function calculatePriceEstimate(data: Record<string, unknown>): void {
     return;
   }
 
-  // Priority 3: Most recent sale price — build ±10% band
+  // Priority 3: AVM valuation (e.g. Domain's APM estimate parsed from the
+  // property-profile page). A current model estimate beats projecting an old
+  // sale price forward.
+  const estMid = data.estimatedValue as number | undefined;
+  if (estMid && estMid > 50000) {
+    const estLow = data.estimatedValueLow as number | undefined;
+    const estHigh = data.estimatedValueHigh as number | undefined;
+    data.priceLow = estLow && estLow > 50000 ? estLow : Math.round(estMid * 0.9);
+    data.priceMid = estMid;
+    data.priceHigh = estHigh && estHigh > estMid ? estHigh : Math.round(estMid * 1.1);
+    data.priceSource = 'avm-estimate';
+    return;
+  }
+
+  // Priority 4: Most recent sale price — build ±10% band
   const sales = data.saleHistory as Array<{ price?: number; date?: string }> | undefined;
   if (sales && sales.length > 0) {
     // Find most recent sale with a price
@@ -377,7 +392,7 @@ function calculatePriceEstimate(data: Record<string, unknown>): void {
     }
   }
 
-  // Priority 4: currentPrice (legacy field from regex) — build ±10% band
+  // Priority 5: currentPrice (legacy field from regex) — build ±10% band
   const currentPrice = data.currentPrice as number | undefined;
   if (currentPrice && currentPrice > 100000) {
     data.priceLow = Math.round(currentPrice * 0.90);

@@ -137,7 +137,7 @@ export interface CrawlResult {
 // ─── Source Configuration ────────────────────────────────────────────────────
 
 /** The mechanism used to fetch a source's page. */
-export type FetchBackend = 'firecrawl' | 'apify' | 'stealth';
+export type FetchBackend = 'firecrawl' | 'apify' | 'stealth' | 'web-unlocker';
 
 export interface SourceConfig {
   name: DataSourceName | string;
@@ -169,6 +169,20 @@ export interface SourceConfig {
    * Backends are skipped when unavailable (no Apify actor id, stealth unconfigured).
    */
   fallbackBackends?: FetchBackend[];
+  /**
+   * Convert a raw-HTML fetch (stealth / web-unlocker backends) into the
+   * LLM-ready markdown the extraction pipeline consumes. Return null when the
+   * page is a shell/404 — the orchestrator then treats the fetch as failed so
+   * the fallback chain continues.
+   */
+  htmlToMarkdown?: (html: string) => string | null;
+  /**
+   * Deterministic structured extraction from a raw-HTML fetch. When supplied
+   * and it returns non-null, the pipeline uses it directly and skips the LLM
+   * extractor for this source (exact values, no transcription drift).
+   * The returned object is stored on CrawlResult.metadata.structuredExtraction.
+   */
+  htmlToExtraction?: (html: string) => unknown | null;
 
   // ─── Extended configuration (for advanced pipeline) ───────────────────────
   /** Base URL for the source */

@@ -74,6 +74,11 @@ export async function scrapeWithApify(
     const token = getToken();
     const input: Record<string, unknown> = {
       startUrls: [{ url }],
+      // Several actors (shahidirfan/domain…, azzouzana/real-estate-au-…-pro)
+      // take a single `startUrl` string and silently IGNORE `startUrls` —
+      // they then scrape their default (random nationwide listings), which the
+      // address gate discards. Send both shapes; actors read the one they know.
+      startUrl: url,
       maxItems: 5,
       ...extraInput,
     };
