@@ -23,7 +23,15 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Split sold + on-market into two parallel jobs so each category gets its own
+    # timeout budget and they run concurrently. Previously both ran serially in one
+    # 30-min job and on-market was cancelled at the timeout (run #5, 2026-06-10).
+    strategy:
+      fail-fast: false   # one category failing must not cancel the other
+      matrix:
+        category: [sold, on-market]
+    name: scrape (${{ matrix.category }})
+    timeout-minutes: 45
     env:
       BRIGHTDATA_WEB_UNLOCKER_TOKEN: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_TOKEN }}
       BRIGHTDATA_WEB_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_ZONE }}
@@ -35,7 +43,5 @@ jobs:
         with:
           node-version: '20'
       # The runner uses only Node built-ins (fetch/fs/url/path) — no npm install needed.
-      - name: Scrape sold
-        run: node scripts/ingest-domain-webunlocker.mjs sold
-      - name: Scrape on-market
-        run: node scripts/ingest-domain-webunlocker.mjs on-market
+      - name: Scrape ${{ matrix.category }}
+        run: node scripts/ingest-domain-webunlocker.mjs ${{ matrix.category }}
