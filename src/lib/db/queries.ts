@@ -816,6 +816,7 @@ export interface PropertySaleRecord {
   lot_number?: string;
   plan_number?: string;
   land_area_sqm?: number;
+  building_area_sqm?: number;
   property_type?: string;
   bedrooms?: number;
   bathrooms?: number;
@@ -826,6 +827,7 @@ export interface PropertySaleRecord {
   image_url?: string;
   sale_price?: number;
   sale_date?: string;
+  listed_date?: string;
   settlement_date?: string;
   latitude?: number;
   longitude?: number;

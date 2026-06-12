@@ -7,6 +7,7 @@
  */
 
 import { parseAddress, toSlug, titleCaseSuburb } from '@/lib/utils/address';
+import { normaliseAreaSqm } from '@/lib/utils/area';
 import type {
   PropertySaleRecord,
   PropertyListingRecord,
@@ -147,7 +148,19 @@ export type DomainItem = {
   location?: { display_address?: string; suburb?: string; state?: string; postcode?: string; latitude?: number; longitude?: number };
   pricing?: { display_price?: string };
   listing?: { tags?: { tag_text?: string }; date_listed?: string; dateListed?: string; date_available?: string; dateAvailable?: string };
-  property?: { property_type?: string; land_size?: number; bedrooms?: number; bathrooms?: number; parking?: number; image_urls?: string[] };
+  property?: {
+    property_type?: string;
+    land_size?: number | string;
+    land_unit?: string;
+    landUnit?: string;
+    building_size?: number | string;
+    building_area?: number | string;
+    buildingArea?: number | string;
+    bedrooms?: number;
+    bathrooms?: number;
+    parking?: number;
+    image_urls?: string[];
+  };
   contacts?: { agency?: { name?: string }; agent_names?: string; agents?: Array<{ name?: string }> };
 };
 
@@ -177,7 +190,8 @@ export function mapItem(category: IngestCategory, it: DomainItem):
     suburb: titleCaseSuburb(loc.suburb) ?? undefined,
     state: (loc.state ?? 'VIC').toUpperCase(),
     postcode: loc.postcode ?? undefined,
-    land_area_sqm: num(prop.land_size) ?? undefined,
+    // Normalised to m² (acres/ha converted, 0/negative treated as missing).
+    land_area_sqm: normaliseAreaSqm(prop.land_size, prop.land_unit ?? prop.landUnit) ?? undefined,
     property_type: prop.property_type ?? undefined,
     latitude: num(loc.latitude) ?? undefined,
     longitude: num(loc.longitude) ?? undefined,
@@ -195,8 +209,16 @@ export function mapItem(category: IngestCategory, it: DomainItem):
   if (category === 'sold') {
     const salePrice = parsePrice(it.pricing?.display_price);
     if (salePrice == null) return null; // sold needs a price
+    // Listing date for daysOnMarket derivation. OMIT when unknown — unlike
+    // listings (006), property_sales.listed_date has no DEFAULT, so omission
+    // leaves NULL (= unknown) rather than a fake first-seen date.
+    const soldListedDate = parseListedDate(it);
+    const buildingArea =
+      normaliseAreaSqm(prop.building_size ?? prop.building_area ?? prop.buildingArea) ?? undefined;
     return {
       ...common,
+      ...(soldListedDate ? { listed_date: soldListedDate } : {}),
+      ...(buildingArea !== undefined ? { building_area_sqm: buildingArea } : {}),
       bedrooms: beds,
       bathrooms: baths,
       car_spaces: cars,

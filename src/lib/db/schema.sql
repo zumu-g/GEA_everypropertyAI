@@ -162,6 +162,7 @@ CREATE TABLE property_sales (
   lot_number      TEXT,
   plan_number     TEXT,
   land_area_sqm   NUMERIC(10,2),
+  building_area_sqm NUMERIC(10,2),         -- 008: $/m² building rate for CMA
   property_type   TEXT,
   agency_name     TEXT,
   agent_name      TEXT,
@@ -169,6 +170,7 @@ CREATE TABLE property_sales (
   image_url       TEXT,
   sale_price      NUMERIC(14,2),
   sale_date       DATE,
+  listed_date     TIMESTAMPTZ,             -- 008: scraped listing date (daysOnMarket)
   settlement_date DATE,
   latitude        DOUBLE PRECISION,
   longitude       DOUBLE PRECISION,

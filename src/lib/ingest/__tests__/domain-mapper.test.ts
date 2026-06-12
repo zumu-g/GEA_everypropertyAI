@@ -76,7 +76,7 @@ describe('mapItem listed_date population', () => {
     expect(Object.prototype.hasOwnProperty.call(mapItem('rent', baseItem), 'listed_date')).toBe(false);
   });
 
-  it('does not add listed_date to a sold item', () => {
+  it('omits listed_date on a sold item when no real date is present', () => {
     const row = mapItem('sold', {
       ...baseItem,
       pricing: { display_price: '$800,000' },
@@ -85,5 +85,69 @@ describe('mapItem listed_date population', () => {
     expect(row).not.toBeNull();
     expect(Object.prototype.hasOwnProperty.call(row, 'listed_date')).toBe(false);
     expect(row).toMatchObject({ sale_price: 800000, sale_date: '2024-10-07' });
+  });
+
+  it('sets listed_date on a sold item when a real date is present (008)', () => {
+    const row = mapItem('sold', {
+      ...baseItem,
+      dateListed: '2024-08-20',
+      pricing: { display_price: '$800,000' },
+      listing: { tags: { tag_text: 'Sold 07 Oct 2024' } },
+    });
+    expect(row).toMatchObject({ listed_date: '2024-08-20', sale_date: '2024-10-07' });
+  });
+});
+
+describe('mapItem area normalisation + building area (008)', () => {
+  const soldExtras = {
+    pricing: { display_price: '$800,000' },
+    listing: { tags: { tag_text: 'Sold 07 Oct 2024' } },
+  };
+
+  it('omits land_area_sqm when land_size is 0 (zero-as-missing)', () => {
+    const row = mapItem('sold', {
+      ...baseItem,
+      ...soldExtras,
+      property: { land_size: 0 },
+    });
+    // `?? undefined` convention: key may exist but must be undefined (dropped at upsert)
+    expect((row as { land_area_sqm?: number }).land_area_sqm).toBeUndefined();
+  });
+
+  it('normalises acreage land sizes to m² via unit hint', () => {
+    const row = mapItem('sold', {
+      ...baseItem,
+      ...soldExtras,
+      property: { land_size: 2, land_unit: 'acres' },
+    });
+    expect((row as { land_area_sqm?: number }).land_area_sqm).toBeCloseTo(8093.7, 1);
+  });
+
+  it('sets building_area_sqm when the item carries one, omits when absent', () => {
+    const withArea = mapItem('sold', {
+      ...baseItem,
+      ...soldExtras,
+      property: { land_size: 650, building_size: 182 },
+    });
+    expect(withArea).toMatchObject({ land_area_sqm: 650, building_area_sqm: 182 });
+
+    const withoutArea = mapItem('sold', { ...baseItem, ...soldExtras, property: { land_size: 650 } });
+    expect(Object.prototype.hasOwnProperty.call(withoutArea, 'building_area_sqm')).toBe(false);
+  });
+
+  it('regression: existing sold fields are unchanged', () => {
+    const row = mapItem('sold', {
+      ...baseItem,
+      ...soldExtras,
+      property: { land_size: 650, bedrooms: 3, bathrooms: 2, parking: 1 },
+    });
+    expect(row).toMatchObject({
+      sale_price: 800000,
+      sale_date: '2024-10-07',
+      bedrooms: 3,
+      bathrooms: 2,
+      car_spaces: 1,
+      land_area_sqm: 650,
+    });
   });
 });
