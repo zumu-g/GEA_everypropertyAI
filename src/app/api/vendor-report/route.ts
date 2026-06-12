@@ -6,6 +6,7 @@ import {
   type PropertyListingRecord,
 } from '@/lib/db/queries';
 import { geocodeAddress } from '@/lib/enrichment/geocoding';
+import { enrichSoldRowsFromDb, type EnrichedSoldResult } from '@/lib/sold/enrich';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -21,25 +22,9 @@ const DEFAULT_RADIUS_KM = 0.5; // 500m
 const MAX_RADIUS_KM = 2;
 const TAKE = 3;
 
-interface NearbySold {
-  rawAddress: string;
-  suburb: string | null;
-  postcode: string | null;
-  salePrice: number | null;
-  saleDate: string | null;
-  landAreaSqm: number | null;
-  propertyType: string | null;
-  bedrooms: number | null;
-  bathrooms: number | null;
-  carSpaces: number | null;
-  latitude: number | null;
-  longitude: number | null;
-  agencyName: string | null;
-  agentName: string | null;
-  listingUrl: string | null;
-  imageUrl: string | null;
+type NearbySold = EnrichedSoldResult & {
   distanceMetres: number;
-}
+};
 
 interface NearbyListing {
   rawAddress: string;
@@ -137,31 +122,18 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Solds: within radius, with a price → 3 closest (tiebreak: most recent sale).
-    const solds: NearbySold[] = saleBox
+    const soldPairs = saleBox
       .filter(hasCoords)
       .map((s) => ({ s, d: haversineKm(cLat, cLng, s.latitude, s.longitude) }))
       .filter(({ s, d }) => d <= radius && typeof s.sale_price === 'number' && notExcluded(s.raw_address))
       .sort((a, b) => a.d - b.d || (b.s.sale_date ?? '').localeCompare(a.s.sale_date ?? ''))
-      .slice(0, TAKE)
-      .map(({ s, d }) => ({
-        rawAddress: s.raw_address,
-        suburb: s.suburb ?? null,
-        postcode: s.postcode ?? null,
-        salePrice: s.sale_price ?? null,
-        saleDate: s.sale_date ?? null,
-        landAreaSqm: s.land_area_sqm ?? null,
-        propertyType: s.property_type ?? null,
-        bedrooms: s.bedrooms ?? null,
-        bathrooms: s.bathrooms ?? null,
-        carSpaces: s.car_spaces ?? null,
-        latitude: s.latitude ?? null,
-        longitude: s.longitude ?? null,
-        agencyName: s.agency_name ?? null,
-        agentName: s.agent_name ?? null,
-        listingUrl: s.listing_url ?? null,
-        imageUrl: s.image_url ?? null,
-        distanceMetres: Math.round(d * 1000),
-      }));
+      .slice(0, TAKE);
+
+    const enriched = await enrichSoldRowsFromDb(soldPairs.map(({ s }) => s));
+    const solds: NearbySold[] = enriched.map((row, i) => ({
+      ...row,
+      distanceMetres: Math.round(soldPairs[i].d * 1000),
+    }));
 
     // Listings: active, within radius → 3 newest (by first-seen created_at).
     const listings: NearbyListing[] = listingBox

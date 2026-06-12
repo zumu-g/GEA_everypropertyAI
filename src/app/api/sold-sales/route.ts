@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSalesForSuburb, getRowsNearby, haversineKm, type PropertySaleRecord } from '@/lib/db/queries';
+import { enrichSoldRowsFromDb } from '@/lib/sold/enrich';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -17,27 +18,6 @@ const MAX_PLAUSIBLE_SALE_PRICE = 50_000_000;
  */
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
-}
-
-interface SoldSaleResult {
-  rawAddress: string;
-  suburb: string | null;
-  postcode: string | null;
-  salePrice: number | null;
-  saleDate: string | null;
-  settlementDate: string | null;
-  landAreaSqm: number | null;
-  propertyType: string | null;
-  bedrooms: number | null;
-  bathrooms: number | null;
-  carSpaces: number | null;
-  latitude: number | null;
-  longitude: number | null;
-  agencyName: string | null;
-  agentName: string | null;
-  listingUrl: string | null;
-  imageUrl: string | null;
-  source: string;
 }
 
 /**
@@ -93,35 +73,16 @@ export async function GET(request: NextRequest) {
       sales = await getSalesForSuburb(suburb, state, sinceDays, limit);
     }
 
-    const results: SoldSaleResult[] = sales
-      .filter((s) => {
-        if (typeof s.sale_price !== 'number') return false;
-        // Drop non-positive prices and implausible outliers (data anomalies)
-        if (s.sale_price <= 0 || s.sale_price > MAX_PLAUSIBLE_SALE_PRICE) return false;
-        if (minPrice !== undefined && s.sale_price < minPrice) return false;
-        if (maxPrice !== undefined && s.sale_price > maxPrice) return false;
-        return true;
-      })
-      .map((s) => ({
-        rawAddress: s.raw_address,
-        suburb: s.suburb ?? null,
-        postcode: s.postcode ?? null,
-        salePrice: s.sale_price ?? null,
-        saleDate: s.sale_date ?? null,
-        settlementDate: s.settlement_date ?? null,
-        landAreaSqm: s.land_area_sqm ?? null,
-        propertyType: s.property_type ?? null,
-        bedrooms: s.bedrooms ?? null,
-        bathrooms: s.bathrooms ?? null,
-        carSpaces: s.car_spaces ?? null,
-        latitude: s.latitude ?? null,
-        longitude: s.longitude ?? null,
-        agencyName: s.agency_name ?? null,
-        agentName: s.agent_name ?? null,
-        listingUrl: s.listing_url ?? null,
-        imageUrl: s.image_url ?? null,
-        source: s.source,
-      }));
+    const filteredSales = sales.filter((s) => {
+      if (typeof s.sale_price !== 'number') return false;
+      // Drop non-positive prices and implausible outliers (data anomalies)
+      if (s.sale_price <= 0 || s.sale_price > MAX_PLAUSIBLE_SALE_PRICE) return false;
+      if (minPrice !== undefined && s.sale_price < minPrice) return false;
+      if (maxPrice !== undefined && s.sale_price > maxPrice) return false;
+      return true;
+    });
+
+    const results = await enrichSoldRowsFromDb(filteredSales);
 
     return NextResponse.json(
       { suburb: suburb || null, state, count: results.length, results },
