@@ -19,6 +19,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
+import ws from 'ws'; // Node 20 lacks native WebSocket; realtime-js needs a transport
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +41,18 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 
 const DRY = process.argv.includes('--dry');
 const PAGE_SIZE = 1000;
+
+// ── Migration-008 column probe ──
+// Determines at startup whether building_area_sqm and listed_date exist.
+// A Supabase select that references a missing column returns a PGRST error.
+async function probeMigration008Columns(supabase) {
+  const { error } = await supabase
+    .from('property_sales')
+    .select('building_area_sqm, listed_date')
+    .limit(1);
+  // Any error (column does not exist → 42703 / PGRST204 / similar) means absent.
+  return !error;
+}
 
 // ── Area normalisation — duplicated from src/lib/utils/area.ts (scripts are
 // .mjs and cannot import TS; keep in sync with normaliseAreaSqm there). ──
@@ -166,7 +179,17 @@ const missingVal = (v) => v == null;
 // ── Main ──
 
 async function main() {
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
+  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false }, realtime: { transport: ws } });
+
+  // Probe for migration-008 columns before touching any real data.
+  const has008Cols = await probeMigration008Columns(supabase);
+  if (!has008Cols) {
+    console.warn('');
+    console.warn('WARNING: migration 008 not applied — building_area_sqm/listed_date will be');
+    console.warn('  skipped on write; re-run after applying 008.');
+    console.warn('  land_area_sqm backfill proceeds normally.');
+    console.warn('');
+  }
 
   let scanned = 0;
   const counts = { land_area_sqm: 0, building_area_sqm: 0, listed_date: 0 };
@@ -176,10 +199,15 @@ async function main() {
   // (suspiciously small — would indicate a unit/parsing problem).
   const tinyLandAreas = [];
 
+  // Build the select column list based on column availability.
+  const selectCols = has008Cols
+    ? 'id, land_area_sqm, building_area_sqm, listed_date, raw_data'
+    : 'id, land_area_sqm, raw_data';
+
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data: rows, error } = await supabase
       .from('property_sales')
-      .select('id, land_area_sqm, building_area_sqm, listed_date, raw_data')
+      .select(selectCols)
       .not('raw_data', 'is', null)
       .order('id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1);
@@ -199,13 +227,23 @@ async function main() {
         counts.land_area_sqm += 1;
         if (parsed.landAreaSqm < 40) tinyLandAreas.push(parsed.landAreaSqm);
       }
-      if (missingVal(row.building_area_sqm) && parsed.buildingAreaSqm != null) {
-        patch.building_area_sqm = parsed.buildingAreaSqm;
-        counts.building_area_sqm += 1;
+
+      // Always count candidates for building_area_sqm / listed_date so --dry
+      // reports accurate numbers regardless of migration state.
+      // Only add to patch when the columns actually exist in the DB.
+      if (parsed.buildingAreaSqm != null) {
+        const isMissing = !has008Cols || missingVal(row.building_area_sqm);
+        if (isMissing) {
+          counts.building_area_sqm += 1;
+          if (has008Cols) patch.building_area_sqm = parsed.buildingAreaSqm;
+        }
       }
-      if (missingVal(row.listed_date) && parsed.listedDate != null) {
-        patch.listed_date = parsed.listedDate;
-        counts.listed_date += 1;
+      if (parsed.listedDate != null) {
+        const isMissing = !has008Cols || missingVal(row.listed_date);
+        if (isMissing) {
+          counts.listed_date += 1;
+          if (has008Cols) patch.listed_date = parsed.listedDate;
+        }
       }
 
       if (Object.keys(patch).length === 0) continue;
@@ -229,10 +267,13 @@ async function main() {
 
   console.log('');
   console.log(`${DRY ? 'DRY RUN — no writes.' : 'Backfill complete.'}`);
+  if (!has008Cols) {
+    console.log('(migration 008 absent — building_area_sqm/listed_date counts are candidates only; no writes for those columns)');
+  }
   console.log(`Rows scanned (raw_data present): ${scanned}`);
   console.log(`Candidates — land_area_sqm:     ${counts.land_area_sqm}`);
-  console.log(`Candidates — building_area_sqm: ${counts.building_area_sqm}`);
-  console.log(`Candidates — listed_date:       ${counts.listed_date}`);
+  console.log(`Candidates — building_area_sqm: ${counts.building_area_sqm}${!has008Cols ? ' [skipped — migration 008 not applied]' : ''}`);
+  console.log(`Candidates — listed_date:       ${counts.listed_date}${!has008Cols ? ' [skipped — migration 008 not applied]' : ''}`);
   if (DRY) {
     console.log('');
     console.log(`Sanity gate — parsed land areas under 40 m²: ${tinyLandAreas.length}`);

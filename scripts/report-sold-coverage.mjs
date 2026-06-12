@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createClient } from '@supabase/supabase-js';
+import ws from 'ws'; // Node 20 lacks native WebSocket; realtime-js needs a transport
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -41,10 +42,35 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY (set in .env.local).');
   process.exit(1);
 }
-const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false }, realtime: { transport: ws } });
 
 const PAGE_SIZE = 1000;
 const SLUG_CHUNK = 200;
+
+// ── Migration 008 probe ──
+// building_area_sqm and listed_date are added by migration 008. If that
+// migration has not been applied yet PostgREST returns error code 42703.
+// We probe once at startup and set a flag so the rest of the script still
+// runs cleanly, just with those two columns treated as null.
+let migration008Missing = false;
+
+async function probeMigration008() {
+  const { error } = await supabase
+    .from('property_sales')
+    .select('building_area_sqm, listed_date')
+    .limit(1);
+  if (error) {
+    // 42703 = column does not exist (PostgREST surfaces this in error.message)
+    migration008Missing = true;
+    console.warn('');
+    console.warn('┌─────────────────────────────────────────────────────────────────────┐');
+    console.warn('│  NOTE: migration 008 not applied — building_area_sqm / listed_date  │');
+    console.warn('│  columns absent; column-only coverage for those fields reported as  │');
+    console.warn('│  0%, post-merge still measured from profile/listings joins.         │');
+    console.warn('└─────────────────────────────────────────────────────────────────────┘');
+    console.warn('');
+  }
+}
 
 // ── Pure helpers mirrored from src/lib/sold/enrich.ts ──
 
@@ -97,11 +123,15 @@ function deriveDaysOnMarket(saleDate, firstListedDate) {
 // ── Data fetch ──
 
 async function fetchAllSales() {
+  // When migration 008 is absent, omit the two columns that don't exist yet.
+  const selectCols = migration008Missing
+    ? 'address_slug, suburb, land_area_sqm, bedrooms, bathrooms, car_spaces, sale_date'
+    : 'address_slug, suburb, land_area_sqm, building_area_sqm, bedrooms, bathrooms, car_spaces, listed_date, sale_date';
   const rows = [];
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from('property_sales')
-      .select('address_slug, suburb, land_area_sqm, building_area_sqm, bedrooms, bathrooms, car_spaces, listed_date, sale_date')
+      .select(selectCols)
       .range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`property_sales page at ${from}: ${error.message}`);
     rows.push(...(data ?? []));
@@ -166,6 +196,7 @@ function pct(n, total) {
 }
 
 async function main() {
+  await probeMigration008();
   console.log('Fetching property_sales...');
   const rows = await fetchAllSales();
   const total = rows.length;
@@ -191,10 +222,13 @@ async function main() {
     const candidates = s.address_slug ? listedDates.get(s.address_slug) : undefined;
 
     // Column-only values (zero-as-missing for land area; sqm sanity on building too,
-    // matching enrich.ts which runs both through sqmOrNull)
+    // matching enrich.ts which runs both through sqmOrNull).
+    // When migration 008 is absent the columns don't exist on the row object;
+    // treat them as null so post-merge coverage is still measured via profile/listings joins.
     const colLand = sqmOrNull(s.land_area_sqm);
-    const colBuilding = sqmOrNull(s.building_area_sqm);
-    const colListed = s.listed_date && dayMs(s.listed_date) !== null ? ymd(dayMs(s.listed_date)) : null;
+    const colBuilding = migration008Missing ? null : sqmOrNull(s.building_area_sqm);
+    const rawListed = migration008Missing ? null : (s.listed_date ?? null);
+    const colListed = rawListed && dayMs(rawListed) !== null ? ymd(dayMs(rawListed)) : null;
     const colDom = deriveDaysOnMarket(s.sale_date ?? null, colListed);
 
     // Post-merge values (mirrors toEnrichedSoldResult in src/lib/sold/enrich.ts)
