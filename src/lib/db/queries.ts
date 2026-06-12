@@ -576,6 +576,44 @@ export async function getCachedProfilesBySlugs(
   }
 }
 
+/**
+ * Batch-fetch ALL candidate property_listings.listed_date values for many
+ * slugs in one query (an address can have multiple listing campaigns).
+ * Reads the raw listed_date column only — no created_at COALESCE, since
+ * first-seen would approximate rather than record a listing date. Campaign
+ * selection (closest preceding the sale) happens in src/lib/sold/enrich.ts.
+ */
+export async function getListedDatesBySlugs(
+  slugs: string[]
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (!isSupabaseConfigured() || slugs.length === 0) return result;
+
+  try {
+    const { data, error } = await supabase()
+      .from('property_listings')
+      .select('address_slug, listed_date')
+      .in('address_slug', slugs)
+      .not('listed_date', 'is', null);
+
+    if (error) {
+      console.error('[getListedDatesBySlugs] Supabase error:', error.message);
+      return result;
+    }
+
+    for (const row of data ?? []) {
+      const slug = row.address_slug as string;
+      const dates = result.get(slug) ?? [];
+      dates.push(row.listed_date as string);
+      result.set(slug, dates);
+    }
+    return result;
+  } catch (err) {
+    console.error('[getListedDatesBySlugs] Unexpected error:', err);
+    return result;
+  }
+}
+
 // ─── Agency Queries ──────────────────────────────────────────────────────────
 
 export interface AgencyRecord {
