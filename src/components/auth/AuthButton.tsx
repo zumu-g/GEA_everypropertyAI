@@ -77,22 +77,22 @@ export function AuthButton() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={toggleDropdown}
-        className="flex items-center gap-1.5 rounded-lg border border-[#E7E9EE] bg-white px-4 py-2 text-sm font-medium text-[#16181D] transition-all hover:border-[#C8A96E] hover:text-[#C8A96E]"
+        className="flex items-center gap-1.5 rounded-lg border border-[#E7E9EE] bg-white px-4 py-2.5 text-sm font-medium text-[#16181D] transition-all hover:border-[#C8A96E] hover:text-[#C8A96E]"
       >
         {truncatedEmail}
-        <ChevronDown className="h-3 w-3" />
+        <ChevronDown className="h-4 w-4" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-44 rounded-xl border border-[#E7E9EE] bg-white shadow-md z-50 py-1">
+        <div className="absolute right-0 top-full mt-1 w-44 max-w-[90vw] rounded-xl border border-[#E7E9EE] bg-white shadow-md z-50 py-1">
           <a
             href="/my-properties"
-            className="block px-4 py-2 text-sm text-[#16181D] hover:bg-[#FBFBFC]"
+            className="block px-4 py-2.5 text-sm text-[#16181D] hover:bg-[#FBFBFC]"
           >
             My Properties
           </a>
           <button
             onClick={handleSignOut}
-            className="block w-full px-4 py-2 text-left text-sm text-[#4A4E57] hover:bg-[#FBFBFC]"
+            className="block w-full px-4 py-2.5 text-left text-sm text-[#4A4E57] hover:bg-[#FBFBFC]"
           >
             Sign out
           </button>

@@ -113,7 +113,7 @@ function SignInForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
-          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-sm text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
         />
       </div>
 
@@ -142,7 +142,7 @@ export default function SignInPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[#FBFBFC]">
       {/* ── Navigation ── */}
-      <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm">
+      <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm pt-safe px-safe">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <a
             href="/"
