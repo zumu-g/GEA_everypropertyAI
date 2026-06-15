@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, Playfair_Display, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -25,6 +25,15 @@ export const metadata: Metadata = {
   title: "PropertyIQ — Every Property. Every Detail.",
   description:
     "Search any Australian property and get instant data from 8+ portals. Comprehensive property intelligence for Casey & Cardinia real estate professionals.",
+};
+
+// `viewport-fit: cover` enables the iPhone safe-area env() insets used by the safe-area
+// utilities in globals.css. User scaling is left enabled (no maximumScale / userScalable:false)
+// so pinch-zoom accessibility is preserved.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

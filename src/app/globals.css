@@ -63,6 +63,33 @@ body {
   font-family: var(--font-sans);
 }
 
+/* ── iOS input-zoom guard ──────────────────────────────────────────────────
+   Stops iOS Safari from auto-zooming the page when a form control gains focus.
+   Controls should still use ≥16px (text-base); this is the backstop. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ── Safe-area utilities ───────────────────────────────────────────────────
+   Opt-in helpers for iPhone safe areas (notch / Dynamic Island / home indicator).
+   Requires `viewport-fit: cover` (set in app/layout.tsx). On non-notched devices
+   the env() insets resolve to 0, so these are no-ops there.
+
+   Use:
+   - Sticky headers: replace the top padding with the matching `pt-safe-*` (inset
+     PLUS the design padding), keeping the bottom padding (e.g. `pt-safe-4 pb-4`).
+   - Absolutely-positioned overlay controls (lightbox close/arrows): replace
+     `top-4`/`left-4`/`right-4` with `top-safe-4`/`left-safe-4`/`right-safe-4`. */
+.pt-safe   { padding-top: env(safe-area-inset-top); }
+.pt-safe-3 { padding-top: calc(env(safe-area-inset-top) + 0.75rem); }
+.pt-safe-4 { padding-top: calc(env(safe-area-inset-top) + 1rem); }
+.pb-safe   { padding-bottom: env(safe-area-inset-bottom); }
+.pb-safe-4 { padding-bottom: calc(env(safe-area-inset-bottom) + 1rem); }
+.px-safe   { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+.top-safe-4   { top: calc(env(safe-area-inset-top) + 1rem); }
+.left-safe-4  { left: calc(env(safe-area-inset-left) + 1rem); }
+.right-safe-4 { right: calc(env(safe-area-inset-right) + 1rem); }
+
 /* ── Type scale utilities — sans-dominant, data-site hierarchy ── */
 .text-display {
   font-family: var(--font-sans);
