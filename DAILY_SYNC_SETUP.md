@@ -1,6 +1,50 @@
 # Daily property-data sync — setup
 
-> **CURRENT (2026-06-09): Bright Data Web Unlocker + GitHub Actions.**
+> **TARGET (2026-06-16): Re-host onto Railway cron + Healthchecks.io monitoring.**
+> The two feeds previously ran on GitHub Actions scheduled workflows (`cron: '0 21 * * *'`).
+> GitHub's scheduler is best-effort: top-of-hour runs were delayed 60–110 min and **silently
+> dropped** under load (no run fired on 2026-06-16). The feeds are moving to **Railway cron
+> services** (fire on time, co-located with Supabase) wrapped with a **Healthchecks.io
+> dead-man's-switch** so a dropped or zero-yield run alerts instead of failing silently.
+>
+> **Railway cron services** (Settings → Cron Schedule on each service; one schedule per service).
+> Point each at this repo, Node 20, no build step (scripts use only Node built-ins):
+>
+> | Service | Start command | Cron (UTC, odd minute) | ≈ Melbourne |
+> |---------|---------------|------------------------|-------------|
+> | feeds-domain-sold | `node scripts/ingest-domain-webunlocker.mjs sold` | `23 21 * * *` | ~7:23am AEST |
+> | feeds-domain-onmarket | `node scripts/ingest-domain-webunlocker.mjs on-market` | `24 21 * * *` | ~7:24am AEST |
+> | feeds-rea-onmarket | `node scripts/ingest-rea-apify.mjs on-market` | `26 21 * * *` | ~7:26am AEST |
+>
+> Railway cron requires the command to **exit** on completion — these scripts do. Each script
+> exits non-zero and pings Healthchecks `/fail` when its feed is **blocked** (all pages
+> challenge/empty) so the run is marked failed.
+>
+> **Env per Railway service:** `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, plus
+> `BRIGHTDATA_WEB_UNLOCKER_TOKEN` + `BRIGHTDATA_WEB_UNLOCKER_ZONE` (Domain services) or
+> `APIFY_API_TOKEN` (REA service), and a **per-service** `HEALTHCHECK_UUID` (the check for that
+> feed). Optional: `HEALTHCHECK_BASE_URL` (self-hosted Healthchecks), `REA_RESULT_COUNT`,
+> `REA_PAGES`.
+>
+> **Healthchecks.io:** create one check per service (period ~25h to absorb jitter, grace ~2h);
+> wire its integrations (email/Slack) for the alert. Each run pings `/start`, then `/<uuid>`
+> with a one-line summary on success, or `/<uuid>/fail` on blocked/error. The check's UUID is
+> the `HEALTHCHECK_UUID` env for that service.
+>
+> **`feed_health` table:** each run now upserts `feed_health` (migration `007_feed_health.sql` —
+> **verify it is applied** in the live DB before relying on it; the migration counter is at 008).
+> `GET /api/cron/feed-freshness` runs on a Vercel cron (`vercel.json`, `17 22,2,9 * * *`) as a
+> second backstop alert (503 when any feed is stale beyond its SLA).
+>
+> **Cutover order (important):** stand up + manually run the Railway services and confirm rows
+> upsert + Healthchecks pings land, THEN remove the `schedule:` trigger from the two GitHub
+> workflows (keep `workflow_dispatch` as a manual break-glass). Removing the GitHub schedule
+> before Railway is verified would leave **no** scheduler. Idempotent upserts make a brief
+> double-run window harmless.
+
+---
+
+> **PREVIOUS (2026-06-09): Bright Data Web Unlocker + GitHub Actions.**
 > The Domain Apify batch actor is permanently blocked by Domain's anti-bot (every run
 > SUCCEEDED with 0 items), so the daily sync now runs via **`.github/workflows/daily-domain-scrape.yml`**:
 > a cron workflow (21:00 UTC ≈ 7am Melbourne) that runs `scripts/ingest-domain-webunlocker.mjs`
