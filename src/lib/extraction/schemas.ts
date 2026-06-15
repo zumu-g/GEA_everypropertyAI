@@ -634,6 +634,24 @@ export const propertyExtractionSchema = z.object({
 });
 
 /**
+ * Schema for validating raw LLM extraction output (the `extractPropertyData`
+ * path). Identical to propertyExtractionSchema but with the bookkeeping fields
+ * (sourceName/sourceUrl/crawledAt/rawContentHash) omitted — the model can't
+ * reliably produce them and the extractor fills provenance itself (the
+ * ExtractedPropertyData carries `source` + `extractedAt`). Validating LLM output
+ * against the strict schema rejected every extraction whose model didn't emit
+ * those fields (e.g. MiniMax), so all property fields were lost despite being
+ * present. Keeps `address` and every property field typed for the merger and
+ * address-match, which read from `.data`.
+ */
+export const llmPropertyExtractionSchema = propertyExtractionSchema.omit({
+  sourceName: true,
+  sourceUrl: true,
+  crawledAt: true,
+  rawContentHash: true,
+});
+
+/**
  * Trimmed schema for Firecrawl's native `/extract` (jsonOptions). Unlike
  * propertyExtractionSchema it omits the bookkeeping fields (sourceName/sourceUrl/
  * crawledAt) the model can't reliably produce — we fill those ourselves. Field

@@ -1,5 +1,5 @@
 import type { ExtractedPropertyData, PropertySummary } from '@/types/property';
-import { propertyExtractionSchema } from './schemas';
+import { llmPropertyExtractionSchema } from './schemas';
 import { extractionMatchesTarget } from './address-match';
 import {
   PROPERTY_EXTRACTION_SYSTEM_PROMPT,
@@ -220,8 +220,11 @@ export async function extractPropertyData(
       console.warn(`[extractor] Extracted address contradicts target "${targetAddress}" for ${source} — will be dropped before merge`);
     }
 
-    // Validate against Zod schema
-    const parsed = propertyExtractionSchema.safeParse(rawJson);
+    // Validate against the LLM-output schema (bookkeeping fields omitted — we
+    // supply provenance via `source` + `extractedAt`, not the model). Using the
+    // strict propertyExtractionSchema here rejected any model that didn't emit
+    // sourceName/sourceUrl/crawledAt, discarding otherwise-valid property fields.
+    const parsed = llmPropertyExtractionSchema.safeParse(rawJson);
 
     if (parsed.success) {
       return {
