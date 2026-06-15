@@ -11,6 +11,16 @@
 > `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. Run manually: Actions tab → "Daily Domain
 > scrape" → Run workflow. The Apify-actor approach below is retained for historical reference only.
 
+> **ADDITIONAL FEED (2026-06-15): REA on-market via Apify.**
+> `.github/workflows/daily-rea-apify-scrape.yml` runs `scripts/ingest-rea-apify.mjs on-market` at the
+> same 21:00 UTC, scraping realestate.com.au on-market listings for Casey/Cardinia via the Apify actor
+> `one-api/realestate-com-au-scraper` and upserting into `property_listings` (source=`rea-apify-one-api`)
+> — a second, independent on-market source alongside Domain. Required GitHub repo secrets:
+> `APIFY_API_TOKEN`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`. Optional repo variables:
+> `REA_RESULT_COUNT` (default 25), `REA_PAGES` (default 1). Cost ≈ $0.003/result.
+> **REA sold is NOT wired** — the actor's Sold channel returns no sold DATE (breaks `property_sales`
+> dedup + comp recency); resolving that is a follow-up.
+
 ---
 
 Cost-effective, daily-updating Supabase database for sold + on-market (+ weekly rentals),
