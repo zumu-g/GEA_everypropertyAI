@@ -1565,7 +1565,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             tabIndex={-1}
           >
             {/* Photo counter */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-sm font-medium text-white backdrop-blur-sm">
+            <div className="absolute top-safe-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-sm font-medium text-white backdrop-blur-sm">
               {selectedPhotoIndex + 1} / {photos.length}
             </div>
 
@@ -1575,7 +1575,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 e.stopPropagation();
                 setSelectedPhotoIndex(null);
               }}
-              className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
+              className="absolute top-safe-4 right-safe-4 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
               aria-label="Close lightbox"
             >
               <X className="h-5 w-5" />
@@ -1593,7 +1593,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         : 0
                   );
                 }}
-                className="absolute left-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
+                className="absolute left-safe-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
                 aria-label="Previous photo"
               >
                 <ChevronLeft className="h-6 w-6" />
@@ -1622,7 +1622,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                       prev !== null ? (prev + 1) % photos.length : 0
                   );
                 }}
-                className="absolute right-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
+                className="absolute right-safe-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70"
                 aria-label="Next photo"
               >
                 <ChevronRight className="h-6 w-6" />

@@ -214,7 +214,7 @@ export default function MyPropertiesPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[#FBFBFC]">
       {/* ── Navigation ── */}
-      <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm">
+      <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm pt-safe px-safe">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           {/* Wordmark */}
           <a

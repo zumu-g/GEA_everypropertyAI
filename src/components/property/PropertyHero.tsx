@@ -299,14 +299,14 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             aria-label={`Photo ${lightboxIndex + 1} of ${photoUrls.length}`}
           >
             {/* Counter */}
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-sm font-medium text-white backdrop-blur-sm">
+            <div className="absolute top-safe-4 left-1/2 -translate-x-1/2 rounded-full bg-black/50 px-3 py-1 text-sm font-medium text-white backdrop-blur-sm">
               {lightboxIndex + 1} / {photoUrls.length}
             </div>
 
             {/* Close */}
             <button
               onClick={(e) => { e.stopPropagation(); closeLightbox(); }}
-              className="absolute top-4 right-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+              className="absolute top-safe-4 right-safe-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
               aria-label="Close lightbox"
             >
               <X className="h-5 w-5" />
@@ -316,7 +316,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             {photoUrls.length > 1 && (
               <button
                 onClick={(e) => { e.stopPropagation(); prev(); }}
-                className="absolute left-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+                className="absolute left-safe-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
                 aria-label="Previous photo"
               >
                 <ChevronLeft className="h-6 w-6" />
@@ -339,7 +339,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             {photoUrls.length > 1 && (
               <button
                 onClick={(e) => { e.stopPropagation(); next(); }}
-                className="absolute right-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+                className="absolute right-safe-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
                 aria-label="Next photo"
               >
                 <ChevronRight className="h-6 w-6" />
