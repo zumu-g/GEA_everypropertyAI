@@ -41,6 +41,7 @@ Tables processed:
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// @ts-ignore - 'ws' ships no bundled type declarations; only used as the realtime transport on Node <22
 import ws from 'ws';
 import { createClient } from '@supabase/supabase-js';
 
@@ -159,7 +160,7 @@ async function backfillTable(table: TableName): Promise<TableSummary> {
       }
 
       if (samples.length < 5) samples.push({ raw_address: raw, slug });
-      toUpdate.push({ id: row.id as number, slug });
+      toUpdate.push({ id: row.id as string, slug });
     }
 
     if (DRY || toUpdate.length === 0) continue;
