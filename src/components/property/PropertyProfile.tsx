@@ -457,7 +457,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {/* Skeleton preview */}
         <div className="space-y-8">
           <Skeleton height="16rem" rounded="xl" />
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} height="6rem" rounded="xl" />
             ))}
@@ -1108,7 +1108,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
             {/* Demographics */}
             {enrichment.marketData.demographics && (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
                 {enrichment.marketData.demographics.population != null && (
                   <StatCard label="Population" value={enrichment.marketData.demographics.population.toLocaleString()} />
                 )}
@@ -1165,7 +1165,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {(d.yearBuilt != null || d.landArea != null) && (
           <section>
             <SectionTitle title="Property Details" />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
               {d.yearBuilt != null && (
                 <StatCard label="Year Built" value={String(d.yearBuilt)} />
               )}
@@ -1315,7 +1315,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 ];
 
                 return (
-                  <div className="grid grid-cols-3 gap-3 mb-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                     {risks.map(risk => (
                       <div
                         key={risk.label}
@@ -1469,7 +1469,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               icon={Building2}
               title={`${enrichment.suburbStats.suburb} Suburb Profile`}
             />
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
               {enrichment.suburbStats.medianHousePrice != null && (
                 <StatCard
                   label="Median House Price"

@@ -277,14 +277,14 @@ export default function MyPropertiesPage() {
         {/* ── Property list ── */}
         <section aria-label="Tracked properties">
           {loading ? (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <PropertySkeleton />
               <PropertySkeleton />
             </div>
           ) : properties.length === 0 ? (
             <EmptyState />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {properties.map((property) => (
                 <PropertyCard
                   key={property.slug}
