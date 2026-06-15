@@ -426,6 +426,12 @@ function StreetResults() {
                             : col.align === "center"
                             ? "text-center"
                             : "text-left"
+                        } ${
+                          // Pin the address column so it stays visible while the
+                          // comparison columns scroll horizontally on mobile.
+                          col.key === "streetAddress"
+                            ? "sticky left-0 z-20 bg-[#FBFBFC] border-r border-[#E7E9EE] print:static print:border-r-0"
+                            : ""
                         }`}
                       >
                         <button
@@ -478,7 +484,14 @@ function StreetResults() {
 
                       if (col.key === "streetAddress") {
                         return (
-                          <td key={col.key} className={`px-4 py-3 ${alignClass}`}>
+                          <td
+                            key={col.key}
+                            className={`px-4 py-3 ${alignClass} sticky left-0 z-10 border-r border-[#E7E9EE] print:static print:border-r-0 ${
+                              // Carry the row's stripe colour so the pinned cell isn't
+                              // transparent over the scrolling columns behind it.
+                              i % 2 === 0 ? "bg-white" : "bg-[#FBFBFC]"
+                            }`}
+                          >
                             <span className="inline-flex items-center gap-2">
                               <Link
                                 href={row.propertyHref}
