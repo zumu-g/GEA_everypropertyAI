@@ -325,7 +325,7 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
           className={`w-full bg-transparent text-[#16181D] outline-none placeholder:text-[#8A8F97] ${
             size === "lg"
               ? "py-3.5 pl-11 pr-24 text-base"
-              : "py-3 pl-10 pr-20 text-sm"
+              : "py-3 pl-10 pr-20 text-base"
           }`}
           role="combobox"
           aria-expanded={isOpen}

@@ -135,7 +135,7 @@ interface EditableStatProps {
   onEditValueChange: (v: string) => void;
 }
 
-function EditableStat({
+export function EditableStat({
   field, value, label, suffix = '',
   editingField, editValue, editSaving,
   onEdit, onSave, onCancel, onEditValueChange,
@@ -154,7 +154,7 @@ function EditableStat({
             if (e.key === 'Escape') onCancel();
           }}
           autoFocus
-          className="w-16 rounded-lg border border-[#C8A96E] bg-white px-2 py-1 text-sm font-medium text-[#16181D] tabular-nums outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+          className="w-16 rounded-lg border border-[#C8A96E] bg-white px-2 py-1 text-base font-medium text-[#16181D] tabular-nums outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
           style={{ fontFamily: 'var(--font-mono)' }}
         />
         <button
@@ -186,10 +186,10 @@ function EditableStat({
       <button
         onClick={() => onEdit(field, value)}
         title={`Edit ${label}`}
-        className="opacity-0 transition-opacity group-hover:opacity-100 ml-0.5"
+        className="-m-1.5 ml-0 flex items-center justify-center rounded-lg p-2 text-[#6B7077] opacity-60 transition-opacity hover:text-[#C8A96E] hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]/30"
         aria-label={`Edit ${label}`}
       >
-        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-3 w-3 text-[#6B7077] hover:text-[#C8A96E]">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-4 w-4">
           <path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13H2.5v-2.5L11.5 2.5Z" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>

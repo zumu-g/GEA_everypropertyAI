@@ -130,7 +130,7 @@ function PropertyCard({ property, onRemove }: PropertyCardProps) {
           type="button"
           onClick={handleStopTracking}
           disabled={removing}
-          className="text-xs text-[#C5544A] transition-colors hover:text-[#C5544A] focus:outline-none disabled:opacity-50"
+          className="-mx-2 inline-flex min-h-[44px] items-center rounded-lg px-2 text-sm text-[#C5544A] transition-colors hover:bg-[#F7E7E5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C5544A]/30 disabled:opacity-50"
         >
           {removing ? "Removing…" : "Stop tracking"}
         </button>
