@@ -1,0 +1,45 @@
+name: Daily REA scrape (Casey/Cardinia)
+
+# Additional morning feed: scrapes realestate.com.au on-market listings for the
+# Casey/Cardinia suburbs via the Apify actor one-api/realestate-com-au-scraper and
+# upserts into property_listings (source=rea-apify-one-api). Runs alongside the
+# Domain Web Unlocker scrape as a second, independent on-market source.
+#
+# Schedule: 21:00 UTC daily = 7am AEST (Melbourne), matching the Domain workflow.
+# (GitHub cron is UTC-only; during AEDT this fires at 8am Melbourne — fine for a delta.)
+#
+# Sold is intentionally NOT scraped here: this actor's Sold channel has no sold DATE,
+# which property_sales needs for dedup + comp recency. See scripts/ingest-rea-apify.mjs.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   APIFY_API_TOKEN, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# Optional repo variables: REA_RESULT_COUNT (default 25), REA_PAGES (default 1)
+
+on:
+  schedule:
+    - cron: '0 21 * * *'
+  workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
+
+concurrency:
+  group: daily-rea-apify-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    name: scrape (on-market)
+    timeout-minutes: 45
+    env:
+      APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      REA_RESULT_COUNT: ${{ vars.REA_RESULT_COUNT || '25' }}
+      REA_PAGES: ${{ vars.REA_PAGES || '1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The runner uses only Node built-ins (fetch/fs/url/path) — no npm install needed.
+      - name: Scrape REA on-market
+        run: node scripts/ingest-rea-apify.mjs on-market
