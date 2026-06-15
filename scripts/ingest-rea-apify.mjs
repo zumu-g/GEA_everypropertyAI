@@ -26,6 +26,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
+import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -46,9 +48,8 @@ const ACTOR_ID = 'one-api~realestate-com-au-scraper';
 const SOURCE = 'rea-apify-one-api';
 const RESULT_COUNT = Number(process.env.REA_RESULT_COUNT) || 25;
 const PAGES = Number(process.env.REA_PAGES) || 1;
-
-if (!SUPABASE_URL || !SERVICE_KEY) { console.error('Missing Supabase env'); process.exit(1); }
-if (!APIFY_TOKEN) { console.error('Missing APIFY_API_TOKEN'); process.exit(1); }
+// Each scheduled service (e.g. Railway cron) sets its own Healthchecks.io check UUID.
+const HEALTHCHECK_UUID = process.env.HEALTHCHECK_UUID;
 
 // City of Casey + Shire of Cardinia ONLY — slugs are {suburb}-vic-{postcode}.
 const SUBURB_SLUGS = [
@@ -192,16 +193,22 @@ async function upsert(table, conflict, rows) {
 }
 
 async function main() {
+  const startedAt = Date.now();
   const category = process.argv[2] || 'on-market';
   if (category !== 'on-market') {
     console.error(`Only 'on-market' is supported. Sold is deferred (this actor has no sold date — see header).`);
     process.exit(1);
   }
+  if (!SUPABASE_URL || !SERVICE_KEY) { console.error('Missing Supabase env'); process.exit(1); }
+  if (!APIFY_TOKEN) { console.error('Missing APIFY_API_TOKEN'); process.exit(1); }
   const maxSuburbs = Number(process.argv[3]) || SUBURB_SLUGS.length;
   const slugs = process.env.SLUGS ? process.env.SLUGS.split(',').map(s=>s.trim()).filter(Boolean) : SUBURB_SLUGS.slice(0, maxSuburbs);
   const searchInputs = slugs.map(slugToSearchInput);
 
   console.log(`\n=== REA on-market via Apify ${ACTOR_ID} (${searchInputs.length} suburbs, ${RESULT_COUNT}/pg × ${PAGES}pg) ===`);
+
+  await pingStart(HEALTHCHECK_UUID);
+  const sbCfg = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
 
   const input = {
     search_inputs: searchInputs,
@@ -223,6 +230,29 @@ async function main() {
 
   const upserted = await upsert('property_listings', 'raw_address,source', rows);
   console.log(`Upserted ${upserted} rows into property_listings (source=${SOURCE}).`);
+
+  // An empty dataset across ~29 for-sale suburbs is not a real zero-yield day — treat
+  // it as blocked so the monitor alerts rather than silently reporting success.
+  const blocked = items.length === 0;
+  const status = deriveStatus({ blocked, items: upserted });
+  const newestRowAt = await fetchNewestRowAt(sbCfg, 'property_listings');
+  await writeFeedHealth(sbCfg, { category: 'on-market', source_used: SOURCE, items: upserted, newest_row_at: newestRowAt, status });
+
+  const durationS = ((Date.now() - startedAt) / 1000).toFixed(0);
+  const summary = `category=on-market source=${SOURCE} status=${status} items=${upserted} dataset=${items.length} duration=${durationS}s`;
+  console.log(summary);
+  if (blocked) {
+    await pingFail(HEALTHCHECK_UUID, `BLOCKED ${summary}`);
+    process.exit(1);
+  }
+  await pingSuccess(HEALTHCHECK_UUID, summary);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+// Only run when invoked directly, so the mapping helpers stay importable by tests.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch(async (e) => {
+    console.error(e);
+    await pingFail(HEALTHCHECK_UUID, `BROKEN ${e?.message || e}`);
+    process.exit(1);
+  });
+}

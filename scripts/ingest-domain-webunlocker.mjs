@@ -16,6 +16,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
+import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 try {
@@ -28,12 +30,11 @@ try {
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Each scheduled service (e.g. Railway cron) sets its own Healthchecks.io check UUID.
+const HEALTHCHECK_UUID = process.env.HEALTHCHECK_UUID;
 const WU_TOKEN = process.env.BRIGHTDATA_WEB_UNLOCKER_TOKEN;
 const WU_ZONE = process.env.BRIGHTDATA_WEB_UNLOCKER_ZONE || 'web_unlocker1';
 const SOURCE = 'domain-web-unlocker';
-
-if (!SUPABASE_URL || !SERVICE_KEY) { console.error('Missing Supabase env'); process.exit(1); }
-if (!WU_TOKEN) { console.error('Missing BRIGHTDATA_WEB_UNLOCKER_TOKEN'); process.exit(1); }
 
 const SUBURB_SLUGS = [
   'berwick-vic-3806', 'narre-warren-vic-3805', 'narre-warren-south-vic-3805', 'cranbourne-vic-3977',
@@ -105,7 +106,7 @@ function mapListing(category, node) {
   return { ...common, display_price: m.price ?? null, price_low: low, price_high: high, status: tag };
 }
 
-function extractListings(html) {
+export function extractListings(html) {
   const mm = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
   if (!mm) return [];
   let d; try { d = JSON.parse(mm[1]); } catch { return []; }
@@ -113,8 +114,18 @@ function extractListings(html) {
   return lm && typeof lm === 'object' ? Object.values(lm) : [];
 }
 
-// Web Unlocker intermittently returns 200 with an EMPTY body — retry on empty
-// (and on transient 429/5xx) with backoff before giving up.
+// Body-validation gate: a genuine Domain search page embeds the __NEXT_DATA__
+// script. An anti-bot challenge / interstitial returned as HTTP 200 does NOT, so it
+// must be treated as a failure to retry — never as a (false) empty-but-successful
+// page. This closes the "challenge-page-as-200" silent-success hole.
+export function looksLikeData(html) {
+  return typeof html === 'string' && /<script id="__NEXT_DATA__"/i.test(html);
+}
+
+// Web Unlocker intermittently returns 200 with an EMPTY body or an anti-bot page —
+// retry on empty / missing-data-shape (and on transient 429/5xx) with backoff before
+// giving up. Throwing means the page was never successfully fetched (→ blocked), as
+// distinct from a valid page that simply had no in-area listings (→ empty).
 async function fetchPage(url, maxAttempts = 8) {
   let lastErr = 'unknown';
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -127,8 +138,10 @@ async function fetchPage(url, maxAttempts = 8) {
       });
       if (res.ok) {
         const html = await res.text();
-        if (html && html.length > 1000) return html;
-        lastErr = `empty/short body (${html.length}b)`;
+        if (html && html.length > 1000 && looksLikeData(html)) return html;
+        lastErr = looksLikeData(html)
+          ? `empty/short body (${html.length}b)`
+          : `no __NEXT_DATA__ (challenge/interstitial, ${html.length}b)`;
       } else {
         lastErr = `HTTP ${res.status}`;
         if (res.status !== 429 && res.status < 500) throw new Error(lastErr);
@@ -168,34 +181,68 @@ const CATEGORY = { sold:{ path:'sold-listings', table:'property_sales', conflict
                    'on-market':{ path:'sale', table:'property_listings', conflict:'raw_address,source' } };
 
 async function main() {
+  const startedAt = Date.now();
   const category = process.argv[2] || 'sold';
   const maxSuburbs = Number(process.argv[3]) || SUBURB_SLUGS.length;
   const cfg = CATEGORY[category];
   if (!cfg) { console.error('category must be sold|on-market'); process.exit(1); }
+  if (!SUPABASE_URL || !SERVICE_KEY) { console.error('Missing Supabase env'); process.exit(1); }
+  if (!WU_TOKEN) { console.error('Missing BRIGHTDATA_WEB_UNLOCKER_TOKEN'); process.exit(1); }
   // SLUGS=a,b,c env overrides the suburb set (e.g. to re-run failed suburbs).
   const slugs = process.env.SLUGS ? process.env.SLUGS.split(',').map(s=>s.trim()).filter(Boolean) : SUBURB_SLUGS.slice(0, maxSuburbs);
   console.log(`\n=== ${category} via Web Unlocker (${slugs.length} suburbs) ===`);
 
+  await pingStart(HEALTHCHECK_UUID);
+  const sbCfg = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
+
   const rows = [];
-  let zeroYield = [];
+  const blockedSlugs = [];  // fetch failed (challenge/empty after retries) — never got a valid page
+  const emptySlugs = [];    // valid page, but no in-area listings (genuine zero-yield)
+  let fetchedOk = 0;
   for (const slug of slugs) {
     const url = `https://www.domain.com.au/${cfg.path}/${slug}/`;
     try {
       const html = await fetchPage(url);
+      fetchedOk++;
       const nodes = extractListings(html);
       const mapped = nodes.map(n=>mapListing(category, n)).filter(Boolean).filter(r=>inArea(r.suburb));
       rows.push(...mapped);
       console.log(`  ${slug}: ${nodes.length} listings → ${mapped.length} in-area`);
-      if (mapped.length === 0) zeroYield.push(slug);
+      if (mapped.length === 0) emptySlugs.push(slug);
     } catch (e) {
       console.error(`  ${slug}: FAILED ${e.message}`);
-      zeroYield.push(slug);
+      blockedSlugs.push(slug);
     }
   }
 
+  // BLOCKED = not a single suburb returned a valid page (all challenge/empty). In
+  // that case do NOT treat the run as a real zero-yield day — flag blocked and alert,
+  // and (for on-market) never expire live listings off an empty scrape.
+  const blocked = fetchedOk === 0;
   console.log(`\nTotal in-area rows: ${rows.length}. Upserting into ${cfg.table}...`);
   const upserted = await upsert(cfg.table, cfg.conflict, rows);
-  console.log(`Upserted ${upserted} rows. Zero-yield suburbs: ${zeroYield.length ? zeroYield.join(', ') : 'none'}`);
+  console.log(`Upserted ${upserted} rows. Blocked: ${blockedSlugs.length}, empty: ${emptySlugs.length}, fetched-ok: ${fetchedOk}.`);
+
+  const status = deriveStatus({ blocked, items: upserted });
+  const newestRowAt = await fetchNewestRowAt(sbCfg, cfg.table);
+  await writeFeedHealth(sbCfg, { category, source_used: SOURCE, items: upserted, newest_row_at: newestRowAt, status });
+
+  const durationS = ((Date.now() - startedAt) / 1000).toFixed(0);
+  const summary = `category=${category} status=${status} items=${upserted} fetched_ok=${fetchedOk}/${slugs.length} blocked=${blockedSlugs.length} empty=${emptySlugs.length} duration=${durationS}s`;
+  console.log(summary);
+  if (blocked) {
+    await pingFail(HEALTHCHECK_UUID, `BLOCKED ${summary}`);
+    process.exit(1); // surface a non-zero exit so the scheduler also marks the run failed
+  }
+  await pingSuccess(HEALTHCHECK_UUID, summary);
 }
 
-main().catch(e=>{ console.error(e); process.exit(1); });
+// Only run when invoked directly (node scripts/ingest-domain-webunlocker.mjs …), so
+// the parsing/validation helpers can be imported by tests without firing the scrape.
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch(async (e) => {
+    console.error(e);
+    await pingFail(HEALTHCHECK_UUID, `BROKEN ${e?.message || e}`);
+    process.exit(1);
+  });
+}
