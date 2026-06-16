@@ -6,6 +6,13 @@ consumer needs, and the outstanding deploy config.
 
 Public base URL (Railway): `https://geaeverypropertyai-production.up.railway.app`
 
+> **Consumer status (2026-06-16):** Live consumers are GEA_ST_CMA (`epai_cma_`), GEA_ST_Proposals,
+> GEA_CRM (`epai_crm_`), GEA_HR_recruitAI, and GEA_Reports_WeeklyCampaignVendor (`epai_wcv_`).
+> **MAP_findAI has been merged into GEA_CRM** — its market-appraisal/nurture capability (the CLI
+> `sold` / `comps` / `street` commands) is now owned by GEA_CRM and served by the existing `epai_crm_`
+> key. MAP_findAI is no longer a separate consumer; it was never separately keyed, so there is nothing
+> to revoke. (Its old integration prompt under `services/everypropertyai/` is marked SUPERSEDED.)
+
 ## Authenticated endpoints (all built + verified)
 
 All require `Authorization: Bearer <token>` where `<token>` ∈ `EVERYPROPERTY_API_KEYS`

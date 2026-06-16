@@ -1,3 +1,12 @@
+> # ⚠️ SUPERSEDED — merged into GEA_CRM (2026-06-16)
+> MAP_findAI is **no longer a separate consumer**. Its "market appraisal / nurture" capability —
+> nearby sold evidence (`sold --suburb`), comparable sales (`comps --suburb`) and street-level
+> listed data (`street`) — is now owned by **GEA_CRM** and available to GEA_CRM's `epai_crm_` key
+> (consumer keys are global across all everypropertyAI endpoints, so no new key or provisioning is
+> needed). MAP_findAI was never provisioned with its own `epai_` key, so there is nothing to revoke.
+> This document is retained as historical reference for the CLI commands only — do **not** wire it as
+> a new integration. See `INTEGRATIONS.md` for the live consumer inventory.
+
 # MAP_findAI integration — Claude Code prompt ("Nearby sold + listed properties for a market appraisal")
 
 Paste the block below into a **Claude Code session running inside the MAP_findAI repo**. It wires a
