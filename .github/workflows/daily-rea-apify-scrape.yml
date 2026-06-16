@@ -5,19 +5,26 @@ name: Daily REA scrape (Casey/Cardinia)
 # upserts into property_listings (source=rea-apify-one-api). Runs alongside the
 # Domain Web Unlocker scrape as a second, independent on-market source.
 #
-# Schedule: 21:00 UTC daily = 7am AEST (Melbourne), matching the Domain workflow.
-# (GitHub cron is UTC-only; during AEDT this fires at 8am Melbourne — fine for a delta.)
+# Schedule: 21:37 UTC daily ≈ 7:37am AEST (Melbourne). Staggered ~14 min after the
+# Domain workflow (21:23) so the two heavy ~30-min jobs don't contend on Apify/Bright
+# Data simultaneously. The minute is deliberately OFF the top of the hour: GitHub's
+# scheduler is best-effort and silently drops/delays runs queued at :00. See
+# docs/plans/2026-06-17-001-fix-data-feed-reliability-resequenced-plan.md (U2). Stage 2
+# of that plan moves this schedule onto Railway cron; this workflow then keeps only
+# workflow_dispatch as a manual break-glass.
 #
 # Sold is intentionally NOT scraped here: this actor's Sold channel has no sold DATE,
 # which property_sales needs for dedup + comp recency. See scripts/ingest-rea-apify.mjs.
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
-#   APIFY_API_TOKEN, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#   APIFY_API_TOKEN, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+#   HEALTHCHECK_REA_UUID (Healthchecks.io dead-man's-switch check ID; the script no-ops
+#     the ping when HEALTHCHECK_UUID is unset, so this is safe to add before it exists.)
 # Optional repo variables: REA_RESULT_COUNT (default 25), REA_PAGES (default 1)
 
 on:
   schedule:
-    - cron: '0 21 * * *'
+    - cron: '37 21 * * *'   # off-peak minute, NOT ':00' — see note above
   workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
 
 concurrency:
@@ -35,6 +42,8 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       REA_RESULT_COUNT: ${{ vars.REA_RESULT_COUNT || '25' }}
       REA_PAGES: ${{ vars.REA_PAGES || '1' }}
+      # Healthchecks.io dead-man's-switch; the script no-ops the ping if this is empty.
+      HEALTHCHECK_UUID: ${{ secrets.HEALTHCHECK_REA_UUID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
