@@ -4,16 +4,25 @@ name: Daily Domain scrape (Casey/Cardinia)
 # Web Unlocker and upserts into Supabase. Replaces the dead proxy-less Apify daily
 # schedule (which returned 0 items — Domain blocking).
 #
-# Schedule: 21:00 UTC daily = 7am AEST (Melbourne). NOTE: GitHub cron is UTC-only,
-# so during AEDT (Oct–Apr) this fires at 8am Melbourne — acceptable for a daily delta.
+# Schedule: 21:23 UTC daily ≈ 7:23am AEST (Melbourne). NOTE: GitHub cron is UTC-only,
+# so during AEDT (Oct–Apr) this fires ~8:23am Melbourne — acceptable for a daily delta.
+# The minute is deliberately OFF the top of the hour: GitHub's scheduler is best-effort
+# and silently drops/delays runs queued at :00 (the global thundering-herd). See
+# docs/plans/2026-06-17-001-fix-data-feed-reliability-resequenced-plan.md (U2). Stage 2
+# of that plan moves this schedule onto Railway cron; this workflow then keeps only
+# workflow_dispatch as a manual break-glass.
 #
 # Required repo secrets (Settings → Secrets and variables → Actions):
 #   BRIGHTDATA_WEB_UNLOCKER_TOKEN, BRIGHTDATA_WEB_UNLOCKER_ZONE,
-#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+#   HEALTHCHECK_DOMAIN_SOLD_UUID, HEALTHCHECK_DOMAIN_ONMARKET_UUID
+#     (Healthchecks.io dead-man's-switch check IDs — one per category; the script
+#      no-ops the ping when its HEALTHCHECK_UUID is unset, so this is safe to add
+#      before the checks exist.)
 
 on:
   schedule:
-    - cron: '0 21 * * *'
+    - cron: '23 21 * * *'   # off-peak minute, NOT ':00' — see note above
   workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
 
 concurrency:
@@ -37,6 +46,9 @@ jobs:
       BRIGHTDATA_WEB_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_ZONE }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # Per-category Healthchecks.io check so a sold-vs-on-market block alerts independently.
+      # The script reads HEALTHCHECK_UUID and no-ops the ping if it is empty.
+      HEALTHCHECK_UUID: ${{ matrix.category == 'sold' && secrets.HEALTHCHECK_DOMAIN_SOLD_UUID || secrets.HEALTHCHECK_DOMAIN_ONMARKET_UUID }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
