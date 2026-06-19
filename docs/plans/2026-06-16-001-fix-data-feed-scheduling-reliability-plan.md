@@ -1,6 +1,7 @@
 ---
 title: "fix: Re-host data-feed scheduling onto Railway + Apify with dead-man's-switch monitoring"
-status: active
+status: superseded
+superseded_by: docs/plans/2026-06-17-001-fix-data-feed-reliability-resequenced-plan.md
 date: 2026-06-16
 type: fix
 depth: deep
