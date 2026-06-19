@@ -1,5 +1,30 @@
 # Daily property-data sync — setup
 
+## Current state (2026-06-19)
+
+**Feeds are live and monitored.** Three daily feeds upsert into Supabase:
+- **Domain sold** → `property_sales` (Bright Data Web Unlocker)
+- **Domain on-market** → `property_listings` (Bright Data Web Unlocker)
+- **REA on-market** → `property_listings`, source `rea-apify-one-api` (Apify actor `one-api/realestate-com-au-scraper`)
+
+**Scheduling — currently GitHub Actions, off-peak (Stage 1, live):**
+- `.github/workflows/daily-domain-scrape.yml` — `cron: 23 21 * * *` (both categories via matrix)
+- `.github/workflows/daily-rea-apify-scrape.yml` — `cron: 37 21 * * *`
+- Verified firing 2026-06-18 and -19 (no silent drops). Caveat: GitHub fires them ~100 min late.
+
+**Monitoring (live):**
+- Every run pings a **Healthchecks.io** check (`HEALTHCHECK_UUID` per feed) — start / success(+row count) / fail. A missed run goes red and alerts. `feed_health` table (migration 007, applied) records `ran → items → status (ok|blocked|broken)` per category.
+- Backstop `GET /api/cron/feed-freshness` returns 503 when a feed is stale (note: its `vercel.json` cron is **dead config** — the app runs on Railway, not Vercel; re-home or remove during the Stage 2 cutover).
+
+**In progress — Stage 2 (Railway cron re-host)** to fix the ~100-min GitHub lateness:
+- Config-as-code merged to `main` (`services/feeds-cron/Dockerfile` + `railway.feeds-*.json`). See runbook below.
+- **Pending:** create the 3 Railway cron services in the existing project + verify (U6), then remove the GitHub `schedule:` triggers and dead `vercel.json` crons (U7).
+
+Plan of record: `docs/plans/2026-06-17-001-fix-data-feed-reliability-resequenced-plan.md`.
+Pickup instructions for resuming: `docs/PICKUP-data-feed-stage2.md`.
+
+---
+
 > **STAGE 2 RUNBOOK (2026-06-19): Railway cron re-host — config-as-code is in the repo.**
 > Stage 1 is live: feeds run on GitHub Actions off-peak (Domain `23 21`, REA `37 21`) with
 > Healthchecks.io heartbeats. Observed result: runs fire reliably but ~100 min LATE (GitHub
