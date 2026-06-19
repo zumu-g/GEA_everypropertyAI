@@ -1,5 +1,33 @@
 # Daily property-data sync — setup
 
+> **STAGE 2 RUNBOOK (2026-06-19): Railway cron re-host — config-as-code is in the repo.**
+> Stage 1 is live: feeds run on GitHub Actions off-peak (Domain `23 21`, REA `37 21`) with
+> Healthchecks.io heartbeats. Observed result: runs fire reliably but ~100 min LATE (GitHub
+> best-effort). Stage 2 moves the schedule to Railway cron (~on-time) for tighter timing.
+>
+> Three config-as-code files define the cron services (build via `services/feeds-cron/Dockerfile`,
+> a minimal Node-20 image that copies only `scripts/`):
+>
+> | Config file | startCommand | cronSchedule (UTC) | ≈ Melbourne |
+> |---|---|---|---|
+> | `railway.feeds-domain-sold.json` | `node scripts/ingest-domain-webunlocker.mjs sold` | `20 21 * * *` | ~7:20am AEST |
+> | `railway.feeds-domain-onmarket.json` | `node scripts/ingest-domain-webunlocker.mjs on-market` | `23 21 * * *` | ~7:23am AEST |
+> | `railway.feeds-rea-onmarket.json` | `node scripts/ingest-rea-apify.mjs on-market` | `26 21 * * *` | ~7:26am AEST |
+>
+> **Deploy steps (Railway dashboard):**
+> 1. In the existing Railway project, **New Service → Deploy from GitHub repo** → `zumu-g/GEA_everypropertyAI`. Create one service per feed (3 total). Name them `feeds-domain-sold`, `feeds-domain-onmarket`, `feeds-rea-onmarket`.
+> 2. On each service → **Settings → Config-as-code**: set the **Config file path** to the matching `railway.feeds-*.json` (the file's `cronSchedule` + `startCommand` then apply automatically — no need to set the cron in the UI). Leave **Root Directory** at the repo root so the Dockerfile build context can `COPY scripts`.
+> 3. On each service → **Variables**, set:
+>    - all: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `HEALTHCHECK_UUID` (the check for THAT feed — sold/on-market/rea)
+>    - Domain services: `BRIGHTDATA_WEB_UNLOCKER_TOKEN`, `BRIGHTDATA_WEB_UNLOCKER_ZONE`
+>    - REA service: `APIFY_API_TOKEN` (optional: `REA_RESULT_COUNT`, `REA_PAGES`)
+>    - Reuse the SAME Healthchecks UUIDs already in GitHub secrets so the heartbeat follows the job: sold→`9aaaaa50…`, on-market(domain)→`4bc93a71…`, rea→`f6a1207a…`.
+> 4. **Verify (U6):** trigger each service once (Deployments → Run) and confirm Supabase rows upsert, `feed_health` updates, and the Healthchecks check greens. Then watch one real scheduled cycle fire near its minute.
+> 5. **Cutover (U7):** ONLY after a Railway cycle is verified, remove the `schedule:` trigger from both `.github/workflows/daily-*.yml` (keep `workflow_dispatch`) and delete the dead `crons` array from `vercel.json`. Idempotent upserts make the brief double-run window harmless.
+>
+> `restartPolicyType: NEVER` — a cron deployment must not auto-restart on exit; a blocked run
+> exits non-zero, pings Healthchecks `/fail`, and the heartbeat alerts rather than looping.
+
 > **TARGET (2026-06-16): Re-host onto Railway cron + Healthchecks.io monitoring.**
 > The two feeds previously ran on GitHub Actions scheduled workflows (`cron: '0 21 * * *'`).
 > GitHub's scheduler is best-effort: top-of-hour runs were delayed 60–110 min and **silently
