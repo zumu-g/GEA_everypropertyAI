@@ -1,0 +1,47 @@
+name: Daily Homely scrape (Casey/Cardinia)
+
+# SUPPLEMENTAL on-market feed. Scrapes homely.com.au for-sale listings for the
+# Casey/Cardinia suburbs via Bright Data Web Unlocker (discovery → detail) and
+# dedup-upserts into property_listings under source='homely'. Homely has no
+# anti-bot wall, so it stays fetchable while REA (429) and Domain (DataDome) are
+# blocked — it never overwrites a Domain/REA row (different source).
+#
+# Schedule: 21:51 UTC daily ≈ 7:51am AEST (Melbourne), staggered after Domain
+# (:23) and REA (:37). GitHub cron is UTC-only, so during AEDT (Oct–Apr) this
+# fires ~8:51am Melbourne — fine for a daily delta. The minute is deliberately
+# OFF the top of the hour (GitHub silently drops/delays :00-queued runs).
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   BRIGHTDATA_WEB_UNLOCKER_TOKEN, BRIGHTDATA_WEB_UNLOCKER_ZONE,
+#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+#   HEALTHCHECK_HOMELY_UUID
+#     (Healthchecks.io dead-man's-switch check ID; the script no-ops the ping
+#      when HEALTHCHECK_UUID is unset, so this is safe to add before it exists.)
+
+on:
+  schedule:
+    - cron: '51 21 * * *'   # off-peak minute, NOT ':00' — see note above
+  workflow_dispatch: {}      # allow manual "Run workflow" from the Actions tab
+
+concurrency:
+  group: daily-homely-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BRIGHTDATA_WEB_UNLOCKER_TOKEN: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_TOKEN }}
+      BRIGHTDATA_WEB_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_ZONE }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HEALTHCHECK_UUID: ${{ secrets.HEALTHCHECK_HOMELY_UUID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # The runner uses only Node built-ins (fetch/fs/url/path) — no npm install needed.
+      - name: Scrape Homely on-market
+        run: node scripts/ingest-homely.mjs

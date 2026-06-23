@@ -18,6 +18,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
+import { mapPool } from './lib/pool.mjs';
+
+// Fetch suburbs concurrently (was serial → 45-min timeout cancellations). Kept
+// modest: Web Unlocker returns 0-byte challenge pages when hit too hard, so 4-wide
+// with a generous per-page retry budget (below) beats 6-wide with a tight one.
+// Worst case ≈ 29 suburbs / 4 × (6×90s) is still well under the 45-min job cap.
+const FETCH_CONCURRENCY = Number(process.env.FETCH_CONCURRENCY) || 4;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 try {
@@ -126,7 +133,7 @@ export function looksLikeData(html) {
 // retry on empty / missing-data-shape (and on transient 429/5xx) with backoff before
 // giving up. Throwing means the page was never successfully fetched (→ blocked), as
 // distinct from a valid page that simply had no in-area listings (→ empty).
-async function fetchPage(url, maxAttempts = 8) {
+async function fetchPage(url, maxAttempts = 6) {
   let lastErr = 'unknown';
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -134,7 +141,7 @@ async function fetchPage(url, maxAttempts = 8) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${WU_TOKEN}` },
         body: JSON.stringify({ zone: WU_ZONE, url, format: 'raw' }),
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(90_000),
       });
       if (res.ok) {
         const html = await res.text();
@@ -199,20 +206,27 @@ async function main() {
   const blockedSlugs = [];  // fetch failed (challenge/empty after retries) — never got a valid page
   const emptySlugs = [];    // valid page, but no in-area listings (genuine zero-yield)
   let fetchedOk = 0;
-  for (const slug of slugs) {
+  // Fetch suburbs with bounded concurrency (was serial → routinely timed out at
+  // the 45-min job cap). Each slug self-contains its error handling so one failure
+  // never rejects the pool; aggregation below stays identical to the serial path.
+  const perSlug = await mapPool(slugs, FETCH_CONCURRENCY, async (slug) => {
     const url = `https://www.domain.com.au/${cfg.path}/${slug}/`;
     try {
       const html = await fetchPage(url);
-      fetchedOk++;
       const nodes = extractListings(html);
       const mapped = nodes.map(n=>mapListing(category, n)).filter(Boolean).filter(r=>inArea(r.suburb));
-      rows.push(...mapped);
       console.log(`  ${slug}: ${nodes.length} listings → ${mapped.length} in-area`);
-      if (mapped.length === 0) emptySlugs.push(slug);
+      return { slug, mapped };
     } catch (e) {
       console.error(`  ${slug}: FAILED ${e.message}`);
-      blockedSlugs.push(slug);
+      return { slug, error: e.message };
     }
+  });
+  for (const r of perSlug) {
+    if (r.error) { blockedSlugs.push(r.slug); continue; }
+    fetchedOk++;
+    rows.push(...r.mapped);
+    if (r.mapped.length === 0) emptySlugs.push(r.slug);
   }
 
   // BLOCKED = not a single suburb returned a valid page (all challenge/empty). In
