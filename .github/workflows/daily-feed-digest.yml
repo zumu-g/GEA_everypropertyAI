@@ -1,0 +1,42 @@
+name: Daily feed digest (Telegram)
+
+# Sends ONE positive daily summary of the data feeds to Telegram by reading the
+# feed_health table. ✅ when sold + on-market ran ok and fresh; ⚠️ (and lists the
+# offender) when a feed is blocked/broken/stale/missing. Healthchecks.io remains the
+# dead-man's-switch backstop; this is the "all good today" confirmation.
+#
+# Schedule: 30 0 * * * UTC ≈ 10:30am Melbourne — comfortably after the morning feeds
+# (Domain :23, REA :37, Homely :51 UTC, ~10 min each, plus GitHub cron drift). Sits
+# well outside quiet hours. GitHub cron is UTC-only; during AEDT this is ~11:30am.
+#
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+#   TELEGRAM_BOT_TOKEN  (token for @AI_sg_clawbot),
+#   TELEGRAM_CHAT_ID    (the chat the bot posts to)
+
+on:
+  schedule:
+    - cron: '30 0 * * *'
+  workflow_dispatch: {}   # manual "Run workflow" to test on demand
+
+concurrency:
+  group: daily-feed-digest
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Node built-ins only (fetch/fs/url/path) — no npm install needed.
+      - name: Send feed digest
+        run: node scripts/notify-feed-digest.mjs
