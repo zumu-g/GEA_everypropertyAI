@@ -29,6 +29,12 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { setDefaultResultOrder } from 'node:dns';
+
+// Prefer IPv4: some networks (observed on the macOS dev box) hang node's fetch on
+// IPv6 happy-eyeballs to api.telegram.org while curl/IPv4 connect fine. Harmless on
+// IPv4-only CI runners. Best-effort — ignore if the runtime doesn't support it.
+try { setDefaultResultOrder('ipv4first'); } catch { /* older node */ }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 try {
@@ -99,13 +105,43 @@ export function buildDigest(rows, { expected = EXPECTED, freshHours = FRESH_HOUR
 }
 
 async function sendTelegram(text) {
-  const res = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: TG_CHAT, text, disable_notification: false }),
-    signal: AbortSignal.timeout(30_000),
+  const url = `https://api.telegram.org/bot${TG_TOKEN}/sendMessage`;
+  const payload = JSON.stringify({ chat_id: TG_CHAT, text, disable_notification: false });
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) throw new Error(`Telegram HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    return;
+  } catch (err) {
+    // Some networks hang node's fetch to api.telegram.org (IPv6/undici quirk seen on
+    // the macOS dev box) while curl connects fine. Fall back to curl so manual local
+    // runs work too; CI uses the fetch path normally.
+    return sendViaCurl(url, payload, err);
+  }
+}
+
+async function sendViaCurl(url, payload, fetchErr) {
+  const { spawn } = await import('node:child_process');
+  return new Promise((resolve, reject) => {
+    const p = spawn('curl', ['-s', '--max-time', '30', '-X', 'POST', url,
+      '-H', 'Content-Type: application/json', '--data-binary', '@-'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.on('error', () => reject(fetchErr)); // curl missing → surface the original fetch error
+    p.on('close', () => {
+      try {
+        const j = JSON.parse(out);
+        if (j.ok) return resolve();
+        return reject(new Error(`Telegram (curl) error: ${out.slice(0, 200)}`));
+      } catch { return reject(new Error(`Telegram (curl) non-JSON: ${out.slice(0, 200)}`)); }
+    });
+    p.stdin.write(payload);
+    p.stdin.end();
   });
-  if (!res.ok) throw new Error(`Telegram HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
 async function main() {
