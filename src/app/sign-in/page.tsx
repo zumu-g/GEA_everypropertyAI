@@ -10,6 +10,13 @@ import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 function SignInForm() {
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("returnTo") ?? "/my-properties";
+  const urlError = searchParams.get("error");
+  const urlErrorMessage =
+    urlError === "not_invited"
+      ? "That account isn't authorised. Access is limited to invited @grantsea.com.au users — contact your administrator."
+      : urlError === "auth_failed"
+        ? "That sign-in link is invalid or has expired. Please request a new one."
+        : "";
 
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -22,6 +29,22 @@ function SignInForm() {
     setErrorMessage("");
 
     try {
+      // Invite-only pre-check: don't email a link to anyone who isn't an invited
+      // @grantsea.com.au user. The auth callback re-checks server-side regardless.
+      const check = await fetch("/api/auth/check-allowed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const { allowed } = (await check.json()) as { allowed?: boolean };
+      if (!allowed) {
+        setStatus("error");
+        setErrorMessage(
+          "This email isn't authorised. Access is limited to invited @grantsea.com.au users — contact your administrator.",
+        );
+        return;
+      }
+
       const supabase = getSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -117,10 +140,10 @@ function SignInForm() {
         />
       </div>
 
-      {/* Error message */}
-      {status === "error" && (
+      {/* Error message (form-level, or carried from the auth callback redirect) */}
+      {(status === "error" || urlErrorMessage) && (
         <p role="alert" className="text-xs text-[#C5544A]">
-          {errorMessage}
+          {status === "error" ? errorMessage : urlErrorMessage}
         </p>
       )}
 
