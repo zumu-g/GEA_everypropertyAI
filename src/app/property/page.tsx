@@ -42,7 +42,7 @@ export default function PropertyPage() {
       <header className="flex items-center justify-between border-b border-[#E7E9EE] px-6 py-4 lg:px-12">
         <Link href="/" className="flex items-center gap-2">
           <Building2 className="h-6 w-6 text-[#C8A96E]" />
-          <span className="text-lg font-semibold text-[#16181D]">PropertyIQ</span>
+          <span className="text-lg font-semibold text-[#16181D]">everyproperty<span className="text-[#C8A96E]">AI</span></span>
         </Link>
         <AuthButton />
       </header>

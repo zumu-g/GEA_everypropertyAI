@@ -22,7 +22,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PropertyIQ — Every Property. Every Detail.",
+  title: "everypropertyAI — Every Property. Every Detail.",
   description:
     "Search any Australian property and get instant data from 8+ portals. Comprehensive property intelligence for Casey & Cardinia real estate professionals.",
 };

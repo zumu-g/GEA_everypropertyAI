@@ -93,7 +93,7 @@ function SignInForm() {
         <h1
           className="text-2xl tracking-tight text-[#16181D]"
         >
-          Sign in to PropertyIQ
+          Sign in to everypropertyAI
         </h1>
         <p className="text-sm leading-relaxed text-[#6B7077]">
           Enter your email and we&apos;ll send you a magic link — no password needed.
@@ -147,7 +147,7 @@ export default function SignInPage() {
           <a
             href="/"
             className="group flex items-center gap-3"
-            aria-label="PropertyIQ home"
+            aria-label="everypropertyAI home"
           >
             <span
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#C8A96E] transition-opacity duration-150 group-hover:opacity-80"
@@ -159,7 +159,7 @@ export default function SignInPage() {
               <span
                 className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]"
               >
-                Property<span className="text-[#C8A96E]">IQ</span>
+                everyproperty<span className="text-[#C8A96E]">AI</span>
               </span>
               <span className="block text-[0.65rem] uppercase tracking-wide text-[#6B7077]">
                 by Grants Estate Agents

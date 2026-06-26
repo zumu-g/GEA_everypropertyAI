@@ -41,7 +41,7 @@ export default function HomePage() {
       {/* ── Navigation ── */}
       <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm pt-safe px-safe">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <a href="/" className="flex items-center gap-3 group" aria-label="PropertyIQ home">
+          <a href="/" className="flex items-center gap-3 group" aria-label="everypropertyAI home">
             {/* GEA monogram */}
             <span
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#C8A96E] transition-opacity duration-150 group-hover:opacity-80"
@@ -53,7 +53,7 @@ export default function HomePage() {
               <span
                 className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]"
               >
-                Property<span className="text-[#C8A96E]">IQ</span>
+                everyproperty<span className="text-[#C8A96E]">AI</span>
               </span>
               <span className="block text-[0.65rem] text-[#6B7077] tracking-wide uppercase">
                 by Grants Estate Agents
@@ -146,7 +146,7 @@ export default function HomePage() {
         <footer className="mt-auto border-t border-[#E7E9EE] py-6 text-center">
           <p className="text-xs text-[#6B7077]">
             &copy; {new Date().getFullYear()} Grants Estate Agents &middot;{" "}
-            <span className="text-[#C8A96E]">PropertyIQ</span> &mdash; Property data for Casey &amp; Cardinia
+            <span className="text-[#C8A96E]">everypropertyAI</span> &mdash; Property data for Casey &amp; Cardinia
           </p>
         </footer>
       </main>
