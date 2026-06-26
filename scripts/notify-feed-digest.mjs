@@ -5,7 +5,7 @@
 // Reads the feed_health table (the source of truth every scheduled feed writes to)
 // and sends ONE Telegram message summarising the morning's runs:
 //
-//   ✅ PropertyIQ feeds OK — 24 Jun
+//   ✅ everypropertyAI feeds OK — 24 Jun
 //   • sold        463  domain-web-unlocker   2.2h ago
 //   • on-market   611  homely                1.9h ago
 //
@@ -97,8 +97,8 @@ export function buildDigest(rows, { expected = EXPECTED, freshHours = FRESH_HOUR
 
   const ok = problems.length === 0;
   const header = ok
-    ? `✅ PropertyIQ feeds OK — ${fmtDate(new Date(now))}`
-    : `⚠️ PropertyIQ feeds need attention — ${fmtDate(new Date(now))}`;
+    ? `✅ everypropertyAI feeds OK — ${fmtDate(new Date(now))}`
+    : `⚠️ everypropertyAI feeds need attention — ${fmtDate(new Date(now))}`;
   const body = [header, '', ...lines];
   if (!ok) body.push('', `Issues: ${problems.join('; ')}`);
   return { ok, text: body.join('\n') };
@@ -153,7 +153,7 @@ async function main() {
     rows = await fetchHealth();
   } catch (e) {
     // Can't read health → that is itself worth alerting on (don't fail silently).
-    const text = `⚠️ PropertyIQ feed digest could not read feed_health: ${e.message}`;
+    const text = `⚠️ everypropertyAI feed digest could not read feed_health: ${e.message}`;
     console.error(text);
     if (!DRY_RUN) { try { await sendTelegram(text); } catch (e2) { console.error('Telegram send failed:', e2.message); } }
     process.exit(1);

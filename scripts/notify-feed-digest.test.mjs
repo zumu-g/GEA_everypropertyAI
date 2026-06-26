@@ -12,7 +12,7 @@ describe('buildDigest', () => {
     ];
     const { ok, text } = buildDigest(rows, { now: NOW });
     expect(ok).toBe(true);
-    expect(text).toContain('✅ PropertyIQ feeds OK');
+    expect(text).toContain('✅ everypropertyAI feeds OK');
     expect(text).toContain('sold');
     expect(text).toContain('611');
     expect(text).not.toContain('⚠️');
@@ -25,7 +25,7 @@ describe('buildDigest', () => {
     ];
     const { ok, text } = buildDigest(rows, { now: NOW });
     expect(ok).toBe(false);
-    expect(text).toContain('⚠️ PropertyIQ feeds need attention');
+    expect(text).toContain('⚠️ everypropertyAI feeds need attention');
     expect(text).toContain('sold: blocked');
   });
 
