@@ -79,7 +79,7 @@ export async function crawlProperty(
       return cached;
     }
 
-    const url = source.buildPropertyUrl(address);
+    let url = source.buildPropertyUrl(address);
     const apifyActorId = source.options?.apifyActorId as string | undefined;
 
     // FAST path: force the firecrawl backend with a short timeout and skip Apify
@@ -154,6 +154,39 @@ export async function crawlProperty(
     };
 
     try {
+      // Two-stage discovery: resolve the real detail URL when it can't be
+      // derived from the address (e.g. Homely's non-derivable numeric id). Skip
+      // in fast mode (discovery adds an index fetch; fast sources don't use it).
+      if (source.discoverPropertyUrl && !fast) {
+        const fetchPage = async (target: string): Promise<string | null> => {
+          if (isWebUnlockerConfigured()) {
+            const wu = await scrapeWithWebUnlocker(target, source.name, {
+              timeout: scrapeOptions?.timeout,
+              render: true,
+              country: 'au',
+            });
+            return wu.status === 'success' ? wu.html ?? null : null;
+          }
+          // No Web Unlocker in this environment — try the firecrawl backend,
+          // which returns markdown; the link regex matches in markdown too.
+          const fc = await scrapeUrl(target, source.name, scrapeOptions);
+          return fc.status === 'success' ? fc.html ?? fc.markdown ?? null : null;
+        };
+        const discovered = await source.discoverPropertyUrl(address, fetchPage);
+        if (!discovered) {
+          console.log(`[orchestrator] ${source.name} discovery found no listing for address — skipping`);
+          return {
+            source: source.name,
+            url,
+            status: 'failed',
+            crawledAt: new Date(),
+            error: 'discovery: no matching listing found in suburb index',
+          };
+        }
+        console.log(`[orchestrator] ${source.name} discovered detail URL: ${discovered}`);
+        url = discovered;
+      }
+
       console.log(`[orchestrator] Crawling ${source.name} via ${primary}${fast ? ' (fast)' : ''}: ${url}`);
       let result = await dispatch(primary, url);
       console.log(`[orchestrator] ${source.name} result: status=${result.status}, markdown=${(result.markdown?.length ?? 0)} chars`);

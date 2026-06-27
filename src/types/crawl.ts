@@ -149,6 +149,19 @@ export interface SourceConfig {
   buildPropertyUrl: (address: StructuredAddress) => string;
   /** Build a search/fallback URL for this source */
   buildSearchUrl?: (address: StructuredAddress) => string;
+  /**
+   * Two-stage discovery: resolve the real property-page URL for an address when
+   * it cannot be derived from the address alone (e.g. Homely detail URLs carry a
+   * non-derivable numeric listing id). The orchestrator supplies `fetchPage`,
+   * which returns a page's raw HTML (via the source's backend) or null. Return
+   * the resolved absolute URL, or null when the property cannot be found — the
+   * orchestrator then skips the (known-404) direct fetch. When omitted, the
+   * orchestrator uses buildPropertyUrl directly.
+   */
+  discoverPropertyUrl?: (
+    address: StructuredAddress,
+    fetchPage: (url: string) => Promise<string | null>
+  ) => Promise<string | null>;
   /** Options passed to Firecrawl scrapeUrl */
   scrapeOptions?: {
     waitFor?: string;
