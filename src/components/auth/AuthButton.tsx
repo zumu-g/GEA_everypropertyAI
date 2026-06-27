@@ -90,6 +90,12 @@ export function AuthButton() {
           >
             My Properties
           </a>
+          <a
+            href="/settings"
+            className="block px-4 py-2.5 text-sm text-[#16181D] hover:bg-[#FBFBFC]"
+          >
+            Team
+          </a>
           <button
             onClick={handleSignOut}
             className="block w-full px-4 py-2.5 text-left text-sm text-[#4A4E57] hover:bg-[#FBFBFC]"

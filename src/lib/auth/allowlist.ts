@@ -37,3 +37,24 @@ export async function isEmailAllowed(email: string | null | undefined): Promise<
     return false;
   }
 }
+
+/**
+ * Admin check: correct domain AND present in `allowed_users` with is_admin = true.
+ * Admins may invite and revoke teammates from the Settings page (migration 010).
+ * Returns false (deny) on any error — fail closed, never fail open.
+ */
+export async function isEmailAdmin(email: string | null | undefined): Promise<boolean> {
+  if (!hasAllowedDomain(email)) return false;
+  const normalised = email!.trim().toLowerCase();
+  try {
+    const { data, error } = await getSupabaseServerClient()
+      .from('allowed_users')
+      .select('is_admin')
+      .eq('email', normalised)
+      .maybeSingle();
+    if (error) return false;
+    return Boolean(data?.is_admin);
+  } catch {
+    return false;
+  }
+}
