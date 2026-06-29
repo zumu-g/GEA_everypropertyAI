@@ -1,9 +1,7 @@
 import { getSupabaseBrowserClient } from '@/lib/db/supabase';
 
-export async function signInWithMagicLink(email: string, returnTo: string) {
-  const supabase = getSupabaseBrowserClient();
-  const redirectTo = `${window.location.origin}/auth/callback?returnTo=${encodeURIComponent(returnTo)}`;
-  return supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
+export async function signInWithPassword(email: string, password: string) {
+  return getSupabaseBrowserClient().auth.signInWithPassword({ email, password });
 }
 
 export async function signOut() {

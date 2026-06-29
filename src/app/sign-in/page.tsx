@@ -2,7 +2,7 @@
 
 import { Suspense, useState, FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
-import { Mail, CheckCircle } from "lucide-react";
+import { Lock } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
 // ─── Inner form (needs useSearchParams, must be inside Suspense) ─────────────
@@ -19,9 +19,9 @@ function SignInForm() {
         : "";
 
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const [sentTo, setSentTo] = useState("");
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,8 +29,9 @@ function SignInForm() {
     setErrorMessage("");
 
     try {
-      // Invite-only pre-check: don't email a link to anyone who isn't an invited
-      // @grantsea.com.au user. The auth callback re-checks server-side regardless.
+      // Invite-only pre-check (UX only — the security boundary is account
+      // creation + the middleware allowlist re-check). Give non-invited emails
+      // immediate feedback instead of a generic credentials error.
       const check = await fetch("/api/auth/check-allowed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -46,80 +47,37 @@ function SignInForm() {
       }
 
       const supabase = getSupabaseBrowserClient();
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?returnTo=${encodeURIComponent(returnTo)}`,
-        },
-      });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
 
       if (error) {
         setStatus("error");
-        setErrorMessage(error.message);
-      } else {
-        setSentTo(email);
-        setStatus("success");
+        // Generic message — never reveal whether the email exists (no enumeration).
+        setErrorMessage("Email or password is incorrect.");
+        return;
       }
+
+      // Hard navigation so the new session cookie is picked up by middleware.
+      window.location.href = returnTo;
     } catch {
       setStatus("error");
       setErrorMessage("Something went wrong. Please try again.");
     }
   }
 
-  // ── Success state ──────────────────────────────────────────────────────────
-  if (status === "success") {
-    return (
-      <div className="flex flex-col items-center gap-4 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#E4F1EB]">
-          <CheckCircle className="h-7 w-7 text-[#2F8F6B]" aria-hidden="true" />
-        </div>
-        <div className="space-y-1.5">
-          <h2
-            className="text-xl text-[#16181D]"
-          >
-            Check your email
-          </h2>
-          <p className="text-sm leading-relaxed text-[#6B7077]">
-            We&apos;ve sent a sign-in link to{" "}
-            <span className="font-medium text-[#16181D]">{sentTo}</span>.
-            <br />
-            It expires in 10 minutes.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setEmail("");
-            setStatus("idle");
-            setSentTo("");
-          }}
-          className="mt-1 text-sm text-[#C8A96E] underline-offset-2 hover:underline focus:outline-none"
-        >
-          Wrong email? Try again
-        </button>
-      </div>
-    );
-  }
-
-  // ── Form state ─────────────────────────────────────────────────────────────
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
       {/* Icon */}
       <div className="flex justify-center">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#FBFBFC]">
-          <Mail className="h-6 w-6 text-[#C8A96E]" aria-hidden="true" />
+          <Lock className="h-6 w-6 text-[#C8A96E]" aria-hidden="true" />
         </div>
       </div>
 
       {/* Heading */}
       <div className="space-y-1.5 text-center">
-        <h1
-          className="text-2xl tracking-tight text-[#16181D]"
-        >
-          Sign in to everypropertyAI
-        </h1>
+        <h1 className="text-2xl tracking-tight text-[#16181D]">Sign in to everypropertyAI</h1>
         <p className="text-sm leading-relaxed text-[#6B7077]">
-          Enter your email and we&apos;ll send you a magic link — no password needed.
+          Enter your email and password.
         </p>
       </div>
 
@@ -135,12 +93,29 @@ function SignInForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
+          placeholder="you@grantsea.com.au"
           className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
         />
       </div>
 
-      {/* Error message (form-level, or carried from the auth callback redirect) */}
+      {/* Password field */}
+      <div>
+        <label htmlFor="password" className="sr-only">
+          Password
+        </label>
+        <input
+          id="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+        />
+      </div>
+
+      {/* Error message (form-level, or carried from a middleware/callback redirect) */}
       {(status === "error" || urlErrorMessage) && (
         <p role="alert" className="text-xs text-[#C5544A]">
           {status === "error" ? errorMessage : urlErrorMessage}
@@ -153,8 +128,18 @@ function SignInForm() {
         disabled={status === "loading"}
         className="w-full rounded-xl bg-[#C8A96E] py-3 text-sm font-medium text-white transition-colors hover:bg-[#B8954A] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {status === "loading" ? "Sending…" : "Send magic link"}
+        {status === "loading" ? "Signing in…" : "Sign in"}
       </button>
+
+      {/* Forgot password */}
+      <div className="text-center">
+        <a
+          href="/forgot-password"
+          className="text-sm text-[#C8A96E] underline-offset-2 hover:underline focus:outline-none"
+        >
+          Forgot password?
+        </a>
+      </div>
     </form>
   );
 }
@@ -179,9 +164,7 @@ export default function SignInPage() {
               GEA
             </span>
             <div className="leading-none">
-              <span
-                className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]"
-              >
+              <span className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]">
                 everyproperty<span className="text-[#C8A96E]">AI</span>
               </span>
               <span className="block text-[0.65rem] uppercase tracking-wide text-[#6B7077]">
@@ -214,6 +197,7 @@ function SignInFormFallback() {
         <div className="mx-auto h-4 w-64 animate-pulse rounded bg-[#F4F5F7]" />
       </div>
       <div className="mt-2 h-11 animate-pulse rounded-xl bg-[#F4F5F7]" />
+      <div className="h-11 animate-pulse rounded-xl bg-[#F4F5F7]" />
       <div className="h-11 animate-pulse rounded-xl bg-[#F4F5F7]" />
     </div>
   );

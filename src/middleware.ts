@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { isEmailAllowed } from '@/lib/auth/allowlist';
 
 /**
  * API-key gate for the public data routes (CLI / server-to-server consumers like
@@ -65,6 +66,16 @@ export async function middleware(request: NextRequest) {
   if (!user) {
     const returnTo = encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search);
     return NextResponse.redirect(new URL(`/sign-in?returnTo=${returnTo}`, request.url));
+  }
+
+  // Invite-only re-check on every protected request. With magic links this was done
+  // in /auth/callback on each login; password sign-in skips that callback, so the
+  // gate lives here. Revoking a teammate (allowlist row removed + auth user deleted)
+  // takes effect immediately, even on an already-issued cookie. Fail-closed: a
+  // lookup error denies access. One indexed lookup per protected navigation.
+  if (!(await isEmailAllowed(user.email))) {
+    await supabase.auth.signOut();
+    return NextResponse.redirect(new URL('/sign-in?error=not_invited', request.url));
   }
 
   return response;

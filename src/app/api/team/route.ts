@@ -105,21 +105,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  // Email the magic link using the same mechanism as the sign-in page, so the
-  // invitee gets a working link. Best-effort: the allowlist row is what actually
-  // grants access, so a mail hiccup doesn't fail the invite.
+  // Create the Supabase auth user and email a set-password (invite) link. This is
+  // also where the invite-only guarantee is enforced on the credential: only this
+  // admin-gated, allowlisted path ever creates an auth account (public sign-up is
+  // disabled in Supabase). Best-effort on the email — the allowlist row already
+  // records access, so a mail hiccup or an already-existing account doesn't fail
+  // the invite.
   let emailed = true;
   try {
     const origin = new URL(request.url).origin;
-    const anon = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    );
-    const { error: otpError } = await anon.auth.signInWithOtp({
+    const { error: inviteError } = await getSupabaseServerClient().auth.admin.inviteUserByEmail(
       email,
-      options: { emailRedirectTo: `${origin}/auth/callback` },
-    });
-    if (otpError) emailed = false;
+      { redirectTo: `${origin}/auth/callback?returnTo=/auth/set-password` },
+    );
+    // "already registered" is fine — they have a credential already; not an error
+    // worth failing the invite over.
+    if (inviteError && !/already.*regist/i.test(inviteError.message)) emailed = false;
   } catch {
     emailed = false;
   }
@@ -167,5 +168,36 @@ export async function DELETE(request: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ success: true });
+
+  // Destroy the credential too, so a revoked user can't sign in with a password
+  // they already set. Fail-soft: the allowlist row is already gone and middleware
+  // re-checks the allowlist on every protected request, so even if this delete
+  // fails the user is locked out — we just report it.
+  let credentialDeleted = true;
+  try {
+    const authUser = await findAuthUserByEmail(email);
+    if (authUser) await db.auth.admin.deleteUser(authUser.id);
+  } catch {
+    credentialDeleted = false;
+  }
+
+  return NextResponse.json({ success: true, credentialDeleted });
+}
+
+/**
+ * Find a Supabase auth user by email. supabase-js has no get-by-email, so we page
+ * through admin.listUsers — fine for this small internal allowlist. Returns null if
+ * not found (e.g. an invitee who never completed sign-up). Never throws.
+ */
+async function findAuthUserByEmail(email: string): Promise<{ id: string } | null> {
+  const db = getSupabaseServerClient();
+  const target = email.trim().toLowerCase();
+  for (let page = 1; page <= 20; page++) {
+    const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 });
+    if (error || !data?.users?.length) return null;
+    const match = data.users.find((u) => (u.email ?? '').toLowerCase() === target);
+    if (match) return { id: match.id };
+    if (data.users.length < 200) return null; // last page
+  }
+  return null;
 }
