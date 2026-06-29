@@ -229,7 +229,14 @@ async function upsert(rows) {
 
 async function main() {
   const startedAt = Date.now();
-  const category = 'on-market'; // homely supplement is on-market only
+  // OWN feed_health category. Homely is a SUPPLEMENTAL on-market feed that runs
+  // last (:51, after Domain :23 and REA :37). feed_health upserts on_conflict=category,
+  // so writing 'on-market' here would clobber the core feed's status — a blocked/zero
+  // homely run (common, it's best-effort) would flip the healthy Domain/REA on-market
+  // status to 'blocked' and fire a false digest alarm. A distinct category keeps the
+  // core 'on-market' row owned by Domain/REA; the digest only escalates EXPECTED
+  // categories (sold,on-market), so this row is recorded but never alarms.
+  const category = 'on-market-homely';
   const maxSuburbs = Number(process.argv[2]) || SUBURB_SLUGS.length;
   if (!SUPABASE_URL || !SERVICE_KEY) { console.error('Missing Supabase env'); process.exit(1); }
   if (!WU_TOKEN) { console.error('Missing BRIGHTDATA_WEB_UNLOCKER_TOKEN'); process.exit(1); }
