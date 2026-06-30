@@ -26,13 +26,27 @@ import {
   Landmark,
 } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
 import { ComparableSales } from "./ComparableSales";
-import { PropertyTimeline } from "./PropertyTimeline";
 import { TrackPropertyButton } from "./TrackPropertyButton";
-import { SuburbPriceChart } from './SuburbPriceChart';
+
+// Chart components pull in recharts (~the heaviest dep on this page). They render
+// below the fold, so load them lazily on the client — this evicts recharts (and
+// SaleHistory, reached only via PropertyTimeline) from the initial /property bundle.
+const chartFallback = () => (
+  <div className="h-64 w-full animate-pulse rounded-xl bg-[#F4F5F7]" aria-hidden="true" />
+);
+const SuburbPriceChart = dynamic(
+  () => import("./SuburbPriceChart").then((m) => m.SuburbPriceChart),
+  { ssr: false, loading: chartFallback },
+);
+const PropertyTimeline = dynamic(
+  () => import("./PropertyTimeline").then((m) => m.PropertyTimeline),
+  { ssr: false, loading: chartFallback },
+);
 
 interface EnrichmentData {
   coordinates: { lat: number; lng: number } | null;
