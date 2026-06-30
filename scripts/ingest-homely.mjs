@@ -182,7 +182,16 @@ async function fetchPage(url, maxAttempts = 6) {
     try {
       const res = await fetch('https://api.brightdata.com/request', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${WU_TOKEN}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${WU_TOKEN}`,
+          // Return as soon as the SSR data element is present, instead of waiting
+          // for network-idle. Homely keeps connections open (analytics/long-poll),
+          // so the page never reaches network-idle and Web Unlocker would otherwise
+          // time out (networkidle_event_timeout → empty 200 → false "blocked").
+          // The data we parse lives in <script id="__NEXT_DATA__"> in the initial HTML.
+          'x-unblock-expect': '#__NEXT_DATA__',
+        },
         body: JSON.stringify({ zone: WU_ZONE, url, format: 'raw' }),
         signal: AbortSignal.timeout(90_000),
       });
