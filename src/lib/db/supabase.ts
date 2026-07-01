@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 
 // ─── Environment Variables ──────────────────────────────────────────────────
 
@@ -26,12 +27,13 @@ export function getSupabaseBrowserClient(): SupabaseClient {
         'Set them in .env.local or fall back to in-memory mode.'
       );
     }
-    browserClient = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
-    });
+    // Use the SSR browser client so the session is written to COOKIES (not just
+    // localStorage). The middleware authenticates via cookies (@supabase/ssr
+    // createServerClient); a plain supabase-js client stores the session in
+    // localStorage only, so password sign-in never set a cookie and every
+    // protected route bounced back to /sign-in. createBrowserClient keeps the two
+    // in sync. See src/middleware.ts.
+    browserClient = createBrowserClient(supabaseUrl, supabaseAnonKey) as SupabaseClient;
   }
   return browserClient;
 }
