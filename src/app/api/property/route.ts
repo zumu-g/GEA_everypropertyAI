@@ -9,7 +9,13 @@ import { getCachedProfile, getOverrides, deleteCachedProfile } from '@/lib/db/qu
 // fresh, uncached lookup. Cached lookups return instantly. Declared maxDuration
 // keeps the serverless function alive long enough on Vercel (Pro).
 export const maxDuration = 120;
-const PIPELINE_TIMEOUT_MS = 110_000; // 110s — just under maxDuration
+const PIPELINE_TIMEOUT_MS = 110_000; // 110s — just under maxDuration (hard backstop)
+// Soft crawl budget for user-facing lookups: stop waiting on blocked portals
+// (REA/view/etc. burn the whole hard timeout on doomed stealth-retries) and
+// proceed with whatever completed — the feed-seed step still yields a usable
+// profile. Successful sources return well within this; only the doomed ones are
+// cut. This is what stops a search hanging ~110s then 500ing.
+const USER_CRAWL_SOFT_DEADLINE_MS = 45_000;
 // FAST path (e.g. CRM enrich): short synchronous crawl of high-value sources, then
 // the full crawl runs in the background to fill the cache. Keeps the caller snappy.
 const FAST_TIMEOUT_MS = 12_000;
@@ -224,7 +230,12 @@ async function runPipelineWithTimeout(
     setTimeout(() => reject(new Error('Pipeline timed out')), opts.timeoutMs)
   );
   const { profile } = await Promise.race([
-    fetchAndCacheProfile(address, { fast: opts.fast }),
+    fetchAndCacheProfile(address, {
+      fast: opts.fast,
+      // Non-fast user lookups get a soft crawl budget so blocked portals don't
+      // consume the whole hard timeout before the feed-seed step runs.
+      softDeadlineMs: opts.fast ? undefined : USER_CRAWL_SOFT_DEADLINE_MS,
+    }),
     timeout,
   ]);
   return profile;

@@ -46,10 +46,11 @@ const inFlight = new Map<string, Promise<FetchProfileResult>>();
  */
 export async function fetchAndCacheProfile(
   address: StructuredAddress,
-  opts?: { fast?: boolean; skipIfCached?: boolean }
+  opts?: { fast?: boolean; skipIfCached?: boolean; softDeadlineMs?: number }
 ): Promise<FetchProfileResult> {
   const slug = toSlug(address);
   const fast = opts?.fast ?? false;
+  const softDeadlineMs = opts?.softDeadlineMs;
 
   // Cache-guard: callers that may run after a delay (queue worker, background
   // fill) can skip the crawl entirely if a profile is already cached — avoids
@@ -64,12 +65,15 @@ export async function fetchAndCacheProfile(
     }
   }
 
-  // In-flight dedupe (keyed by slug + mode): share one run across concurrent callers.
-  const key = `${slug}::${fast ? 'fast' : 'full'}`;
+  // In-flight dedupe (keyed by slug + mode): share one run across concurrent
+  // callers. The soft-deadline (user-facing) and no-deadline (background) full
+  // crawls are kept in separate buckets so a user request never inherits the
+  // background crawl's long wait, and vice versa.
+  const key = `${slug}::${fast ? 'fast' : 'full'}::${softDeadlineMs ? 'soft' : 'full'}`;
   const existing = inFlight.get(key);
   if (existing) return existing;
 
-  const run = doFetchAndCacheProfile(address, slug, fast).finally(() => inFlight.delete(key));
+  const run = doFetchAndCacheProfile(address, slug, fast, softDeadlineMs).finally(() => inFlight.delete(key));
   inFlight.set(key, run);
   return run;
 }
@@ -92,12 +96,14 @@ function groundExtraction(
 async function doFetchAndCacheProfile(
   address: StructuredAddress,
   slug: string,
-  fast: boolean
+  fast: boolean,
+  softDeadlineMs?: number
 ): Promise<FetchProfileResult> {
   // Step 1: crawl sources in parallel. Fast mode trims to high-value sources
   // with short timeouts (for the CRM enrich path); the full crawl runs in the
-  // background to fill the cache.
-  const crawlResults: CrawlResult[] = await crawlProperty(address, { fast });
+  // background to fill the cache. softDeadlineMs (user-facing lookups) stops
+  // waiting on blocked portals so the feed-seed step can still return a profile.
+  const crawlResults: CrawlResult[] = await crawlProperty(address, { fast, softDeadlineMs });
   console.log(
     `[fetch-profile] Crawl complete for "${slug}": ${crawlResults.length} sources, ` +
       `statuses: ${crawlResults.map((r) => `${r.source}=${r.status}`).join(', ')}`

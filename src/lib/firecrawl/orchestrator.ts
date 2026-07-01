@@ -63,9 +63,10 @@ function setCachedResult(
  */
 export async function crawlProperty(
   address: StructuredAddress,
-  options?: { includeAgencies?: boolean; fast?: boolean }
+  options?: { includeAgencies?: boolean; fast?: boolean; softDeadlineMs?: number }
 ): Promise<CrawlResult[]> {
   const fast = options?.fast ?? false;
+  const softDeadlineMs = options?.softDeadlineMs;
   const sources = fast
     ? getFastSources()
     : options?.includeAgencies
@@ -235,6 +236,31 @@ export async function crawlProperty(
       return errorResult;
     }
   });
+
+  // Run all source crawls in parallel — each is independent. When a soft deadline
+  // is set (user-facing lookups), stop waiting once the budget elapses and proceed
+  // with whatever completed — blocked portals (REA/view/etc.) otherwise burn the
+  // whole route timeout on doomed stealth-retries. The downstream feed-seed step
+  // still produces a usable profile from our own data, so a trimmed crawl is fine.
+  // The background full crawl passes no deadline and keeps its longer budget.
+  if (softDeadlineMs) {
+    const DEADLINE = Symbol('deadline');
+    const timer = new Promise<typeof DEADLINE>((res) =>
+      setTimeout(() => res(DEADLINE), softDeadlineMs),
+    );
+    const raced = await Promise.all(jobs.map((job) => Promise.race([job, timer])));
+    return raced.map((r, index) =>
+      r === DEADLINE
+        ? {
+            source: sources[index].name,
+            url: sources[index].buildPropertyUrl(address),
+            status: 'failed' as const,
+            crawledAt: new Date(),
+            error: `skipped — soft deadline ${softDeadlineMs}ms elapsed`,
+          }
+        : r,
+    );
+  }
 
   // Run all source crawls in parallel — each is independent
   const results = await Promise.allSettled(jobs);
