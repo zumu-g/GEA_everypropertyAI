@@ -94,7 +94,7 @@ export function TrackPropertyButton({ addressSlug, fullAddress }: TrackPropertyB
     return (
       <a
         href={`/sign-in?returnTo=${returnTo}`}
-        className="border border-[#E7E9EE] rounded-xl px-4 py-2 text-sm text-[#6B7077] hover:border-[#C8A96E] hover:text-[#C8A96E] transition-colors"
+        className="border border-[#E7E9EE] rounded-xl px-4 py-2 text-sm text-[#6B7077] hover:border-[#2E5470] hover:text-[#2E5470] transition-colors"
       >
         Track this property
       </a>
@@ -106,7 +106,7 @@ export function TrackPropertyButton({ addressSlug, fullAddress }: TrackPropertyB
       <button
         onClick={handleTrack}
         disabled={busy}
-        className="bg-[#C8A96E] hover:bg-[#B8954A] text-white rounded-xl px-4 py-2.5 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-60"
+        className="bg-[#2E5470] hover:bg-[#24435A] text-white rounded-xl px-4 py-2.5 text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-60"
       >
         <BookmarkPlus className="h-4 w-4" />
         Track this property

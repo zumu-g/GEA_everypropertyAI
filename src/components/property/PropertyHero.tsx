@@ -10,10 +10,10 @@ interface PropertyHeroProps {
 }
 
 const LISTING_BADGE: Record<string, { label: string; colours: string }> = {
-  active:       { label: "For Sale",  colours: "bg-[#C8A96E] text-white" },
-  "under-offer":{ label: "Under Offer", colours: "bg-[#B8954A] text-white" },
+  active:       { label: "For Sale",  colours: "bg-[#2E5470] text-white" },
+  "under-offer":{ label: "Under Offer", colours: "bg-[#8A6425] text-white" },
   sold:         { label: "Sold",      colours: "bg-[#16181D] text-white" },
-  leased:       { label: "Leased",    colours: "bg-[#335C7D] text-white" },
+  leased:       { label: "Leased",    colours: "bg-[#2E5470] text-white" },
 };
 
 export function PropertyHero({ property }: PropertyHeroProps) {
@@ -84,7 +84,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             <div className="hidden sm:grid sm:grid-cols-3 sm:gap-1 h-80 lg:h-[26rem]">
               {/* Main image — 2 columns */}
               <button
-                className="relative col-span-2 overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E] focus-visible:ring-offset-2"
+                className="relative col-span-2 overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
                 onClick={() => openLightbox(0)}
                 aria-label="Open photo gallery"
               >
@@ -133,7 +133,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
               <div className="flex flex-col gap-1">
                 {sidePhoto1 && (
                   <button
-                    className="relative flex-1 overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+                    className="relative flex-1 overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]"
                     onClick={() => openLightbox(1)}
                     aria-label="View photo 2"
                   >
@@ -146,7 +146,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
                 )}
                 {sidePhoto2 ? (
                   <button
-                    className="relative flex-1 overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+                    className="relative flex-1 overflow-hidden group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]"
                     onClick={() => openLightbox(2)}
                     aria-label="View photo 3"
                   >
@@ -174,7 +174,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             {/* Mobile: single hero + horizontal scroll strip */}
             <div className="sm:hidden">
               <button
-                className="relative h-64 w-full overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+                className="relative h-64 w-full overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]"
                 onClick={() => openLightbox(0)}
                 aria-label="Open photo gallery"
               >
@@ -222,7 +222,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
                     <button
                       key={idx}
                       onClick={() => openLightbox(idx + 1)}
-                      className="h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 border-transparent transition-all duration-150 hover:border-[#C8A96E] focus:outline-none focus-visible:border-[#C8A96E]"
+                      className="h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 border-transparent transition-all duration-150 hover:border-[#2E5470] focus:outline-none focus-visible:border-[#2E5470]"
                       aria-label={`View photo ${idx + 2}`}
                     >
                       <img
@@ -240,7 +240,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
           /* ── No photos placeholder ── */
           <div className="relative flex h-64 w-full items-center justify-center bg-gradient-to-br from-[#F4F5F7] to-[#EDEFF2] sm:h-80 lg:h-96">
             <div className="text-center">
-              <Camera className="mx-auto mb-3 h-12 w-12 text-[#C8A96E] opacity-60" aria-hidden="true" />
+              <Camera className="mx-auto mb-3 h-12 w-12 text-[#2E5470] opacity-60" aria-hidden="true" />
               <h1
                 className="px-6 text-xl font-semibold tracking-tight text-[#16181D] sm:text-2xl lg:text-3xl"
               >
@@ -306,7 +306,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             {/* Close */}
             <button
               onClick={(e) => { e.stopPropagation(); closeLightbox(); }}
-              className="absolute top-safe-4 right-safe-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+              className="absolute top-safe-4 right-safe-4 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]"
               aria-label="Close lightbox"
             >
               <X className="h-5 w-5" />
@@ -316,7 +316,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             {photoUrls.length > 1 && (
               <button
                 onClick={(e) => { e.stopPropagation(); prev(); }}
-                className="absolute left-safe-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+                className="absolute left-safe-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]"
                 aria-label="Previous photo"
               >
                 <ChevronLeft className="h-6 w-6" />
@@ -339,7 +339,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             {photoUrls.length > 1 && (
               <button
                 onClick={(e) => { e.stopPropagation(); next(); }}
-                className="absolute right-safe-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]"
+                className="absolute right-safe-4 flex h-12 w-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors duration-150 hover:bg-black/70 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]"
                 aria-label="Next photo"
               >
                 <ChevronRight className="h-6 w-6" />

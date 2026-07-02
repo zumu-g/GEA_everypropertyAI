@@ -106,7 +106,7 @@ export function PropertyTimeline({ sales, rentals }: PropertyTimelineProps) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-[#E7E9EE] bg-white px-6 py-12 text-center ">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F4F5F7]">
-          <Home className="h-7 w-7 text-[#C8A96E] opacity-70" aria-hidden="true" />
+          <Home className="h-7 w-7 text-[#2E5470] opacity-70" aria-hidden="true" />
         </div>
         <p className="text-base font-medium text-[#33363D]">No property history found</p>
         <p className="mt-1 text-sm text-[#6B7077]">
@@ -166,8 +166,8 @@ export function PropertyTimeline({ sales, rentals }: PropertyTimelineProps) {
             <AreaChart data={chartData} margin={{ top: 10, right: 16, left: 8, bottom: 0 }}>
               <defs>
                 <linearGradient id="timelineGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#335C7D" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#335C7D" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#2E5470" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#2E5470" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9EE" />
@@ -203,11 +203,11 @@ export function PropertyTimeline({ sales, rentals }: PropertyTimelineProps) {
               <Area
                 type="monotone"
                 dataKey="price"
-                stroke="#335C7D"
+                stroke="#2E5470"
                 strokeWidth={2}
                 fill="url(#timelineGradient)"
-                dot={{ fill: "#335C7D", r: 4, strokeWidth: 0 }}
-                activeDot={{ r: 6, fill: "#B8954A" }}
+                dot={{ fill: "#2E5470", r: 4, strokeWidth: 0 }}
+                activeDot={{ r: 6, fill: "#24435A" }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -248,8 +248,8 @@ export function PropertyTimeline({ sales, rentals }: PropertyTimelineProps) {
               <div
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
                   event.kind === "sale"
-                    ? "bg-[#FBFBFC] text-[#C8A96E]"
-                    : "bg-[#E4EBF1] text-[#335C7D]"
+                    ? "bg-[#FBFBFC] text-[#2E5470]"
+                    : "bg-[#E4EBF1] text-[#2E5470]"
                 }`}
               >
                 {event.kind === "sale" ? (
@@ -290,7 +290,7 @@ function SaleEventCard({
 
   return (
     <>
-      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#C8A96E]">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#2E5470]">
         Sale
       </div>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -310,7 +310,7 @@ function SaleEventCard({
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {saleTypeLabel && (
-              <span className="inline-flex items-center rounded-full bg-[#FBFBFC] px-2.5 py-0.5 text-xs font-medium text-[#B8954A]">
+              <span className="inline-flex items-center rounded-full bg-[#E9EFEA] px-2.5 py-0.5 text-xs font-medium text-[#435548]">
                 {saleTypeLabel}
               </span>
             )}
@@ -321,7 +321,7 @@ function SaleEventCard({
               </span>
             )}
             {event.isConfidential && (
-              <span className="inline-flex items-center rounded-full bg-[#F5EEDD] px-2.5 py-0.5 text-xs font-medium text-[#B8954A]">
+              <span className="inline-flex items-center rounded-full bg-[#F5EEDD] px-2.5 py-0.5 text-xs font-medium text-[#8A6425]">
                 Confidential
               </span>
             )}
@@ -371,7 +371,7 @@ function SaleEventCard({
 function RentalEventCard({ event }: { event: RentalHistoryEntry }) {
   return (
     <>
-      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#335C7D]">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#2E5470]">
         Rental Listing
       </div>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -387,7 +387,7 @@ function RentalEventCard({ event }: { event: RentalHistoryEntry }) {
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {event.leaseTerm && (
-          <span className="inline-flex items-center rounded-full bg-[#E4EBF1] px-2.5 py-0.5 text-xs font-medium text-[#335C7D]">
+          <span className="inline-flex items-center rounded-full bg-[#E4EBF1] px-2.5 py-0.5 text-xs font-medium text-[#2E5470]">
             {event.leaseTerm}
           </span>
         )}

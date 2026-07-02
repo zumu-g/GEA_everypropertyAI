@@ -286,7 +286,7 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
     <div ref={containerRef} className="relative w-full max-w-2xl mx-auto">
       {/* Input wrapper */}
       <div
-        className={`relative flex items-center rounded-xl border border-[#E7E9EE] bg-white transition-all duration-200 focus-within:border-[#C8A96E] focus-within:shadow-md focus-within:ring-2 focus-within:ring-[#C8A96E]/25 ${
+        className={`relative flex items-center rounded-xl border border-[#E7E9EE] bg-white transition-all duration-200 focus-within:border-[#2E5470] focus-within:shadow-md focus-within:ring-2 focus-within:ring-[#2E5470]/25 ${
           size === "lg" ? "min-h-[3.5rem]" : "min-h-[3rem]"
         }`}
       >
@@ -340,7 +340,7 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
         <div className="absolute right-2 flex items-center">
           {isLoading ? (
             <Loader2
-              className={`animate-spin text-[#C8A96E] ${
+              className={`animate-spin text-[#2E5470] ${
                 size === "lg" ? "h-5 w-5" : "h-4 w-4"
               }`}
               aria-label="Searching…"
@@ -349,7 +349,7 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
             <button
               type="button"
               onClick={handleSubmit}
-              className={`rounded-lg bg-[#16181D] font-medium text-white transition-all duration-150 hover:bg-[#C8A96E] active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-1 ${
+              className={`rounded-lg bg-[#16181D] font-medium text-white transition-all duration-150 hover:bg-[#2E5470] active:scale-[0.97] focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-1 ${
                 size === "lg" ? "px-4 py-2 text-sm" : "px-3 py-1.5 text-xs"
               }`}
             >
@@ -364,7 +364,7 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
         <p className="mt-2 text-center text-xs text-[#8A8F97]">
           Type a street address, suburb, or postcode
           {userLocation?.state && (
-            <span className="ml-1 text-[#C8A96E]">
+            <span className="ml-1 text-[#2E5470]">
               &middot; Prioritising {userLocation.state}
             </span>
           )}
@@ -400,11 +400,11 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
                   <>
                     <span
                       className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
-                        index === activeIndex ? "bg-[#EFE3CC]" : "bg-[#F4F5F7]"
+                        index === activeIndex ? "bg-[#E4EBF1]" : "bg-[#F4F5F7]"
                       }`}
                       aria-hidden="true"
                     >
-                      <List className="h-3.5 w-3.5 text-[#C8A96E]" />
+                      <List className="h-3.5 w-3.5 text-[#2E5470]" />
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-[#16181D]">
@@ -422,12 +422,12 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
                     {/* Map pin */}
                     <span
                       className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${
-                        index === activeIndex ? "bg-[#EFE3CC]" : "bg-[#F4F5F7]"
+                        index === activeIndex ? "bg-[#E4EBF1]" : "bg-[#F4F5F7]"
                       }`}
                       aria-hidden="true"
                     >
                       <svg
-                        className="h-3.5 w-3.5 text-[#C8A96E]"
+                        className="h-3.5 w-3.5 text-[#2E5470]"
                         fill="none"
                         viewBox="0 0 24 24"
                         strokeWidth={2}

@@ -240,7 +240,7 @@ function StatCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F4F5F7]">
-            <Icon className="h-4 w-4 text-[#C8A96E]" />
+            <Icon className="h-4 w-4 text-[#2E5470]" />
           </div>
           <span className="text-xs font-medium uppercase tracking-wide text-[#6B7077]">
             {label}

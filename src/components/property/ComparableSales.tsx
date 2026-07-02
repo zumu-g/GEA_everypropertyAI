@@ -53,7 +53,7 @@ function SimilarityBadge({ score }: { score: number }) {
     score >= 130
       ? "bg-[#E4F1EB] text-[#2F8F6B]"
       : score >= 110
-      ? "bg-[#FBFBFC] text-[#B8954A]"
+      ? "bg-[#E9EFEA] text-[#435548]"
       : "bg-[#F4F5F7] text-[#4A4E57]";
 
   return (
@@ -136,7 +136,7 @@ export function ComparableSales({
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-[#E7E9EE] bg-white px-6 py-12 text-center ">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F4F5F7]">
-          <Database className="h-7 w-7 text-[#C8A96E] opacity-60" aria-hidden="true" />
+          <Database className="h-7 w-7 text-[#2E5470] opacity-60" aria-hidden="true" />
         </div>
         <p className="text-base font-medium text-[#33363D]">
           Not enough local data yet
@@ -166,7 +166,7 @@ export function ComparableSales({
           </div>
 
           <p
-            className="mt-2 text-xl font-bold text-[#C8A96E] tabular-nums"
+            className="mt-2 text-xl font-bold text-[#2E5470] tabular-nums"
             style={{ fontFamily: "var(--font-mono)" }}
           >
             {fmtPrice(comp.price)}

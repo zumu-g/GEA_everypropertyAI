@@ -40,9 +40,9 @@ function ConfidenceBar({ score }: { score: number }) {
   const pct = Math.max(0, Math.min(1, score)) * 100;
   const colour =
     pct >= 65
-      ? "bg-[#C8A96E]"
+      ? "bg-[#2E5470]"
       : pct >= 45
-      ? "bg-[#B8954A]"
+      ? "bg-[#8A6425]"
       : "bg-[#C5544A]";
 
   return (
@@ -85,7 +85,7 @@ function SourceRow({
               href={entry.source.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="font-medium text-[#16181D] transition-colors duration-150 hover:text-[#C8A96E] focus:outline-none focus:underline"
+              className="font-medium text-[#16181D] transition-colors duration-150 hover:text-[#2E5470] focus:outline-none focus:underline"
               aria-label={`Visit ${entry.source.name}`}
             >
               {entry.source.name}
@@ -178,7 +178,7 @@ export function DataSources({
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between rounded-xl border border-[#E7E9EE] bg-[#FBFBFC] px-6 py-4 transition-all duration-150 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2 active:scale-[0.99]"
+        className="flex w-full items-center justify-between rounded-xl border border-[#E7E9EE] bg-[#FBFBFC] px-6 py-4 transition-all duration-150 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2 active:scale-[0.99]"
         aria-expanded={isOpen}
       >
         <div className="flex items-center gap-3">

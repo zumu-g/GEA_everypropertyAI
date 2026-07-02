@@ -119,11 +119,11 @@ export function SuburbPriceChart({ data, type }: SuburbPriceChartProps) {
         <Area
           type="monotone"
           dataKey="value"
-          stroke="#335C7D"
+          stroke="#2E5470"
           strokeWidth={2}
           fill="url(#suburbPriceGradient)"
           dot={false}
-          activeDot={{ r: 5, fill: "#335C7D", strokeWidth: 0 }}
+          activeDot={{ r: 5, fill: "#2E5470", strokeWidth: 0 }}
         />
       </AreaChart>
     </ResponsiveContainer>

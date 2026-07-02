@@ -64,7 +64,7 @@ export function AuthButton() {
     return (
       <a
         href={`/sign-in?returnTo=${returnTo}`}
-        className="rounded-lg border border-[#E7E9EE] bg-white px-4 py-2 text-sm font-medium text-[#16181D] transition-all hover:border-[#C8A96E] hover:text-[#C8A96E]"
+        className="rounded-lg border border-[#E7E9EE] bg-white px-4 py-2 text-sm font-medium text-[#16181D] transition-all hover:border-[#2E5470] hover:text-[#2E5470]"
       >
         Sign in
       </a>
@@ -77,7 +77,7 @@ export function AuthButton() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={toggleDropdown}
-        className="flex items-center gap-1.5 rounded-lg border border-[#E7E9EE] bg-white px-4 py-2.5 text-sm font-medium text-[#16181D] transition-all hover:border-[#C8A96E] hover:text-[#C8A96E]"
+        className="flex items-center gap-1.5 rounded-lg border border-[#E7E9EE] bg-white px-4 py-2.5 text-sm font-medium text-[#16181D] transition-all hover:border-[#2E5470] hover:text-[#2E5470]"
       >
         {truncatedEmail}
         <ChevronDown className="h-4 w-4" />

@@ -51,7 +51,7 @@ function ForgotPasswordForm() {
         </div>
         <a
           href="/sign-in"
-          className="mt-1 text-sm text-[#C8A96E] underline-offset-2 hover:underline focus:outline-none"
+          className="mt-1 text-sm text-[#2E5470] underline-offset-2 hover:underline focus:outline-none"
         >
           Back to sign in
         </a>
@@ -63,7 +63,7 @@ function ForgotPasswordForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
       <div className="flex justify-center">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#FBFBFC]">
-          <Mail className="h-6 w-6 text-[#C8A96E]" aria-hidden="true" />
+          <Mail className="h-6 w-6 text-[#2E5470]" aria-hidden="true" />
         </div>
       </div>
       <div className="space-y-1.5 text-center">
@@ -83,7 +83,7 @@ function ForgotPasswordForm() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@grantsea.com.au"
-          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#2E5470] focus:outline-none focus:ring-2 focus:ring-[#2E5470]/30"
         />
       </div>
 
@@ -92,13 +92,13 @@ function ForgotPasswordForm() {
       <button
         type="submit"
         disabled={status === "loading"}
-        className="w-full rounded-xl bg-[#C8A96E] py-3 text-sm font-medium text-white transition-colors hover:bg-[#B8954A] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-xl bg-[#2E5470] py-3 text-sm font-medium text-white transition-colors hover:bg-[#24435A] focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {status === "loading" ? "Sending…" : "Send reset link"}
       </button>
 
       <div className="text-center">
-        <a href="/sign-in" className="text-sm text-[#C8A96E] underline-offset-2 hover:underline">
+        <a href="/sign-in" className="text-sm text-[#2E5470] underline-offset-2 hover:underline">
           Back to sign in
         </a>
       </div>
