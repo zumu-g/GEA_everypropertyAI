@@ -198,7 +198,7 @@ Casey, Cardinia, and Baw Baw council areas. Includes Ray White, Barry Plant, Har
 |---|---|---|
 | GET | `/api/search?q=...` | Address autocomplete (Mapbox/Google), VIC-biased, ≤8 flat suggestions `{fullAddress,streetAddress,suburb,state,postcode,placeId}`; **hard Bearer auth**; `q<3 → []`, missing `q` → 400; never crawls |
 | GET | `/api/address-suggest?q=...&state=...&lat=...&lng=...` | REA autocomplete (clean suburb/state/postcode) |
-| POST | `/api/property` | Full property lookup pipeline (`maxDuration` 120s) |
+| POST | `/api/property` | Full property lookup pipeline (`maxDuration` 120s). `{cachedOnly:true}` (or `?cachedOnly=1`) never crawls: cache hit returns instantly, miss → 404 — lets CMA packs skip the ~120s live crawl |
 | GET | `/api/property/[slug]/override` | User overrides for a cached property |
 | GET | `/api/comparable-sales?suburb=...&state=...&beds=...&baths=...` | Top comparable sales (similarity-scored) |
 | GET | `/api/sold-sales?suburb=...&state=...&limit=...` | Recent sold-sales feed (Valuer General) |
@@ -273,8 +273,7 @@ is a Google Stitch–formatted companion. Validate tokens/contrast with `design.
   but single-property hits depend on slug/listing availability.
 - ✅ **everypropertyAI** package built, verified (CLI + MCP), `npm link`ed locally.
 - 🔜 **Open items:** REA reliability (Kasada — Apify actor / fetch **Camoufox**, blocked earlier by
-  a GitHub API rate-limit); `cachedOnly`/`fresh` flag on `/api/property` so CMA packs skip the
-  ~120s live crawl; shared-secret auth on data routes before exposing a deployed instance; deploy
+  a GitHub API rate-limit); shared-secret auth on data routes before exposing a deployed instance; deploy
   the stealth service + set `STEALTH_SCRAPER_URL` in prod. Branch: `redesign/data-site-look` (unpushed).
 
 ## Tech Stack

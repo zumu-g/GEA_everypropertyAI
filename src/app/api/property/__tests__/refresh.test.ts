@@ -74,3 +74,48 @@ describe('POST /api/property refresh (plan 008 U3)', () => {
     expect(fetchAndCacheProfile).toHaveBeenCalled();
   });
 });
+
+describe('POST /api/property cachedOnly', () => {
+  it('cache hit returns the cached profile without crawling', async () => {
+    propertyCache.set(SLUG, makeProfile('cached') as never);
+    const res = await POST(req({ address: ADDRESS, cachedOnly: true }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.source).toBe('cache');
+    expect(json.profile.data.tag).toBe('cached');
+    expect(fetchAndCacheProfile).not.toHaveBeenCalled();
+  });
+
+  it('serves a cached fast partial (caller opted out of a crawl)', async () => {
+    propertyCache.set(SLUG, { ...makeProfile('partial'), crawlMode: 'fast' } as never);
+    const res = await POST(req({ address: ADDRESS, cachedOnly: true }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.profile.data.tag).toBe('partial');
+    expect(fetchAndCacheProfile).not.toHaveBeenCalled();
+  });
+
+  it('cache miss returns 404 and never crawls', async () => {
+    const res = await POST(req({ address: ADDRESS }, '?cachedOnly=1'));
+    const json = await res.json();
+    expect(res.status).toBe(404);
+    expect(json.addressSlug).toBe(SLUG);
+    expect(fetchAndCacheProfile).not.toHaveBeenCalled();
+  });
+
+  it('falls through to the Supabase cache on in-memory miss', async () => {
+    getCachedProfile.mockResolvedValue(makeProfile('supabase') as never);
+    const res = await POST(req({ address: ADDRESS, cachedOnly: true }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.profile.data.tag).toBe('supabase');
+    expect(fetchAndCacheProfile).not.toHaveBeenCalled();
+  });
+
+  it('rejects cachedOnly + refresh as contradictory', async () => {
+    const res = await POST(req({ address: ADDRESS, cachedOnly: true, refresh: true }));
+    expect(res.status).toBe(400);
+    expect(deleteCachedProfile).not.toHaveBeenCalled();
+    expect(fetchAndCacheProfile).not.toHaveBeenCalled();
+  });
+});

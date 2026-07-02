@@ -60,7 +60,7 @@ export async function OPTIONS() {
  * by orchestrating: cache check -> crawl -> extract -> merge -> cache.
  */
 export async function POST(request: NextRequest) {
-  let body: { address: StructuredAddress; fast?: boolean; refresh?: boolean };
+  let body: { address: StructuredAddress; fast?: boolean; refresh?: boolean; cachedOnly?: boolean };
 
   try {
     body = await request.json();
@@ -77,10 +77,23 @@ export async function POST(request: NextRequest) {
   // cached profile can be corrected (plan 008).
   const refresh =
     body.refresh === true || ['1', 'true'].includes(request.nextUrl.searchParams.get('refresh') ?? '');
+  // Cached-only: `?cachedOnly=1` (or `{cachedOnly:true}`) never crawls — a cache
+  // hit (including a fast partial) returns instantly, a miss returns 404 so the
+  // caller (e.g. a CMA pack) can decide whether to pay for a live crawl.
+  const cachedOnly =
+    body.cachedOnly === true ||
+    ['1', 'true'].includes(request.nextUrl.searchParams.get('cachedOnly') ?? '');
 
   if (!address || (!address.streetName && !address.displayAddress)) {
     return NextResponse.json(
       { error: 'Address must include at least streetName or displayAddress.' },
+      { status: 400, headers: CORS_HEADERS }
+    );
+  }
+
+  if (cachedOnly && refresh) {
+    return NextResponse.json(
+      { error: 'cachedOnly and refresh are mutually exclusive.' },
       { status: 400, headers: CORS_HEADERS }
     );
   }
@@ -96,7 +109,7 @@ export async function POST(request: NextRequest) {
   // 1. Check in-memory cache. A full (non-fast) request must NOT be served a
   // previously-cached fast partial — fall through to a complete crawl instead.
   const cached = refresh ? undefined : propertyCache.get(slug);
-  if (cached && (fast || cached.crawlMode !== 'fast')) {
+  if (cached && (fast || cachedOnly || cached.crawlMode !== 'fast')) {
     const overrides = await getOverrides(slug);
     const finalProfile = applyOverrides(cached, overrides);
     return NextResponse.json(
@@ -114,7 +127,7 @@ export async function POST(request: NextRequest) {
   // 1b. Try Supabase cache (persistent, survives restarts). Same fast-partial
   // guard as the in-memory cache above. Skipped on refresh.
   const supabaseCached = refresh ? null : await getCachedProfile(slug);
-  if (supabaseCached && (fast || supabaseCached.crawlMode !== 'fast')) {
+  if (supabaseCached && (fast || cachedOnly || supabaseCached.crawlMode !== 'fast')) {
     propertyCache.set(slug, supabaseCached); // warm in-memory cache
     const overrides = await getOverrides(slug);
     const finalProfile = applyOverrides(supabaseCached, overrides);
@@ -127,6 +140,14 @@ export async function POST(request: NextRequest) {
           'X-Cache-Status': 'HIT',
         },
       }
+    );
+  }
+
+  // Cached-only miss: stop here — never crawl.
+  if (cachedOnly) {
+    return NextResponse.json(
+      { error: 'Not cached.', addressSlug: slug },
+      { status: 404, headers: { ...CORS_HEADERS, 'X-Cache-Status': 'MISS' } }
     );
   }
 
