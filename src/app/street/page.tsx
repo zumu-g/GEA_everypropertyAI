@@ -304,7 +304,7 @@ function StreetResults() {
     <div className="mx-auto max-w-6xl px-6 py-10 print:max-w-none print:px-0 print:py-0">
       <Link
         href="/"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-[#6B7077] transition-colors duration-150 hover:text-[#C8A96E] print:hidden"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-[#6B7077] transition-colors duration-150 hover:text-[#2E5470] print:hidden"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Search
@@ -316,7 +316,7 @@ function StreetResults() {
           <span
             className="text-xl tracking-tight text-[#16181D]"
           >
-            Property<span className="text-[#C8A96E]">IQ</span>
+            Property<span className="text-[#2E5470]">IQ</span>
             <span className="ml-2 text-xs uppercase tracking-wide text-[#6B7077]">
               by Grants Estate Agents
             </span>
@@ -328,7 +328,7 @@ function StreetResults() {
       <div className="mt-8 mb-6 flex items-start justify-between gap-4 print:mt-0">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <MapPin className="h-5 w-5 text-[#C8A96E] print:hidden" />
+            <MapPin className="h-5 w-5 text-[#2E5470] print:hidden" />
             <h1
               className="text-3xl font-semibold tracking-tight text-[#16181D] print:text-2xl"
             >
@@ -347,7 +347,7 @@ function StreetResults() {
                 type="button"
                 onClick={loadDetails}
                 disabled={isCrawling}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#C8A96E] px-4 py-2.5 text-sm font-medium text-white transition-all duration-150 hover:bg-[#B8954A] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#2E5470] px-4 py-2.5 text-sm font-medium text-white transition-all duration-150 hover:bg-[#24435A] focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isCrawling ? (
                   <>
@@ -366,9 +366,9 @@ function StreetResults() {
             <button
               type="button"
               onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E7E9EE] bg-white px-4 py-2.5 text-sm font-medium text-[#16181D] transition-all duration-150 hover:border-[#C8A96E] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#E7E9EE] bg-white px-4 py-2.5 text-sm font-medium text-[#16181D] transition-all duration-150 hover:border-[#2E5470] hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2"
             >
-              <Printer className="h-4 w-4 text-[#C8A96E]" />
+              <Printer className="h-4 w-4 text-[#2E5470]" />
               Print report
             </button>
           </div>
@@ -384,7 +384,7 @@ function StreetResults() {
       ) : isFallback || rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-[#E7E9EE] bg-white px-6 py-16 text-center ">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#F4F5F7]">
-            <Home className="h-7 w-7 text-[#C8A96E] opacity-70" />
+            <Home className="h-7 w-7 text-[#2E5470] opacity-70" />
           </div>
           <p className="text-base font-medium text-[#33363D]">
             No addresses found for this street
@@ -394,7 +394,7 @@ function StreetResults() {
           </p>
           <Link
             href="/"
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#C8A96E] px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#B8954A]"
+            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#2E5470] px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#24435A]"
           >
             Search an address
           </Link>
@@ -437,7 +437,7 @@ function StreetResults() {
                         <button
                           type="button"
                           onClick={() => toggleSort(col.key)}
-                          className={`inline-flex items-center gap-1 transition-colors duration-150 hover:text-[#C8A96E] focus:outline-none ${
+                          className={`inline-flex items-center gap-1 transition-colors duration-150 hover:text-[#2E5470] focus:outline-none ${
                             active ? "text-[#16181D]" : ""
                           } ${
                             col.align === "right"
@@ -451,9 +451,9 @@ function StreetResults() {
                           {col.label}
                           {active ? (
                             sortDir === "asc" ? (
-                              <ChevronUp className="h-3.5 w-3.5 text-[#C8A96E] print:hidden" />
+                              <ChevronUp className="h-3.5 w-3.5 text-[#2E5470] print:hidden" />
                             ) : (
-                              <ChevronDown className="h-3.5 w-3.5 text-[#C8A96E] print:hidden" />
+                              <ChevronDown className="h-3.5 w-3.5 text-[#2E5470] print:hidden" />
                             )
                           ) : (
                             <ChevronsUpDown className="h-3.5 w-3.5 opacity-40 print:hidden" />
@@ -495,12 +495,12 @@ function StreetResults() {
                             <span className="inline-flex items-center gap-2">
                               <Link
                                 href={row.propertyHref}
-                                className="font-medium text-[#16181D] transition-colors duration-150 hover:text-[#C8A96E] hover:underline"
+                                className="font-medium text-[#16181D] transition-colors duration-150 hover:text-[#2E5470] hover:underline"
                               >
                                 {row.streetAddress}
                               </Link>
                               {pendingSlugs.has(row.slug) && (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#C8A96E] print:hidden" />
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#2E5470] print:hidden" />
                               )}
                             </span>
                           </td>

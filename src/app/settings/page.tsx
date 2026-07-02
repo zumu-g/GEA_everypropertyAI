@@ -113,14 +113,14 @@ export default function SettingsPage() {
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <a href="/" className="group flex items-center gap-3" aria-label="everypropertyAI home">
             <span
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#C8A96E] transition-opacity duration-150 group-hover:opacity-80"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
               aria-hidden="true"
             >
               GEA
             </span>
             <div className="leading-none">
               <span className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]">
-                everyproperty<span className="text-[#C8A96E]">AI</span>
+                everyproperty<span className="text-[#2E5470]">AI</span>
               </span>
               <span className="block text-[0.65rem] uppercase tracking-wide text-[#6B7077]">
                 by Grants Estate Agents
@@ -167,7 +167,7 @@ export default function SettingsPage() {
               className="mt-8 rounded-2xl border border-[#E7E9EE] bg-white p-6"
             >
               <div className="flex items-center gap-2">
-                <UserPlus className="h-5 w-5 text-[#C8A96E]" aria-hidden="true" />
+                <UserPlus className="h-5 w-5 text-[#2E5470]" aria-hidden="true" />
                 <h2 className="text-base font-medium text-[#16181D]">Invite a teammate</h2>
               </div>
 
@@ -181,12 +181,12 @@ export default function SettingsPage() {
                     if (inviteStatus !== "idle") setInviteStatus("idle");
                   }}
                   placeholder="name@grantsea.com.au"
-                  className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+                  className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#2E5470] focus:outline-none focus:ring-2 focus:ring-[#2E5470]/30"
                 />
                 <button
                   type="submit"
                   disabled={inviteStatus === "sending"}
-                  className="shrink-0 rounded-xl bg-[#C8A96E] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#B8954A] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="shrink-0 rounded-xl bg-[#2E5470] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#24435A] focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {inviteStatus === "sending" ? "Sending…" : "Send invite"}
                 </button>
@@ -197,7 +197,7 @@ export default function SettingsPage() {
                   type="checkbox"
                   checked={inviteAdmin}
                   onChange={(e) => setInviteAdmin(e.target.checked)}
-                  className="h-4 w-4 rounded border-[#E7E9EE] text-[#C8A96E] focus:ring-[#C8A96E]/30"
+                  className="h-4 w-4 rounded border-[#E7E9EE] text-[#2E5470] focus:ring-[#2E5470]/30"
                 />
                 Make this person an admin (can invite and remove teammates)
               </label>
@@ -228,7 +228,7 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm text-[#16181D]">{m.email}</span>
                         {m.is_admin && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-[#FBF6EC] px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-[#B8954A]">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F5F7] px-2 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-[#8A6425]">
                             <Shield className="h-3 w-3" aria-hidden="true" />
                             Admin
                           </span>
@@ -285,7 +285,7 @@ function LockedState({
       {cta && (
         <a
           href={cta.href}
-          className="mt-2 rounded-xl bg-[#C8A96E] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#B8954A]"
+          className="mt-2 rounded-xl bg-[#2E5470] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#24435A]"
         >
           {cta.label}
         </a>

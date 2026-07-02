@@ -1,16 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, Playfair_Display, IBM_Plex_Mono } from "next/font/google";
+import { Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-const dmSans = DM_Sans({
+const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
-  display: "swap",
-});
-
-const playfairDisplay = Playfair_Display({
-  subsets: ["latin"],
-  variable: "--font-display",
   display: "swap",
 });
 
@@ -44,7 +38,7 @@ export default function RootLayout({
   return (
     <html
       lang="en-AU"
-      className={`${dmSans.variable} ${playfairDisplay.variable} ${ibmPlexMono.variable}`}
+      className={`${instrumentSans.variable} ${ibmPlexMono.variable}`}
     >
       <body className="min-h-screen bg-[#FBFBFC] font-sans text-[#16181D] antialiased">
         {children}

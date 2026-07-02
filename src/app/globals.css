@@ -13,23 +13,26 @@
   --color-muted: #6B7077;     /* secondary text, labels, captions */
   --color-faint: #8A8F97;     /* tertiary text, fine print */
 
-  /* ── Accents ── */
-  --color-gold: #C8A96E;      /* GEA brand accent — use sparingly */
-  --color-gold-dark: #B8954A; /* gold hover / press */
-  --color-gold-soft: #EFE3CC; /* gold selected / hover fill on light bg */
-  --color-data: #335C7D;      /* muted steel-blue — charts, links, data */
-  --color-data-soft: #E4EBF1; /* data accent fill */
+  /* ── Accents — two subtle accents, gold retired from product UI ── */
+  --color-accent: #2E5470;       /* deep steel-slate — actions, links, focus, data emphasis */
+  --color-accent-dark: #24435A;  /* accent hover / press */
+  --color-accent-soft: #E4EBF1;  /* accent selected / hover fill on light bg */
+  --color-accent-2: #5C7466;     /* muted eucalypt — secondary highlights, chart series 2 */
+  --color-accent-2-ink: #435548; /* accent-2 text on soft fill */
+  --color-accent-2-soft: #E9EFEA;
+  --color-data: #2E5470;         /* alias — charts, links, data */
+  --color-data-soft: #E4EBF1;    /* data accent fill */
 
-  /* ── Cool-toned status (must not compete with gold) ── */
+  /* ── Semantic status — meaning only, never decoration ── */
   --color-up: #2F8F6B;        /* positive / growth */
   --color-up-soft: #E4F1EB;
   --color-down: #C5544A;      /* negative / risk */
   --color-down-soft: #F7E7E5;
-  --color-warn: #B8954A;      /* caution — reuse dark gold, stays in family */
+  --color-warn: #8A6425;      /* caution — muted amber, AA on warn-soft */
   --color-warn-soft: #F5EEDD;
 
-  /* ── Backwards-compat aliases (legacy hex names still referenced) ── */
-  --color-gea-gold: #C8A96E;
+  /* ── Backwards-compat aliases (legacy names still referenced) ── */
+  --color-gea-gold: #2E5470;  /* gold retired — maps to accent */
   --color-gea-ink: #16181D;
   --color-gea-paper: #FBFBFC;
   --color-gea-surface: #F4F5F7;
@@ -37,8 +40,7 @@
   --color-gea-muted: #6B7077;
 
   /* ── Typography ── */
-  --font-sans: 'DM Sans', system-ui, sans-serif;
-  --font-display: 'Playfair Display', Georgia, serif; /* reserved for hero only */
+  --font-sans: 'Instrument Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
 }
 
@@ -127,12 +129,6 @@ html {
   text-transform: uppercase;
   font-weight: 500;
 }
-/* Reserved editorial serif — opt in explicitly for a single hero moment */
-.font-editorial {
-  font-family: var(--font-display);
-  font-weight: 400;
-}
-
 /* Skeleton shimmer animation — moves the highlight stripe left-to-right */
 @keyframes shimmer {
   100% {

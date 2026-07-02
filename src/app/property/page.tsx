@@ -23,7 +23,7 @@ function PropertyPageContent() {
         </p>
         <Link
           href="/"
-          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#C8A96E] px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#B8954A] active:scale-[0.97]"
+          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-[#2E5470] px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#24435A] active:scale-[0.97]"
         >
           <ArrowLeft className="h-4 w-4" />
           Go to Search
@@ -41,8 +41,8 @@ export default function PropertyPage() {
       {/* Nav */}
       <header className="flex items-center justify-between border-b border-[#E7E9EE] px-6 py-4 lg:px-12">
         <Link href="/" className="flex items-center gap-2">
-          <Building2 className="h-6 w-6 text-[#C8A96E]" />
-          <span className="text-lg font-semibold text-[#16181D]">everyproperty<span className="text-[#C8A96E]">AI</span></span>
+          <Building2 className="h-6 w-6 text-[#2E5470]" />
+          <span className="text-lg font-semibold text-[#16181D]">everyproperty<span className="text-[#2E5470]">AI</span></span>
         </Link>
         <AuthButton />
       </header>

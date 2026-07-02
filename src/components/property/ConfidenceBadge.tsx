@@ -25,18 +25,18 @@ const levelConfig: Record<
   { dot: string; badge: string; label: string }
 > = {
   "very-high": {
-    dot: "bg-[#C8A96E]",
-    badge: "border-[#EFE3CC] bg-[#FBFBFC] text-[#8A6830]",
+    dot: "bg-[#2E5470]",
+    badge: "border-[#E4EBF1] bg-[#FBFBFC] text-[#24435A]",
     label: "Very High",
   },
   high: {
-    dot: "bg-[#C8A96E]",
-    badge: "border-[#EFE3CC] bg-[#FBFBFC] text-[#8A6830]",
+    dot: "bg-[#2E5470]",
+    badge: "border-[#E4EBF1] bg-[#FBFBFC] text-[#24435A]",
     label: "High",
   },
   medium: {
-    dot: "bg-[#B8954A]",
-    badge: "border-[#F5EEDD] bg-[#F5EEDD] text-[#B8954A]",
+    dot: "bg-[#8A6425]",
+    badge: "border-[#F5EEDD] bg-[#F5EEDD] text-[#8A6425]",
     label: "Medium",
   },
   low: {

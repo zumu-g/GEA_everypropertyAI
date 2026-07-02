@@ -59,7 +59,7 @@ function SetPasswordForm() {
         </p>
         <a
           href="/forgot-password"
-          className="mt-2 rounded-xl bg-[#C8A96E] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#B8954A]"
+          className="mt-2 rounded-xl bg-[#2E5470] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#24435A]"
         >
           Request a new link
         </a>
@@ -82,7 +82,7 @@ function SetPasswordForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
       <div className="flex justify-center">
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#FBFBFC]">
-          <KeyRound className="h-6 w-6 text-[#C8A96E]" aria-hidden="true" />
+          <KeyRound className="h-6 w-6 text-[#2E5470]" aria-hidden="true" />
         </div>
       </div>
       <div className="space-y-1.5 text-center">
@@ -102,7 +102,7 @@ function SetPasswordForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="New password"
-          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#2E5470] focus:outline-none focus:ring-2 focus:ring-[#2E5470]/30"
         />
       </div>
       <div>
@@ -115,7 +115,7 @@ function SetPasswordForm() {
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}
           placeholder="Confirm password"
-          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+          className="w-full rounded-xl border border-[#E7E9EE] bg-white px-4 py-3 text-base text-[#16181D] placeholder-[#6B7077] transition-colors focus:border-[#2E5470] focus:outline-none focus:ring-2 focus:ring-[#2E5470]/30"
         />
       </div>
 
@@ -126,7 +126,7 @@ function SetPasswordForm() {
       <button
         type="submit"
         disabled={phase === "saving"}
-        className="w-full rounded-xl bg-[#C8A96E] py-3 text-sm font-medium text-white transition-colors hover:bg-[#B8954A] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="w-full rounded-xl bg-[#2E5470] py-3 text-sm font-medium text-white transition-colors hover:bg-[#24435A] focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {phase === "saving" ? "Saving…" : "Set password"}
       </button>

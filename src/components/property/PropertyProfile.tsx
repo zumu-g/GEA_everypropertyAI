@@ -168,19 +168,19 @@ export function EditableStat({
             if (e.key === 'Escape') onCancel();
           }}
           autoFocus
-          className="w-16 rounded-lg border border-[#C8A96E] bg-white px-2 py-1 text-base font-medium text-[#16181D] tabular-nums outline-none focus:ring-2 focus:ring-[#C8A96E]/30"
+          className="w-16 rounded-lg border border-[#2E5470] bg-white px-2 py-1 text-base font-medium text-[#16181D] tabular-nums outline-none focus:ring-2 focus:ring-[#2E5470]/30"
           style={{ fontFamily: 'var(--font-mono)' }}
         />
         <button
           onClick={() => onSave(field, editValue)}
           disabled={editSaving}
-          className="rounded-lg bg-[#C8A96E] px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-[#B8954A] disabled:opacity-50"
+          className="rounded-lg bg-[#2E5470] px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-[#24435A] disabled:opacity-50"
         >
           {editSaving ? '…' : 'Save'}
         </button>
         <button
           onClick={onCancel}
-          className="rounded-lg border border-[#E7E9EE] px-2 py-1 text-xs text-[#4A4E57] transition-colors hover:border-[#C8A96E] hover:text-[#C8A96E]"
+          className="rounded-lg border border-[#E7E9EE] px-2 py-1 text-xs text-[#4A4E57] transition-colors hover:border-[#2E5470] hover:text-[#2E5470]"
         >
           ✕
         </button>
@@ -200,7 +200,7 @@ export function EditableStat({
       <button
         onClick={() => onEdit(field, value)}
         title={`Edit ${label}`}
-        className="-m-1.5 ml-0 flex items-center justify-center rounded-lg p-2 text-[#6B7077] opacity-60 transition-opacity hover:text-[#C8A96E] hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C8A96E]/30"
+        className="-m-1.5 ml-0 flex items-center justify-center rounded-lg p-2 text-[#6B7077] opacity-60 transition-opacity hover:text-[#2E5470] hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]/30"
         aria-label={`Edit ${label}`}
       >
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-4 w-4">
@@ -457,8 +457,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         <div className="mb-10 flex flex-col items-center justify-center py-12">
           <div className="relative mb-6">
             <div className="h-16 w-16 rounded-full border-4 border-gray-200" />
-            <div className="absolute inset-0 h-16 w-16 animate-spin rounded-full border-4 border-transparent border-t-[#C8A96E]" />
-            <Building2 className="absolute inset-0 m-auto h-6 w-6 text-[#C8A96E]" />
+            <div className="absolute inset-0 h-16 w-16 animate-spin rounded-full border-4 border-transparent border-t-[#2E5470]" />
+            <Building2 className="absolute inset-0 m-auto h-6 w-6 text-[#2E5470]" />
           </div>
           <h3 className="text-lg font-semibold text-[#16181D]">
             Searching property data
@@ -508,7 +508,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             </Link>
             <button
               onClick={fetchProperty}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#C8A96E] px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#B8954A] active:scale-[0.97]"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#2E5470] px-4 py-2.5 text-sm font-medium text-white transition-colors duration-150 hover:bg-[#24435A] active:scale-[0.97]"
             >
               <RefreshCw className="h-4 w-4" />
               Retry
@@ -594,7 +594,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     <div className="mx-auto max-w-5xl space-y-8 px-6 py-10 lg:py-14">
       <Link
         href="/"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-[#6B7077] transition-colors duration-150 hover:text-[#C8A96E]"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-[#6B7077] transition-colors duration-150 hover:text-[#2E5470]"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Search
@@ -619,7 +619,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="h-full w-full bg-gradient-to-br from-[#C8A96E] to-[#16181D]" />
+              <div className="h-full w-full bg-gradient-to-br from-[#2E5470] to-[#16181D]" />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
@@ -632,9 +632,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   status === 'for-sale' || status === 'active'
                     ? { label: 'For Sale', cls: 'bg-[#2F8F6B]/80' }
                     : status === 'for-rent'
-                    ? { label: 'For Rent', cls: 'bg-[#335C7D]/80' }
+                    ? { label: 'For Rent', cls: 'bg-[#2E5470]/80' }
                     : status === 'under-offer'
-                    ? { label: 'Under Offer', cls: 'bg-[#B8954A]/80' }
+                    ? { label: 'Under Offer', cls: 'bg-[#8A6425]/80' }
                     : status === 'sold'
                     ? { label: 'Sold', cls: 'bg-gray-500/80' }
                     : status === 'off-market'
@@ -681,8 +681,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onClick={() => setSelectedPhotoIndex(idx)}
                   className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-150 ${
                     idx === 0
-                      ? "border-[#C8A96E]"
-                      : "border-transparent hover:border-[#EFE3CC]"
+                      ? "border-[#2E5470]"
+                      : "border-transparent hover:border-[#E4EBF1]"
                   }`}
                   aria-label={`View photo ${idx + 1}`}
                 >
@@ -771,16 +771,6 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           </div>
         </section>
 
-        {/* ─── About This Property ─── */}
-        {typeof d.description === 'string' && (d.description as string).length > 20 && (
-          <section>
-            <SectionTitle icon={FileText} title="About This Property" />
-            <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
-              <p className="max-w-[68ch] text-sm leading-relaxed text-[#33363D]">{d.description as string}</p>
-            </div>
-          </section>
-        )}
-
         {/* ─── Estimated Price Range ─── */}
         {(enrichedEstimate || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
           <section>
@@ -791,7 +781,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   <>
                     <div className="mb-6 flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
-                        <TrendingUp className="h-4 w-4 text-[#C8A96E]" />
+                        <TrendingUp className="h-4 w-4 text-[#2E5470]" />
                       </div>
                       <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">
                         {enrichedEstimate.priceSource === 'comparables' ? 'Estimated Value (Comparables)' :
@@ -805,7 +795,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                       </h2>
                       <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
                         enrichedEstimate.confidenceLevel === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' :
-                        enrichedEstimate.confidenceLevel === 'medium' ? 'bg-[#F5EEDD] text-[#B8954A]' :
+                        enrichedEstimate.confidenceLevel === 'medium' ? 'bg-[#F5EEDD] text-[#8A6425]' :
                         'bg-[#F7E7E5] text-[#C5544A]'
                       }`}>
                         {enrichedEstimate.confidenceLevel} confidence
@@ -819,8 +809,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                             <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceLow)}</p>
                           </div>
                           <div className="text-center flex-1">
-                            <p className="text-xs font-medium text-[#C8A96E] uppercase tracking-wide">Estimated</p>
-                            <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceMid)}</p>
+                            <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
+                            <p className="text-4xl font-bold text-[#2E5470] tabular-nums sm:text-5xl" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceMid)}</p>
                           </div>
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
@@ -828,8 +818,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                           </div>
                         </div>
                         <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
-                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-[#C8A96E] to-gray-300" />
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#C8A96E] shadow-md" />
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#E7E9EE] via-[#2E5470] to-[#E7E9EE]" />
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#2E5470] shadow-md" />
                         </div>
                         {enrichedEstimate.growthAdjustment && (
                           <p className="mt-3 text-xs text-[#6B7077] text-center">
@@ -841,6 +831,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         )}
                         <p className="mt-3 text-xs text-[#8A8F97] text-center leading-relaxed">
                           {enrichedEstimate.methodology}
+                        </p>
+                        <p className="mt-1.5 text-center text-[0.7rem] text-[#8A8F97] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>
+                          Estimate generated {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </p>
                       </div>
                     </div>
@@ -862,10 +855,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                               <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceLow)}</p>
                             </div>
                             <div className="text-center flex-1">
-                              <p className="text-xs font-medium text-[#C8A96E] uppercase tracking-wide">
+                              <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">
                                 {priceSource === 'listing-guide' ? 'Guide' : priceSource === 'listing-price' ? 'Listed' : 'Estimated'}
                               </p>
-                              <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
+                              <p className="text-3xl font-bold text-[#2E5470] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
                             </div>
                             <div className="text-center flex-1">
                               <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
@@ -873,8 +866,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                             </div>
                           </div>
                           <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
-                            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-gray-300 via-[#C8A96E] to-gray-300" />
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#C8A96E] shadow-md" />
+                            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#E7E9EE] via-[#2E5470] to-[#E7E9EE]" />
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#2E5470] shadow-md" />
                           </div>
                           <p className="mt-3 text-sm text-[#8A8F97] text-center">
                             {priceSource === 'listing-guide' ? 'Based on listing price guide' :
@@ -888,7 +881,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                           <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide mb-1">
                             {priceSource === 'listing-price' ? 'Listing Price' : 'Guide Price'}
                           </p>
-                          <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(currentPrice)}</p>
+                          <p className="text-3xl font-bold text-[#2E5470] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(currentPrice)}</p>
                           {priceLabel && <p className="mt-2 text-sm text-[#6B7077]">{priceLabel}</p>}
                         </div>
                       ) : priceLabel ? (
@@ -911,7 +904,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     <div>
                       <div className="mb-6 flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
-                          <TrendingUp className="h-4 w-4 text-[#C8A96E]" />
+                          <TrendingUp className="h-4 w-4 text-[#2E5470]" />
                         </div>
                         <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">
                           {rentalEstimate.priceSource === 'rent-comparables'
@@ -920,7 +913,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         </h2>
                         <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
                           rentalEstimate.confidenceLevel === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' :
-                          rentalEstimate.confidenceLevel === 'medium' ? 'bg-[#F5EEDD] text-[#B8954A]' :
+                          rentalEstimate.confidenceLevel === 'medium' ? 'bg-[#F5EEDD] text-[#8A6425]' :
                           'bg-[#F7E7E5] text-[#C5544A]'
                         }`}>
                           {rentalEstimate.confidenceLevel} confidence
@@ -933,8 +926,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                             <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceLow}/pw</p>
                           </div>
                           <div className="text-center flex-1">
-                            <p className="text-xs font-medium text-[#C8A96E] uppercase tracking-wide">Estimated</p>
-                            <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceMid}/pw</p>
+                            <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
+                            <p className="text-3xl font-bold text-[#2E5470] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceMid}/pw</p>
                           </div>
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
@@ -979,13 +972,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   <div>
                     <div className="mb-6 flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
-                        <TrendingUp className="h-4 w-4 text-[#C8A96E]" />
+                        <TrendingUp className="h-4 w-4 text-[#2E5470]" />
                       </div>
                       <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">
                         Estimated Rental Income
                       </h2>
                       <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        confidence === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' : 'bg-[#F5EEDD] text-[#B8954A]'
+                        confidence === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' : 'bg-[#F5EEDD] text-[#8A6425]'
                       }`}>
                         {confidence} confidence
                       </span>
@@ -997,8 +990,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                           <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${lowRent}/pw</p>
                         </div>
                         <div className="text-center flex-1">
-                          <p className="text-xs font-medium text-[#C8A96E] uppercase tracking-wide">Estimated</p>
-                          <p className="text-3xl font-bold text-[#C8A96E] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${midRent}/pw</p>
+                          <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
+                          <p className="text-3xl font-bold text-[#2E5470] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${midRent}/pw</p>
                         </div>
                         <div className="text-center flex-1">
                           <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
@@ -1012,6 +1005,16 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   </div>
                 );
               })()}
+            </div>
+          </section>
+        )}
+
+        {/* ─── About This Property ─── */}
+        {typeof d.description === 'string' && (d.description as string).length > 20 && (
+          <section>
+            <SectionTitle icon={FileText} title="About This Property" />
+            <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+              <p className="max-w-[68ch] text-sm leading-relaxed text-[#33363D]">{d.description as string}</p>
             </div>
           </section>
         )}
@@ -1042,7 +1045,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                       <span className="text-sm font-semibold text-[#16181D]">{f.value}</span>
                       <span className={`h-2 w-2 rounded-full ${
                         f.impact === 'positive' ? 'bg-[#2F8F6B]' :
-                        f.impact === 'negative' ? 'bg-[#C5544A]' : 'bg-[#B8954A]'
+                        f.impact === 'negative' ? 'bg-[#C5544A]' : 'bg-[#8A6425]'
                       }`} />
                     </div>
                   </div>
@@ -1263,7 +1266,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               {features.map((f, i) => (
                 <span
                   key={i}
-                  className="rounded-full bg-[#FBFBFC] px-3 py-1.5 text-sm font-medium text-[#B8954A]"
+                  className="rounded-full border border-[#E7E9EE] bg-white px-3 py-1.5 text-sm font-medium text-[#4A4E57]"
                 >
                   {f}
                 </span>
@@ -1275,7 +1278,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {/* ─── Enrichment: Loading ─── */}
         {enrichLoading && (
           <div className="flex items-center gap-3 rounded-xl border border-[#E7E9EE] bg-white p-6 ">
-            <Loader2 className="h-5 w-5 animate-spin text-[#C8A96E]" />
+            <Loader2 className="h-5 w-5 animate-spin text-[#2E5470]" />
             <span className="text-sm text-[#6B7077]">
               Loading planning, schools, transport &amp; suburb data...
             </span>
@@ -1290,7 +1293,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               {enrichment.planning.zone && (
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-md bg-[#C8A96E] px-2.5 py-1 text-xs font-bold text-white">
+                    <span className="rounded-md bg-[#2E5470] px-2.5 py-1 text-xs font-bold text-white">
                       {enrichment.planning.zone.code}
                     </span>
                     <span className="text-lg font-semibold text-[#16181D]">
@@ -1335,13 +1338,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         key={risk.label}
                         className={`rounded-xl border p-4 text-center ${
                           risk.found
-                            ? 'border-[#EADFC2] bg-[#F5EEDD]'
+                            ? 'border-[#EDE4CF] bg-[#F5EEDD]'
                             : 'border-[#CDE6D9] bg-[#E4F1EB]'
                         }`}
                       >
-                        <risk.icon className={`mx-auto mb-2 h-5 w-5 ${risk.found ? 'text-[#B8954A]' : 'text-[#2F8F6B]'}`} />
+                        <risk.icon className={`mx-auto mb-2 h-5 w-5 ${risk.found ? 'text-[#8A6425]' : 'text-[#2F8F6B]'}`} />
                         <p className="text-xs font-semibold text-[#16181D]">{risk.label}</p>
-                        <p className={`mt-1 text-xs ${risk.found ? 'text-[#B8954A]' : 'text-[#2F8F6B]'}`}>
+                        <p className={`mt-1 text-xs ${risk.found ? 'text-[#8A6425]' : 'text-[#2F8F6B]'}`}>
                           {risk.found ? (risk.overlay ? `${risk.overlay.code}` : 'Overlay present') : 'Not found'}
                         </p>
                       </div>
@@ -1358,7 +1361,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     {enrichment.planning.overlays.map((o, i) => (
                       <span
                         key={i}
-                        className="rounded-full bg-[#F5EEDD] border border-[#EADFC2] px-3 py-1 text-xs font-medium text-[#B8954A]"
+                        className="rounded-full bg-[#F5EEDD] border border-[#EDE4CF] px-3 py-1 text-xs font-medium text-[#8A6425]"
                       >
                         {o.code} — {o.name}
                       </span>
@@ -1459,7 +1462,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   className="flex items-center gap-3 rounded-xl border border-[#E7E9EE] bg-white p-4 "
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E4EBF1]">
-                    <Train className="h-5 w-5 text-[#335C7D]" />
+                    <Train className="h-5 w-5 text-[#2E5470]" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-[#16181D]">
@@ -1680,7 +1683,7 @@ function SectionTitle({
     <div className="mb-6 flex items-center gap-2">
       {Icon && (
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
-          <Icon className="h-4 w-4 text-[#C8A96E]" />
+          <Icon className="h-4 w-4 text-[#2E5470]" />
         </div>
       )}
       <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">{title}</h2>
@@ -1710,21 +1713,21 @@ function DemandGauge({
     level === 'very-high' || level === 'high'
       ? 'text-[#2F8F6B]'
       : level === 'moderate'
-      ? 'text-[#B8954A]'
+      ? 'text-[#8A6425]'
       : 'text-[#C5544A]';
 
   const bgColor =
     level === 'very-high' || level === 'high'
       ? 'bg-[#E4F1EB] border-[#CDE6D9]'
       : level === 'moderate'
-      ? 'bg-[#F5EEDD] border-[#EADFC2]'
+      ? 'bg-[#F5EEDD] border-[#EDE4CF]'
       : 'bg-[#F7E7E5] border-[#EFCBC7]';
 
   const strokeColor =
     level === 'very-high' || level === 'high'
       ? '#2F8F6B'
       : level === 'moderate'
-      ? '#B8954A'
+      ? '#8A6425'
       : '#C5544A';
 
   // SVG arc for the gauge

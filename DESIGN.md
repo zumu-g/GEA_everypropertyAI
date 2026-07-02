@@ -11,15 +11,16 @@ Stripe / Linear. Crisp sans typography, generous cool whitespace, hairline rules
 monospaced figures, and a single sparing accent.
 
 **Override of GEA baseline:** GEA mandates a warm paper/gold palette and serif-forward
-editorial typography. PropertyIQ deliberately runs **cooler & whiter** with **sans-dominant**
-type. GEA gold is retained strictly as a sparing brand accent so the product still reads as
-a GEA property.
+editorial typography. everypropertyAI deliberately runs **cooler & whiter** with
+**sans-dominant** type. GEA gold is **retired from the product UI** — the product accent is
+a deep steel-slate, with a muted eucalypt as the secondary accent. GEA branding survives in
+the wordmark/nav context only.
 
 ## Tokens (machine-readable)
 
 ```yaml
 colors:
-  primary: "#C8A96E"
+  primary: "#2E5470"
   bg: "#FBFBFC"
   surface: "#FFFFFF"
   subtle: "#F4F5F7"
@@ -29,13 +30,16 @@ colors:
   ink-mid: "#4A4E57"
   muted: "#6B7077"
   faint: "#8A8F97"
-  gold: "#C8A96E"
-  gold-dark: "#B8954A"
-  gold-soft: "#EFE3CC"
-  data: "#335C7D"
+  accent: "#2E5470"
+  accent-dark: "#24435A"
+  accent-soft: "#E4EBF1"
+  accent-2: "#5C7466"
+  accent-2-ink: "#435548"
+  accent-2-soft: "#E9EFEA"
+  data: "#2E5470"
   up: "#2F8F6B"
   down: "#C5544A"
-  warn: "#B8954A"
+  warn: "#8A6425"
 spacing:
   section: "5rem"
   section-lg: "6rem"
@@ -45,14 +49,15 @@ rounded:
   card: "0.75rem"
   control: "0.5rem"
 typography:
-  sans: "DM Sans, system-ui, sans-serif"
-  display: "Playfair Display, Georgia, serif"
+  sans: "Instrument Sans, system-ui, sans-serif"
   mono: "IBM Plex Mono, monospace"
 contrast:
   - { fg: "#16181D", bg: "#FBFBFC" }   # body text on page
   - { fg: "#6B7077", bg: "#FBFBFC" }   # muted text on page
-  - { fg: "#8A6830", bg: "#EFE3CC" }   # gold badge text on gold-soft
-  - { fg: "#FFFFFF", bg: "#C8A96E" }   # button label on gold
+  - { fg: "#24435A", bg: "#E4EBF1" }   # accent badge text on accent-soft
+  - { fg: "#FFFFFF", bg: "#2E5470" }   # button label on accent
+  - { fg: "#435548", bg: "#E9EFEA" }   # accent-2 badge text on accent-2-soft
+  - { fg: "#8A6425", bg: "#F5EEDD" }   # warn text on warn-soft
 ```
 
 ## Colour tokens
@@ -68,23 +73,26 @@ contrast:
 | `ink-mid` | `#4A4E57` | mid text |
 | `muted` | `#6B7077` | secondary text, labels, captions |
 | `faint` | `#8A8F97` | tertiary text, fine print |
-| `gold` | `#C8A96E` | **brand accent — sparing only** |
-| `gold-dark` | `#B8954A` | gold hover / press |
-| `gold-soft` | `#EFE3CC` | gold selected / hover fill |
-| `data` | `#335C7D` | charts, links, data emphasis (muted steel-blue, **not** SaaS `#3b82f6`) |
-| `up` / `up-soft` | `#2F8F6B` / `#E4F1EB` | positive / growth |
+| `accent` | `#2E5470` | **primary accent — actions, links, focus, data emphasis (deep steel-slate, not SaaS `#3b82f6`)** |
+| `accent-dark` | `#24435A` | accent hover / press |
+| `accent-soft` | `#E4EBF1` | accent selected / hover fill |
+| `accent-2` | `#5C7466` | secondary accent — muted eucalypt; highlights, chart series 2 |
+| `accent-2-ink` / `accent-2-soft` | `#435548` / `#E9EFEA` | accent-2 text / fill |
+| `data` | `#2E5470` | alias of accent for charts/links |
+| `up` / `up-soft` | `#2F8F6B` / `#E4F1EB` | positive / growth — **always paired with +/− or ▲/▼, never decorative** |
 | `down` / `down-soft` | `#C5544A` / `#F7E7E5` | negative / risk |
-| `warn` / `warn-soft` | `#B8954A` / `#F5EEDD` | caution (stays in gold family) |
+| `warn` / `warn-soft` | `#8A6425` / `#F5EEDD` | caution — muted amber |
 
-Anti-patterns: no SaaS blue `#3b82f6`; no rainbow `*-50` status fills (use the status tokens
-above); one accent colour per chart; gold never used for large fills.
+Anti-patterns: no SaaS blue `#3b82f6`; no violet/indigo AI-slop accents; no gold in product
+UI (retired); no rainbow `*-50` status fills; one accent colour per chart (accent-2 for a
+second series only); semantic colours never used decoratively.
 
 ## Typography
 
-- **Headings → sans** (`DM Sans` / Söhne), `tracking-tight`, weight 500–600, `clamp()` sizes.
+- **Headings → sans** (`Instrument Sans`), `tracking-tight`, weight 500–600, `clamp()` sizes.
   Utility classes: `.text-display`, `.text-h1`, `.text-h2`, `.text-h3`, `.text-eyebrow`.
-- **Serif (`Playfair Display`) is reserved** for at most one hero display moment — opt in via
-  `.font-editorial`. Never on section headings, labels, nav, or buttons.
+- **No serif.** Playfair/editorial serif is retired — the register is financial-data, not
+  lifestyle.
 - **Mono (`IBM Plex Mono`)** for every price/area/date/stat, always with `tabular-nums`.
 
 ## Spacing & components
@@ -98,5 +106,13 @@ above); one accent colour per chart; gold never used for large fills.
 ## Interaction (inherited from GEA)
 
 Hover = opacity/brightness shift (150–200ms). Press = `scale-0.97`. Focus = visible
-`ring-2 ring-[#C8A96E] ring-offset-2` — never removed. Disabled = opacity 0.4. Respect
+`ring-2 ring-[#2E5470] ring-offset-2` — never removed. Disabled = opacity 0.4. Respect
 `prefers-reduced-motion`. Touch targets ≥ 44–48px.
+
+## Trust furniture
+
+Provenance is the brand: every displayed figure carries source + date where the data
+exists ("Based on 14 comparable sales · CoreLogic · updated 12 Jun 2026"). Estimated vs
+recorded values are marked consistently (estimates carry a confidence badge + range;
+recorded values carry their source). Tables right-align numbers; charts always show axis
+context.

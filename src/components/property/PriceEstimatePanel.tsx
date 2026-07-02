@@ -35,7 +35,7 @@ const CONFIDENCE_STYLES: Record<
 > = {
   high:     { badge: "bg-[#E4F1EB] text-[#2F8F6B]", label: "High confidence" },
   "very-high": { badge: "bg-[#E4F1EB] text-[#2F8F6B]", label: "Very high confidence" },
-  medium:   { badge: "bg-[#F5EEDD] text-[#B8954A]",   label: "Medium confidence" },
+  medium:   { badge: "bg-[#F5EEDD] text-[#8A6425]",   label: "Medium confidence" },
   low:      { badge: "bg-[#F7E7E5] text-[#C5544A]",        label: "Low confidence" },
   "very-low":  { badge: "bg-[#F7E7E5] text-[#C5544A]",    label: "Very low confidence" },
 };
@@ -53,7 +53,7 @@ export function PriceEstimatePanel({ valuation }: PriceEstimatePanelProps) {
   if (!valuation) {
     return (
       <div className="flex items-center gap-4 rounded-xl border border-[#E7E9EE] bg-white px-6 py-5 ">
-        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[#C8A96E]" aria-hidden="true" />
+        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[#2E5470]" aria-hidden="true" />
         <p className="text-sm text-[#6B7077]">
           Valuation pending enrichment data
         </p>
@@ -94,11 +94,11 @@ export function PriceEstimatePanel({ valuation }: PriceEstimatePanelProps) {
 
         {/* Mid — prominent */}
         <div className="flex-1 text-center">
-          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-[#C8A96E]">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-[#2E5470]">
             Estimate
           </p>
           <p
-            className="text-4xl font-bold tabular-nums text-[#C8A96E]"
+            className="text-4xl font-bold tabular-nums text-[#2E5470]"
             style={{ fontFamily: "var(--font-mono)" }}
           >
             {fmtPrice(mid)}
@@ -122,14 +122,14 @@ export function PriceEstimatePanel({ valuation }: PriceEstimatePanelProps) {
       {/* Compact range label below */}
       <p className="mt-3 text-center text-sm font-medium text-[#6B7077]">
         {abbreviatePrice(low)}{" "}
-        <span className="text-[#C8A96E]">–</span>{" "}
+        <span className="text-[#2E5470]">–</span>{" "}
         {abbreviatePrice(high)}
       </p>
 
       {/* Gauge bar */}
       <div className="relative mt-5 h-2.5 overflow-hidden rounded-full bg-[#F4F5F7]">
-        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#E7E9EE] via-[#C8A96E] to-[#E7E9EE]" />
-        <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#C8A96E] bg-white shadow-md" />
+        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#E7E9EE] via-[#2E5470] to-[#E7E9EE]" />
+        <div className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#2E5470] bg-white shadow-md" />
       </div>
 
       {/* Valuation date */}

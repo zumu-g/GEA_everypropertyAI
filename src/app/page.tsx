@@ -44,7 +44,7 @@ export default function HomePage() {
           <a href="/" className="flex items-center gap-3 group" aria-label="everypropertyAI home">
             {/* GEA monogram */}
             <span
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#C8A96E] transition-opacity duration-150 group-hover:opacity-80"
+              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
               aria-hidden="true"
             >
               GEA
@@ -53,7 +53,7 @@ export default function HomePage() {
               <span
                 className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]"
               >
-                everyproperty<span className="text-[#C8A96E]">AI</span>
+                everyproperty<span className="text-[#2E5470]">AI</span>
               </span>
               <span className="block text-[0.65rem] text-[#6B7077] tracking-wide uppercase">
                 by Grants Estate Agents
@@ -64,7 +64,7 @@ export default function HomePage() {
           <nav aria-label="Site navigation" className="flex items-center gap-3">
             <a
               href="mailto:info@grantse.com.au"
-              className="rounded-lg border border-[#E7E9EE] bg-white px-4 py-2 text-sm font-medium text-[#16181D] transition-all duration-150 hover:border-[#C8A96E] hover:text-[#C8A96E] focus:outline-none focus:ring-2 focus:ring-[#C8A96E] focus:ring-offset-2"
+              className="rounded-lg border border-[#E7E9EE] bg-white px-4 py-2 text-sm font-medium text-[#16181D] transition-all duration-150 hover:border-[#2E5470] hover:text-[#2E5470] focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2"
             >
               Contact
             </a>
@@ -89,7 +89,7 @@ export default function HomePage() {
           {/* Eyebrow */}
           <motion.div {...fadeUp(0)}>
             <span className="inline-flex items-center gap-2 rounded-full border border-[#E7E9EE] bg-[#F4F5F7] px-4 py-1.5 text-xs font-medium text-[#6B7077] tracking-wide uppercase">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#C8A96E]" aria-hidden="true" />
+              <span className="h-1.5 w-1.5 rounded-full bg-[#2E5470]" aria-hidden="true" />
               Casey &amp; Cardinia — Victoria
             </span>
           </motion.div>
@@ -100,9 +100,7 @@ export default function HomePage() {
             className="text-display mt-7 max-w-3xl text-[#16181D]"
           >
             Every property.{" "}
-            <span className="font-editorial italic text-[#C8A96E]">
-              Every detail.
-            </span>
+            <span className="text-[#2E5470]">Every detail.</span>
           </motion.h1>
 
           {/* Sub-heading */}
@@ -146,7 +144,7 @@ export default function HomePage() {
         <footer className="mt-auto border-t border-[#E7E9EE] py-6 text-center">
           <p className="text-xs text-[#6B7077]">
             &copy; {new Date().getFullYear()} Grants Estate Agents &middot;{" "}
-            <span className="text-[#C8A96E]">everypropertyAI</span> &mdash; Property data for Casey &amp; Cardinia
+            <span className="text-[#2E5470]">everypropertyAI</span> &mdash; Property data for Casey &amp; Cardinia
           </p>
         </footer>
       </main>
