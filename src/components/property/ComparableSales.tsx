@@ -165,10 +165,7 @@ export function ComparableSales({
             <SimilarityBadge score={comp.similarityScore} />
           </div>
 
-          <p
-            className="mt-2 text-xl font-bold text-[#2E5470] tabular-nums"
-            style={{ fontFamily: "var(--font-mono)" }}
-          >
+          <p className="mt-2 text-xl font-semibold text-[#2E5470] tabular-nums">
             {fmtPrice(comp.price)}
           </p>
 

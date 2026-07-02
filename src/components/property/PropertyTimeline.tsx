@@ -298,7 +298,6 @@ function SaleEventCard({
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span
               className="text-xl font-bold text-[#16181D] tabular-nums"
-              style={{ fontFamily: "var(--font-mono)" }}
             >
               {event.price != null && !event.isConfidential
                 ? fmtCurrency(event.price)
@@ -377,7 +376,6 @@ function RentalEventCard({ event }: { event: RentalHistoryEntry }) {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span
           className="text-xl font-bold text-[#16181D] tabular-nums"
-          style={{ fontFamily: "var(--font-mono)" }}
         >
           {event.weeklyRent != null ? `${fmtCurrency(event.weeklyRent)}/wk` : "Rent N/A"}
         </span>

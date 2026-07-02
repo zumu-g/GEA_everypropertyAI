@@ -85,8 +85,7 @@ export function PriceEstimatePanel({ valuation }: PriceEstimatePanelProps) {
             Low
           </p>
           <p
-            className="text-xl font-bold tabular-nums text-[#6B7077]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="text-xl font-semibold tabular-nums text-[#6B7077]"
           >
             {abbreviatePrice(low)}
           </p>
@@ -98,8 +97,7 @@ export function PriceEstimatePanel({ valuation }: PriceEstimatePanelProps) {
             Estimate
           </p>
           <p
-            className="text-4xl font-bold tabular-nums text-[#2E5470]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="text-4xl font-semibold tabular-nums text-[#2E5470]"
           >
             {fmtPrice(mid)}
           </p>
@@ -111,8 +109,7 @@ export function PriceEstimatePanel({ valuation }: PriceEstimatePanelProps) {
             High
           </p>
           <p
-            className="text-xl font-bold tabular-nums text-[#6B7077]"
-            style={{ fontFamily: "var(--font-mono)" }}
+            className="text-xl font-semibold tabular-nums text-[#6B7077]"
           >
             {abbreviatePrice(high)}
           </p>

@@ -99,7 +99,6 @@ function PropertyCard({ property, onRemove }: PropertyCardProps) {
             </p>
             <p
               className="mt-0.5 text-base font-medium text-[#2E5470]"
-              style={{ fontFamily: "var(--font-mono)" }}
             >
               {property.estimatedValue !== null
                 ? auCurrency.format(property.estimatedValue)

@@ -357,7 +357,6 @@ function StatItem({ value, label }: { value: string; label: string }) {
     <div className="flex items-center gap-2">
       <span
         className="text-lg font-semibold text-[#16181D] tabular-nums"
-        style={{ fontFamily: "var(--font-mono)" }}
       >
         {value}
       </span>

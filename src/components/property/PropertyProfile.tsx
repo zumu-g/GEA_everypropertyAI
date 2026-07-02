@@ -169,7 +169,6 @@ export function EditableStat({
           }}
           autoFocus
           className="w-16 rounded-lg border border-[#2E5470] bg-white px-2 py-1 text-base font-medium text-[#16181D] tabular-nums outline-none focus:ring-2 focus:ring-[#2E5470]/30"
-          style={{ fontFamily: 'var(--font-mono)' }}
         />
         <button
           onClick={() => onSave(field, editValue)}
@@ -192,7 +191,6 @@ export function EditableStat({
     <div className="group flex items-center gap-1.5">
       <span
         className="text-sm font-medium text-[#16181D] tabular-nums"
-        style={{ fontFamily: 'var(--font-mono)' }}
       >
         {value}{suffix}
       </span>
@@ -806,15 +804,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         <div className="flex items-end gap-4 mb-4">
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                            <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceLow)}</p>
+                            <p className="text-xl font-semibold text-[#6B7077] tabular-nums">{fmtCurrency(enrichedEstimate.priceLow)}</p>
                           </div>
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
-                            <p className="text-4xl font-bold text-[#2E5470] tabular-nums sm:text-5xl" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceMid)}</p>
+                            <p className="text-4xl font-semibold text-[#2E5470] tabular-nums sm:text-5xl">{fmtCurrency(enrichedEstimate.priceMid)}</p>
                           </div>
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                            <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(enrichedEstimate.priceHigh)}</p>
+                            <p className="text-xl font-semibold text-[#6B7077] tabular-nums">{fmtCurrency(enrichedEstimate.priceHigh)}</p>
                           </div>
                         </div>
                         <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
@@ -832,7 +830,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         <p className="mt-3 text-xs text-[#8A8F97] text-center leading-relaxed">
                           {enrichedEstimate.methodology}
                         </p>
-                        <p className="mt-1.5 text-center text-[0.7rem] text-[#8A8F97] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>
+                        <p className="mt-1.5 text-center text-[0.7rem] text-[#8A8F97] tabular-nums">
                           Estimate generated {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </p>
                       </div>
@@ -852,17 +850,17 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                           <div className="flex items-end gap-4 mb-4">
                             <div className="text-center flex-1">
                               <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                              <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceLow)}</p>
+                              <p className="text-xl font-semibold text-[#6B7077] tabular-nums">{fmtCurrency(priceLow)}</p>
                             </div>
                             <div className="text-center flex-1">
                               <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">
                                 {priceSource === 'listing-guide' ? 'Guide' : priceSource === 'listing-price' ? 'Listed' : 'Estimated'}
                               </p>
-                              <p className="text-3xl font-bold text-[#2E5470] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
+                              <p className="text-3xl font-semibold text-[#2E5470] tabular-nums">{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
                             </div>
                             <div className="text-center flex-1">
                               <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                              <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(priceHigh)}</p>
+                              <p className="text-xl font-semibold text-[#6B7077] tabular-nums">{fmtCurrency(priceHigh)}</p>
                             </div>
                           </div>
                           <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
@@ -881,7 +879,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                           <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide mb-1">
                             {priceSource === 'listing-price' ? 'Listing Price' : 'Guide Price'}
                           </p>
-                          <p className="text-3xl font-bold text-[#2E5470] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>{fmtCurrency(currentPrice)}</p>
+                          <p className="text-3xl font-semibold text-[#2E5470] tabular-nums">{fmtCurrency(currentPrice)}</p>
                           {priceLabel && <p className="mt-2 text-sm text-[#6B7077]">{priceLabel}</p>}
                         </div>
                       ) : priceLabel ? (
@@ -923,15 +921,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         <div className="flex items-end gap-4 mb-4">
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                            <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceLow}/pw</p>
+                            <p className="text-xl font-semibold text-[#6B7077] tabular-nums">${rentalEstimate.priceLow}/pw</p>
                           </div>
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
-                            <p className="text-3xl font-bold text-[#2E5470] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceMid}/pw</p>
+                            <p className="text-3xl font-semibold text-[#2E5470] tabular-nums">${rentalEstimate.priceMid}/pw</p>
                           </div>
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                            <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${rentalEstimate.priceHigh}/pw</p>
+                            <p className="text-xl font-semibold text-[#6B7077] tabular-nums">${rentalEstimate.priceHigh}/pw</p>
                           </div>
                         </div>
                         <p className="mt-3 text-xs text-[#8A8F97] text-center leading-relaxed">
@@ -987,15 +985,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                       <div className="flex items-end gap-4 mb-4">
                         <div className="text-center flex-1">
                           <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                          <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${lowRent}/pw</p>
+                          <p className="text-xl font-semibold text-[#6B7077] tabular-nums">${lowRent}/pw</p>
                         </div>
                         <div className="text-center flex-1">
                           <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
-                          <p className="text-3xl font-bold text-[#2E5470] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${midRent}/pw</p>
+                          <p className="text-3xl font-semibold text-[#2E5470] tabular-nums">${midRent}/pw</p>
                         </div>
                         <div className="text-center flex-1">
                           <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                          <p className="text-xl font-bold text-[#6B7077] tabular-nums" style={{ fontFamily: "var(--font-mono)" }}>${highRent}/pw</p>
+                          <p className="text-xl font-semibold text-[#6B7077] tabular-nums">${highRent}/pw</p>
                         </div>
                       </div>
                       <p className="text-xs text-[#8A8F97] text-center leading-relaxed">

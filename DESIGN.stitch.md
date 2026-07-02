@@ -42,8 +42,8 @@ uniformly cool and faintly tinted toward the steel hue.
 - **Display / Headings:** **Instrument Sans** — track-tight (≈ -0.02em), weight 500–600, hierarchy
   through weight + size contrast (≥1.25 ratio), never through massive size. `clamp()` scaling.
 - **Body:** **Instrument Sans** — relaxed leading, secondary copy in Muted Steel, max **65–68ch** line length.
-- **Mono (mandatory for all data):** **IBM Plex Mono** with `tabular-nums` — every price, area,
-  date, percentage, and stat. Precision is the brand; at this density numbers are always mono.
+- **Data figures:** Instrument Sans with `tabular-nums` — every price, area, date, percentage,
+  and stat. Precision comes from tabular alignment, not a mono face (mono retired 2026-07).
 - **Banned:** Inter, system-default sans, ALL serif fonts (this is a data/software UI — serif is
   banned outright here — there is no hero-serif moment).
 

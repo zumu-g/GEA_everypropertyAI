@@ -16,10 +16,9 @@ export function Stat({ label, value, icon, size = "md", className }: StatProps) 
       <span className="text-eyebrow text-[#8A8F97]">{label}</span>
       <span
         className={cn(
-          "flex items-center gap-1.5 font-mono tabular-nums text-[#16181D]",
+          "flex items-center gap-1.5 tabular-nums text-[#16181D]",
           size === "md" ? "text-lg font-medium" : "text-sm",
         )}
-        style={{ fontFamily: "var(--font-mono)" }}
       >
         {icon && <span className="text-[#8A8F97]">{icon}</span>}
         {value}

@@ -50,7 +50,6 @@ rounded:
   control: "0.5rem"
 typography:
   sans: "Instrument Sans, system-ui, sans-serif"
-  mono: "IBM Plex Mono, monospace"
 contrast:
   - { fg: "#16181D", bg: "#FBFBFC" }   # body text on page
   - { fg: "#6B7077", bg: "#FBFBFC" }   # muted text on page
@@ -93,7 +92,8 @@ second series only); semantic colours never used decoratively.
   Utility classes: `.text-display`, `.text-h1`, `.text-h2`, `.text-h3`, `.text-eyebrow`.
 - **No serif.** Playfair/editorial serif is retired — the register is financial-data, not
   lifestyle.
-- **Mono (`IBM Plex Mono`)** for every price/area/date/stat, always with `tabular-nums`.
+- **Numerals are sans** (Instrument Sans) — every price/area/date/stat carries `tabular-nums`
+  so figures align; no mono font (retired 2026-07 for visual consistency).
 
 ## Spacing & components
 

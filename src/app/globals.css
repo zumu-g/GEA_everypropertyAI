@@ -41,7 +41,6 @@
 
   /* ── Typography ── */
   --font-sans: 'Instrument Sans', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
 }
 
 /*
@@ -49,7 +48,7 @@
   Sections:   py-20 / py-24      Content width:  max-w-5xl (mx-auto px-6)
   Cards:      p-6 / p-8          Radii:          rounded-xl (cards) · rounded-lg (controls)
   Borders:    hairline only (border-[#E7E9EE]) — prefer rules over shadows
-  Numbers:    always font-mono + tabular-nums
+  Numbers:    always tabular-nums (sans — Instrument Sans)
 
   ── Type scale (apply via utility classes below) ──
   .text-display  hero only (sans, tight, clamp 2.5–4rem)

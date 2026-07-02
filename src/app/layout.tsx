@@ -1,17 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Instrument_Sans } from "next/font/google";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
-  display: "swap",
-});
-
-const ibmPlexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-mono",
   display: "swap",
 });
 
@@ -38,7 +31,7 @@ export default function RootLayout({
   return (
     <html
       lang="en-AU"
-      className={`${instrumentSans.variable} ${ibmPlexMono.variable}`}
+      className={instrumentSans.variable}
     >
       <body className="min-h-screen bg-[#FBFBFC] font-sans text-[#16181D] antialiased">
         {children}

@@ -230,7 +230,6 @@ export function SaleHistory({ sales }: SaleHistoryProps) {
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span
                       className="text-xl font-bold text-[#16181D] tabular-nums"
-                      style={{ fontFamily: "var(--font-mono)" }}
                     >
                       {sale.price != null && !sale.isConfidential
                         ? fmtCurrency(sale.price)

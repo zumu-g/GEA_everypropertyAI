@@ -198,7 +198,6 @@ function AttributeStrip({ attrs }: { attrs: AttrItem[] }) {
           <Icon className="h-4 w-4 text-[#6B7077]" />
           <span
             className="text-sm font-medium text-[#16181D] tabular-nums"
-            style={{ fontFamily: "var(--font-mono)" }}
           >
             {value}
           </span>
@@ -253,7 +252,6 @@ function StatCard({
 
       <p
         className="mt-3 text-2xl font-semibold text-[#16181D] tabular-nums"
-        style={{ fontFamily: "var(--font-mono)" }}
       >
         {value}
       </p>

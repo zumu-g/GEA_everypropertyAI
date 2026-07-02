@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 // factories so importing the layout module (for its `viewport` export) doesn't blow up.
 vi.mock('next/font/google', () => {
   const font = () => ({ variable: '', className: '', style: {} });
-  return { Instrument_Sans: font, IBM_Plex_Mono: font };
+  return { Instrument_Sans: font };
 });
 
 const { viewport } = await import('../layout');
