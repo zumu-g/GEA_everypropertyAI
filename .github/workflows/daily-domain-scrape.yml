@@ -50,8 +50,8 @@ jobs:
       # The script reads HEALTHCHECK_UUID and no-ops the ping if it is empty.
       HEALTHCHECK_UUID: ${{ matrix.category == 'sold' && secrets.HEALTHCHECK_DOMAIN_SOLD_UUID || secrets.HEALTHCHECK_DOMAIN_ONMARKET_UUID }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       # The runner uses only Node built-ins (fetch/fs/url/path) — no npm install needed.
