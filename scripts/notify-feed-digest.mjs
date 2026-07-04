@@ -23,7 +23,7 @@
 // Env (read from .env.local when present, like the other scripts):
 //   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  (required)
 //   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID                  (required unless --dry-run)
-//   EXPECTED_CATEGORIES   default "sold,on-market" — feeds that MUST be fresh or it's ⚠️
+//   EXPECTED_CATEGORIES   default "sold,on-market,rent" — feeds that MUST be fresh or it's ⚠️
 //   FRESH_HOURS           default 26 — a feed older than this counts as stale
 // ============================================================
 import { readFileSync } from 'node:fs';
@@ -50,7 +50,7 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT = process.env.TELEGRAM_CHAT_ID;
-const EXPECTED = (process.env.EXPECTED_CATEGORIES || 'sold,on-market').split(',').map(s => s.trim()).filter(Boolean);
+const EXPECTED = (process.env.EXPECTED_CATEGORIES || 'sold,on-market,rent').split(',').map(s => s.trim()).filter(Boolean);
 const FRESH_HOURS = Number(process.env.FRESH_HOURS) || 26;
 
 const MEL = 'Australia/Melbourne';

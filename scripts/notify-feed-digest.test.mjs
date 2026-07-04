@@ -10,7 +10,7 @@ describe('buildDigest', () => {
       { category: 'sold', status: 'ok', items: 463, source_used: 'domain-web-unlocker', last_run_at: hoursAgo(2.2) },
       { category: 'on-market', status: 'ok', items: 611, source_used: 'homely', last_run_at: hoursAgo(1.9) },
     ];
-    const { ok, text } = buildDigest(rows, { now: NOW });
+    const { ok, text } = buildDigest(rows, { now: NOW, expected: ['sold', 'on-market'] });
     expect(ok).toBe(true);
     expect(text).toContain('✅ everypropertyAI feeds OK');
     expect(text).toContain('sold');
@@ -58,5 +58,35 @@ describe('buildDigest', () => {
     const { ok, text } = buildDigest(rows, { now: NOW, expected: ['sold', 'on-market'] });
     expect(ok).toBe(true); // rent is not expected → does not gate overall status
     expect(text).toContain('rent');
+  });
+
+  it('defaults to expecting rent alongside sold/on-market', () => {
+    const rows = [
+      { category: 'sold', status: 'ok', items: 463, source_used: 'domain-web-unlocker', last_run_at: hoursAgo(2) },
+      { category: 'on-market', status: 'ok', items: 611, source_used: 'homely', last_run_at: hoursAgo(2) },
+      { category: 'rent', status: 'ok', items: 88, source_used: 'domain-web-unlocker', last_run_at: hoursAgo(2) },
+    ];
+    const { ok, text } = buildDigest(rows, { now: NOW }); // no `expected` override → uses the default
+    expect(ok).toBe(true);
+    expect(text).toContain('rent');
+    expect(text).not.toContain('⚠️');
+  });
+
+  it('flags rent as missing when it never ran, using the default expected set', () => {
+    const rows = [
+      { category: 'sold', status: 'ok', items: 463, source_used: 'domain-web-unlocker', last_run_at: hoursAgo(2) },
+      { category: 'on-market', status: 'ok', items: 611, source_used: 'homely', last_run_at: hoursAgo(2) },
+    ];
+    const { ok, text } = buildDigest(rows, { now: NOW }); // no rent row at all
+    expect(ok).toBe(false);
+    expect(text).toContain('rent: no run recorded');
+  });
+
+  it('an explicit expected list still overrides the default (env override still wins)', () => {
+    const rows = [
+      { category: 'sold', status: 'ok', items: 463, source_used: 'domain-web-unlocker', last_run_at: hoursAgo(2) },
+    ];
+    const { ok } = buildDigest(rows, { now: NOW, expected: ['sold'] }); // no rent expected here
+    expect(ok).toBe(true);
   });
 });
