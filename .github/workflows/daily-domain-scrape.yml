@@ -18,7 +18,8 @@ name: Daily Domain scrape (Casey/Cardinia)
 #   HEALTHCHECK_DOMAIN_SOLD_UUID, HEALTHCHECK_DOMAIN_ONMARKET_UUID
 #     (Healthchecks.io dead-man's-switch check IDs — one per category; the script
 #      no-ops the ping when its HEALTHCHECK_UUID is unset, so this is safe to add
-#      before the checks exist.)
+#      before the checks exist. Rent has no check yet — its secret is left unset
+#      below on purpose; the morning feed digest covers alerting until one is added.)
 
 on:
   schedule:
@@ -32,13 +33,24 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    # Split sold + on-market into two parallel jobs so each category gets its own
-    # timeout budget and they run concurrently. Previously both ran serially in one
+    # Split each category into its own parallel job so it gets its own timeout budget
+    # and they run concurrently. Previously sold + on-market ran serially in one
     # 30-min job and on-market was cancelled at the timeout (run #5, 2026-06-10).
     strategy:
-      fail-fast: false   # one category failing must not cancel the other
+      fail-fast: false   # one category failing must not cancel the others
       matrix:
-        category: [sold, on-market]
+        category: [sold, on-market, rent]
+        # Explicit per-category healthcheck secret name, so each leg's alerting is
+        # visible here rather than buried in a ternary. Rent has no check yet — its
+        # secret is intentionally blank; the script no-ops the ping when unset, and
+        # the morning feed digest (EXPECTED_CATEGORIES) covers alerting until one exists.
+        include:
+          - category: sold
+            healthcheck_secret: HEALTHCHECK_DOMAIN_SOLD_UUID
+          - category: on-market
+            healthcheck_secret: HEALTHCHECK_DOMAIN_ONMARKET_UUID
+          - category: rent
+            healthcheck_secret: ''
     name: scrape (${{ matrix.category }})
     timeout-minutes: 45
     env:
@@ -46,9 +58,8 @@ jobs:
       BRIGHTDATA_WEB_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_ZONE }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      # Per-category Healthchecks.io check so a sold-vs-on-market block alerts independently.
       # The script reads HEALTHCHECK_UUID and no-ops the ping if it is empty.
-      HEALTHCHECK_UUID: ${{ matrix.category == 'sold' && secrets.HEALTHCHECK_DOMAIN_SOLD_UUID || secrets.HEALTHCHECK_DOMAIN_ONMARKET_UUID }}
+      HEALTHCHECK_UUID: ${{ matrix.healthcheck_secret != '' && secrets[matrix.healthcheck_secret] || '' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
