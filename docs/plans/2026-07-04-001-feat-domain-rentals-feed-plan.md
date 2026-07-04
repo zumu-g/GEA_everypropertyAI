@@ -1,7 +1,7 @@
 ---
 title: "feat: Add rentals to the daily Domain Web Unlocker feed"
 type: feat
-status: active
+status: completed
 created_at: 2026-07-04
 ---
 
