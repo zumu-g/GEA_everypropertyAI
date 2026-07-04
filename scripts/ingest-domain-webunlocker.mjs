@@ -66,7 +66,7 @@ const SERVICE_AREA = new Set([
   'officer','officer south','pakenham','pakenham south','pakenham upper','ripplebrook','rythdale','tonimbuk',
   'toomuc valley','tynong','tynong north','vervale','yannathan',
 ]);
-const inArea = (s) => !!s && SERVICE_AREA.has(String(s).trim().toLowerCase());
+export const inArea = (s) => !!s && SERVICE_AREA.has(String(s).trim().toLowerCase());
 
 const MONTHS = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12' };
 const titleCase = (s) => s ? String(s).trim().split(/\s+/).map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():'').join(' ') : null;
@@ -78,7 +78,7 @@ const num = (v) => typeof v==='number'&&Number.isFinite(v)?v:null;
 const smallint = (v) => Number.isInteger(v)?v:null;
 
 // One Domain listingModel → a DB row for the category, or null to skip.
-function mapListing(category, node) {
+export function mapListing(category, node) {
   const m = node?.listingModel; if (!m) return null;
   const a = m.address || {};
   if (!a.street || !a.suburb) return null;
@@ -108,6 +108,18 @@ function mapListing(category, node) {
     const sale_price = parsePrice(m.price);
     if (sale_price == null) return null; // sold needs a price (skips "Price Withheld")
     return { ...common, sale_price, sale_date: parseSaleDate(tag) };
+  }
+  if (category === 'rent') {
+    const nowIso = new Date().toISOString();
+    const amts = dollarAmts(m.price);
+    return {
+      ...common,
+      display_price: m.price ?? null,
+      weekly_rent: amts.length ? Math.min(...amts) : null, // mirrors parseWeeklyRent's "lowest amount" convention
+      status: tag,
+      last_seen_at: nowIso,
+      active: true,
+    };
   }
   const { low, high } = priceRange(m.price);
   return { ...common, display_price: m.price ?? null, price_low: low, price_high: high, status: tag };
@@ -185,14 +197,41 @@ async function upsert(table, conflict, rows) {
 }
 
 const CATEGORY = { sold:{ path:'sold-listings', table:'property_sales', conflict:'raw_address,sale_date,sale_price,source' },
-                   'on-market':{ path:'sale', table:'property_listings', conflict:'raw_address,source' } };
+                   'on-market':{ path:'sale', table:'property_listings', conflict:'raw_address,source' },
+                   rent:{ path:'rent', table:'property_rentals', conflict:'raw_address,source' } };
+
+// Expire rent rows not re-seen on a full, unblocked run — otherwise a leased/withdrawn
+// property stays `active=true` forever (upsert only ever refreshes rows still on Domain).
+// Scoped to the full SERVICE_AREA (not just the 29 slugs) since a search page can surface
+// in-area listings from a neighbouring suburb — same scope `inArea` uses to accept rows in.
+// Only called for category='rent' on a full-suburb, non-blocked run (see main()).
+// Pure gate so the "never expire on a partial/blocked run" rule is testable without
+// mocking the full scrape pipeline.
+export function shouldExpireRentals({ category, blocked, slugsEnv, maxSuburbsArg }) {
+  return category === 'rent' && !blocked && !slugsEnv && !maxSuburbsArg;
+}
+
+export async function expireUnseenRentals(sinceIso) {
+  const suburbs = [...SERVICE_AREA].map(titleCase);
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/property_rentals?suburb=in.(${suburbs.map(s => `"${s}"`).join(',')})&state=eq.VIC&active=eq.true&last_seen_at=lt.${encodeURIComponent(sinceIso)}`,
+    {
+      method: 'PATCH',
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ active: false }),
+    },
+  );
+  if (!res.ok) { console.error(`  expire rentals error ${res.status}: ${(await res.text()).slice(0, 200)}`); return 0; }
+  const rows = await res.json().catch(() => []);
+  return Array.isArray(rows) ? rows.length : 0;
+}
 
 async function main() {
   const startedAt = Date.now();
   const category = process.argv[2] || 'sold';
   const maxSuburbs = Number(process.argv[3]) || SUBURB_SLUGS.length;
   const cfg = CATEGORY[category];
-  if (!cfg) { console.error('category must be sold|on-market'); process.exit(1); }
+  if (!cfg) { console.error('category must be sold|on-market|rent'); process.exit(1); }
   if (!SUPABASE_URL || !SERVICE_KEY) { console.error('Missing Supabase env'); process.exit(1); }
   if (!WU_TOKEN) { console.error('Missing BRIGHTDATA_WEB_UNLOCKER_TOKEN'); process.exit(1); }
   // SLUGS=a,b,c env overrides the suburb set (e.g. to re-run failed suburbs).
@@ -236,6 +275,13 @@ async function main() {
   console.log(`\nTotal in-area rows: ${rows.length}. Upserting into ${cfg.table}...`);
   const upserted = await upsert(cfg.table, cfg.conflict, rows);
   console.log(`Upserted ${upserted} rows. Blocked: ${blockedSlugs.length}, empty: ${emptySlugs.length}, fetched-ok: ${fetchedOk}.`);
+
+  // Only expire rent rows after a full, unblocked run — a restricted SLUGS re-run or a
+  // blocked scrape must never wrongly expire rentals it didn't (fully) re-scrape.
+  if (shouldExpireRentals({ category, blocked, slugsEnv: process.env.SLUGS, maxSuburbsArg: process.argv[3] })) {
+    const expired = await expireUnseenRentals(new Date(startedAt).toISOString());
+    console.log(`Expired ${expired} rentals not re-seen this run.`);
+  }
 
   const status = deriveStatus({ blocked, items: upserted });
   const newestRowAt = await fetchNewestRowAt(sbCfg, cfg.table);
