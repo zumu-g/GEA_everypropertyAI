@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { looksLikeData, extractListings, mapListing, inArea, shouldExpireRentals } from './ingest-domain-webunlocker.mjs';
+import { looksLikeData, extractListings, mapListing, inArea, shouldExpireRentals, SUBURB_SLUGS } from './ingest-domain-webunlocker.mjs';
 
 const rentNode = (overrides = {}) => ({
   listingModel: {
@@ -97,20 +97,29 @@ describe('mapListing (rent)', () => {
 });
 
 describe('shouldExpireRentals (expiry gate)', () => {
-  it('expires only on a full, unblocked rent run', () => {
-    expect(shouldExpireRentals({ category: 'rent', blocked: false, slugsEnv: undefined, maxSuburbsArg: undefined })).toBe(true);
+  const FULL = SUBURB_SLUGS.length;
+
+  it('expires only on a full run where every suburb fetched OK', () => {
+    expect(shouldExpireRentals({ category: 'rent', blockedCount: 0, slugsEnv: undefined, suburbCount: FULL })).toBe(true);
   });
-  it('never expires a blocked run', () => {
-    expect(shouldExpireRentals({ category: 'rent', blocked: true, slugsEnv: undefined, maxSuburbsArg: undefined })).toBe(false);
+  it('never expires a fully blocked run', () => {
+    expect(shouldExpireRentals({ category: 'rent', blockedCount: FULL, slugsEnv: undefined, suburbCount: FULL })).toBe(false);
   });
-  it('never expires a SLUGS-restricted run', () => {
-    expect(shouldExpireRentals({ category: 'rent', blocked: false, slugsEnv: 'berwick-vic-3806', maxSuburbsArg: undefined })).toBe(false);
+  it('never expires a PARTIALLY blocked run — even one failed suburb vetoes expiry', () => {
+    expect(shouldExpireRentals({ category: 'rent', blockedCount: 1, slugsEnv: undefined, suburbCount: FULL })).toBe(false);
+  });
+  it('never expires a SLUGS-restricted run, even if every named suburb succeeded', () => {
+    expect(shouldExpireRentals({ category: 'rent', blockedCount: 0, slugsEnv: 'berwick-vic-3806', suburbCount: 1 })).toBe(false);
   });
   it('never expires a maxSuburbs-restricted run (e.g. the single-suburb smoke run)', () => {
-    expect(shouldExpireRentals({ category: 'rent', blocked: false, slugsEnv: undefined, maxSuburbsArg: '1' })).toBe(false);
+    expect(shouldExpireRentals({ category: 'rent', blockedCount: 0, slugsEnv: undefined, suburbCount: 1 })).toBe(false);
+  });
+  it('DOES expire when maxSuburbs is passed explicitly but covers the full suburb count', () => {
+    // e.g. an operator re-running `node ingest-domain-webunlocker.mjs rent 29` explicitly
+    expect(shouldExpireRentals({ category: 'rent', blockedCount: 0, slugsEnv: undefined, suburbCount: FULL })).toBe(true);
   });
   it('never expires for sold or on-market', () => {
-    expect(shouldExpireRentals({ category: 'sold', blocked: false, slugsEnv: undefined, maxSuburbsArg: undefined })).toBe(false);
-    expect(shouldExpireRentals({ category: 'on-market', blocked: false, slugsEnv: undefined, maxSuburbsArg: undefined })).toBe(false);
+    expect(shouldExpireRentals({ category: 'sold', blockedCount: 0, slugsEnv: undefined, suburbCount: FULL })).toBe(false);
+    expect(shouldExpireRentals({ category: 'on-market', blockedCount: 0, slugsEnv: undefined, suburbCount: FULL })).toBe(false);
   });
 });

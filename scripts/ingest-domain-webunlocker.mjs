@@ -43,7 +43,7 @@ const WU_TOKEN = process.env.BRIGHTDATA_WEB_UNLOCKER_TOKEN;
 const WU_ZONE = process.env.BRIGHTDATA_WEB_UNLOCKER_ZONE || 'web_unlocker1';
 const SOURCE = 'domain-web-unlocker';
 
-const SUBURB_SLUGS = [
+export const SUBURB_SLUGS = [
   'berwick-vic-3806', 'narre-warren-vic-3805', 'narre-warren-south-vic-3805', 'cranbourne-vic-3977',
   'cranbourne-east-vic-3977', 'cranbourne-north-vic-3977', 'cranbourne-west-vic-3977', 'hallam-vic-3803',
   'hampton-park-vic-3976', 'doveton-vic-3177', 'endeavour-hills-vic-3802', 'lynbrook-vic-3975',
@@ -204,17 +204,21 @@ const CATEGORY = { sold:{ path:'sold-listings', table:'property_sales', conflict
 // property stays `active=true` forever (upsert only ever refreshes rows still on Domain).
 // Scoped to the full SERVICE_AREA (not just the 29 slugs) since a search page can surface
 // in-area listings from a neighbouring suburb — same scope `inArea` uses to accept rows in.
-// Only called for category='rent' on a full-suburb, non-blocked run (see main()).
-// Pure gate so the "never expire on a partial/blocked run" rule is testable without
-// mocking the full scrape pipeline.
-export function shouldExpireRentals({ category, blocked, slugsEnv, maxSuburbsArg }) {
-  return category === 'rent' && !blocked && !slugsEnv && !maxSuburbsArg;
+// Only called for category='rent' on a full-suburb run where every suburb fetched OK (see
+// main()). Gating on "zero suburbs failed" rather than "not every suburb failed" matters: a
+// run where most suburbs succeed but a few transiently fail must NOT sweep expiry across the
+// suburbs it didn't actually re-scrape, or a still-live rental in a failed suburb gets wrongly
+// deactivated. Pure gate so this rule is testable without mocking the full scrape pipeline.
+export function shouldExpireRentals({ category, blockedCount, slugsEnv, suburbCount }) {
+  return category === 'rent' && blockedCount === 0 && !slugsEnv && suburbCount === SUBURB_SLUGS.length;
 }
 
+// Scoped to source='domain-web-unlocker' — other feeds (e.g. ingest-view-apify.mjs) also
+// upsert into property_rentals, and this run must only ever expire rows it owns.
 export async function expireUnseenRentals(sinceIso) {
   const suburbs = [...SERVICE_AREA].map(titleCase);
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/property_rentals?suburb=in.(${suburbs.map(s => `"${s}"`).join(',')})&state=eq.VIC&active=eq.true&last_seen_at=lt.${encodeURIComponent(sinceIso)}`,
+    `${SUPABASE_URL}/rest/v1/property_rentals?suburb=in.(${suburbs.map(s => `"${s}"`).join(',')})&state=eq.VIC&source=eq.${SOURCE}&active=eq.true&last_seen_at=lt.${encodeURIComponent(sinceIso)}`,
     {
       method: 'PATCH',
       headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
@@ -276,9 +280,10 @@ async function main() {
   const upserted = await upsert(cfg.table, cfg.conflict, rows);
   console.log(`Upserted ${upserted} rows. Blocked: ${blockedSlugs.length}, empty: ${emptySlugs.length}, fetched-ok: ${fetchedOk}.`);
 
-  // Only expire rent rows after a full, unblocked run — a restricted SLUGS re-run or a
-  // blocked scrape must never wrongly expire rentals it didn't (fully) re-scrape.
-  if (shouldExpireRentals({ category, blocked, slugsEnv: process.env.SLUGS, maxSuburbsArg: process.argv[3] })) {
+  // Only expire rent rows after a full run where every suburb fetched OK — a restricted
+  // SLUGS re-run, a maxSuburbs-limited run, or ANY per-suburb fetch failure (not just a
+  // fully blocked run) must never wrongly expire rentals in suburbs it didn't re-scrape.
+  if (shouldExpireRentals({ category, blockedCount: blockedSlugs.length, slugsEnv: process.env.SLUGS, suburbCount: slugs.length })) {
     const expired = await expireUnseenRentals(new Date(startedAt).toISOString());
     console.log(`Expired ${expired} rentals not re-seen this run.`);
   }
