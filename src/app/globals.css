@@ -139,6 +139,34 @@ html {
   animation: shimmer 1.6s ease-in-out infinite;
 }
 
+/* Shared mount fade-up — replaces per-component framer-motion entrance animations
+ * (U4) so those routes don't ship the framer-motion runtime for a simple fade.
+ * Respects prefers-reduced-motion natively (no JS media-query check needed).
+ * Stagger via inline `style={{ animationDelay: '80ms' }}` on individual elements. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  opacity: 0;
+  animation: fade-up 300ms ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ── Print: street report ─────────────────────────────────────────────── */
 @media print {
   @page {

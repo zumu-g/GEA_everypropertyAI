@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { ArrowLeft, MapPin, Home, ChevronUp, ChevronDown, ChevronsUpDown, Printer, Download, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
 
@@ -400,11 +399,7 @@ function StreetResults() {
           </Link>
         </div>
       ) : (
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25 }}
-        >
+        <div className="animate-fade-up">
           <p className="mb-4 text-sm text-[#6B7077]">
             {rows.length} propert{rows.length === 1 ? "y" : "ies"} found
             <span className="print:hidden"> · click a column to sort</span>
@@ -523,7 +518,7 @@ function StreetResults() {
               </tbody>
             </table>
           </div>
-        </motion.div>
+        </div>
       )}
     </div>
   );

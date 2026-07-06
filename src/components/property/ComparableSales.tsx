@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { Database } from "lucide-react";
 import { parseAddress } from "@/lib/utils/address";
 
@@ -165,52 +164,47 @@ export function ComparableSales({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {comparables.map((comp, i) => (
-        <motion.div
+        <Link
           key={i}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: i * 0.07 }}
+          href={comparableHref(comp)}
+          className="animate-fade-up block rounded-xl border border-[#E7E9EE] bg-white p-5 transition-shadow duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
+          style={{ animationDelay: `${i * 70}ms` }}
         >
-          <Link
-            href={comparableHref(comp)}
-            className="block rounded-xl border border-[#E7E9EE] bg-white p-5 transition-shadow duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <p className="text-sm font-semibold leading-snug text-[#16181D]">
-                {comp.address}
-              </p>
-              <SimilarityBadge score={comp.similarityScore} />
-            </div>
-
-            <p className="mt-2 text-xl font-semibold text-[#2E5470] tabular-nums">
-              {fmtPrice(comp.price)}
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-semibold leading-snug text-[#16181D]">
+              {comp.address}
             </p>
+            <SimilarityBadge score={comp.similarityScore} />
+          </div>
 
-            {comp.saleDate && (
-              <p className="mt-0.5 text-xs text-[#6B7077]">{fmtDate(comp.saleDate)}</p>
-            )}
+          <p className="mt-2 text-xl font-semibold text-[#2E5470] tabular-nums">
+            {fmtPrice(comp.price)}
+          </p>
 
-            {(comp.beds != null || comp.baths != null || comp.landAreaSqm != null) && (
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {comp.beds != null && (
-                  <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
-                    {comp.beds} bed
-                  </span>
-                )}
-                {comp.baths != null && (
-                  <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
-                    {comp.baths} bath
-                  </span>
-                )}
-                {comp.landAreaSqm != null && (
-                  <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
-                    {comp.landAreaSqm.toLocaleString("en-AU")}m²
-                  </span>
-                )}
-              </div>
-            )}
-          </Link>
-        </motion.div>
+          {comp.saleDate && (
+            <p className="mt-0.5 text-xs text-[#6B7077]">{fmtDate(comp.saleDate)}</p>
+          )}
+
+          {(comp.beds != null || comp.baths != null || comp.landAreaSqm != null) && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {comp.beds != null && (
+                <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
+                  {comp.beds} bed
+                </span>
+              )}
+              {comp.baths != null && (
+                <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
+                  {comp.baths} bath
+                </span>
+              )}
+              {comp.landAreaSqm != null && (
+                <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
+                  {comp.landAreaSqm.toLocaleString("en-AU")}m²
+                </span>
+              )}
+            </div>
+          )}
+        </Link>
       ))}
     </div>
   );

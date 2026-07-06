@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { MapPin, Camera, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { PropertyProfile } from "@/types/property";
 
@@ -286,7 +286,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
       {/* ── Lightbox ── */}
       <AnimatePresence>
         {lightboxIndex !== null && photoUrls.length > 0 && (
-          <motion.div
+          <m.div
             key="lightbox"
             initial={prefersReducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -324,7 +324,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
             )}
 
             {/* Image */}
-            <motion.img
+            <m.img
               key={lightboxIndex}
               initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -345,7 +345,7 @@ export function PropertyHero({ property }: PropertyHeroProps) {
                 <ChevronRight className="h-6 w-6" />
               </button>
             )}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </>

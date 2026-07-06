@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   RefreshCw,
@@ -501,7 +501,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   if (error) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
-        <motion.div
+        <m.div
           initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3 }}
@@ -530,7 +530,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               Retry
             </button>
           </div>
-        </motion.div>
+        </m.div>
       </div>
     );
   }
@@ -616,7 +616,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         Back to Search
       </Link>
 
-      <motion.div
+      <m.div
         initial={prefersReducedMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4 }}
@@ -1568,12 +1568,12 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             Not financial advice — always verify with a licensed professional.
           </p>
         </footer>
-      </motion.div>
+      </m.div>
 
       {/* ─── Photo Lightbox ─── */}
       <AnimatePresence>
         {selectedPhotoIndex !== null && photos.length > 0 && (
-          <motion.div
+          <m.div
             key="lightbox"
             initial={prefersReducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1634,7 +1634,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             )}
 
             {/* Main image */}
-            <motion.img
+            <m.img
               key={selectedPhotoIndex}
               initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1661,7 +1661,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 <ChevronRight className="h-6 w-6" />
               </button>
             )}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

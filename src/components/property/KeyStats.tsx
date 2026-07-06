@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import type { PropertyProfile } from "@/types/property";
 
@@ -216,8 +214,8 @@ interface StatCardProps {
   value: string;
   sub?: string;
   confidence?: number;
-  delay?: number;
-  reduced?: boolean;
+  /** Stagger delay in milliseconds — applied as an animation-delay. */
+  delayMs?: number;
 }
 
 function StatCard({
@@ -226,15 +224,12 @@ function StatCard({
   value,
   sub,
   confidence,
-  delay = 0,
-  reduced = false,
+  delayMs = 0,
 }: StatCardProps) {
   return (
-    <motion.div
-      initial={reduced ? false : { opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay }}
-      className="group rounded-xl border border-[#E7E9EE] bg-[#FBFBFC] p-5 transition-shadow duration-200 hover:shadow-md"
+    <div
+      className="animate-fade-up group rounded-xl border border-[#E7E9EE] bg-[#FBFBFC] p-5 transition-shadow duration-200 hover:shadow-md"
+      style={{ animationDelay: `${delayMs}ms` }}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2.5">
@@ -259,7 +254,7 @@ function StatCard({
       {sub && (
         <p className="mt-1 text-xs text-[#6B7077]">{sub}</p>
       )}
-    </motion.div>
+    </div>
   );
 }
 
@@ -270,15 +265,6 @@ interface KeyStatsProps {
 }
 
 export function KeyStats({ property }: KeyStatsProps) {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-
   const { physicalAttributes, valuation, currentListing, saleHistory } =
     property;
   const lastSale = saleHistory[0];
@@ -398,8 +384,7 @@ export function KeyStats({ property }: KeyStatsProps) {
               value={card.value}
               sub={card.sub}
               confidence={card.confidence}
-              delay={i * 0.06}
-              reduced={reduced}
+              delayMs={i * 60}
             />
           ))}
         </div>

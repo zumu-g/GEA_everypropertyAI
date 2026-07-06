@@ -82,4 +82,21 @@ describe('ComparableSales links', () => {
     await waitFor(() => screen.getByText('Not enough local data yet'));
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
+
+  it('preserves the per-card stagger via an increasing animation-delay (U4: CSS replaces framer-motion)', async () => {
+    mockFetch([comp({ address: '1 A St' }), comp({ address: '2 B St' }), comp({ address: '3 C St' })]);
+    render(<ComparableSales suburb="Berwick" />);
+
+    const links = await waitFor(() => {
+      const found = screen.getAllByRole('link');
+      expect(found).toHaveLength(3);
+      return found;
+    });
+
+    const delays = links.map((el) => parseInt((el as HTMLElement).style.animationDelay, 10));
+    expect(delays).toEqual([0, 70, 140]);
+    for (const el of links) {
+      expect(el.className).toContain('animate-fade-up');
+    }
+  });
 });

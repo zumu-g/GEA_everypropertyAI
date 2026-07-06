@@ -1,21 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { Database, MapPin, BarChart3 } from "lucide-react";
 import { AddressSearch } from "@/components/search/AddressSearch";
 import { AuthButton } from "@/components/auth/AuthButton";
 
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-  return reduced;
+/** Mount fade-up via the shared `.animate-fade-up` CSS utility (globals.css) —
+ * respects prefers-reduced-motion natively, no JS media-query check needed. */
+function fadeUpProps(delayMs = 0, extraClassName = "") {
+  return {
+    className: `animate-fade-up ${extraClassName}`.trim(),
+    style: { animationDelay: `${delayMs}ms` },
+  };
 }
 
 const trustSignals = [
@@ -25,17 +20,6 @@ const trustSignals = [
 ];
 
 export default function HomePage() {
-  const reduced = usePrefersReducedMotion();
-
-  function fadeUp(delay = 0) {
-    if (reduced) return {};
-    return {
-      initial: { opacity: 0, y: 20 },
-      animate: { opacity: 1, y: 0 },
-      transition: { duration: 0.4, ease: "easeOut", delay },
-    };
-  }
-
   return (
     <div className="flex min-h-screen flex-col bg-[#FBFBFC]">
       {/* ── Navigation ── */}
@@ -87,43 +71,33 @@ export default function HomePage() {
 
         <section className="relative mx-auto flex w-full max-w-5xl flex-col items-center px-6 pb-20 pt-24 text-center sm:pt-32">
           {/* Eyebrow */}
-          <motion.div {...fadeUp(0)}>
+          <div {...fadeUpProps(0)}>
             <span className="inline-flex items-center gap-2 rounded-full border border-[#E7E9EE] bg-[#F4F5F7] px-4 py-1.5 text-xs font-medium text-[#6B7077] tracking-wide uppercase">
               <span className="h-1.5 w-1.5 rounded-full bg-[#2E5470]" aria-hidden="true" />
               Casey &amp; Cardinia — Victoria
             </span>
-          </motion.div>
+          </div>
 
           {/* Headline */}
-          <motion.h1
-            {...fadeUp(0.08)}
-            className="text-display mt-7 max-w-3xl text-[#16181D]"
-          >
+          <h1 {...fadeUpProps(80, "text-display mt-7 max-w-3xl text-[#16181D]")}>
             Every property.{" "}
             <span className="text-[#2E5470]">Every detail.</span>
-          </motion.h1>
+          </h1>
 
           {/* Sub-heading */}
-          <motion.p
-            {...fadeUp(0.16)}
-            className="mt-6 max-w-lg text-[1.0625rem] leading-relaxed text-[#6B7077]"
-          >
+          <p {...fadeUpProps(160, "mt-6 max-w-lg text-[1.0625rem] leading-relaxed text-[#6B7077]")}>
             Search any property across Casey &amp; Cardinia.{" "}
             Instant data from 8+ portals, no sign-up required.
-          </motion.p>
+          </p>
 
           {/* Search */}
-          <motion.div
-            {...fadeUp(0.24)}
-            className="mt-10 w-full max-w-2xl"
-          >
+          <div {...fadeUpProps(240, "mt-10 w-full max-w-2xl")}>
             <AddressSearch size="lg" />
-          </motion.div>
+          </div>
 
           {/* Trust signals */}
-          <motion.div
-            {...fadeUp(0.36)}
-            className="mt-20 grid w-full max-w-3xl grid-cols-1 divide-y divide-[#E7E9EE] border-t border-[#E7E9EE] sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+          <div
+            {...fadeUpProps(360, "mt-20 grid w-full max-w-3xl grid-cols-1 divide-y divide-[#E7E9EE] border-t border-[#E7E9EE] sm:grid-cols-3 sm:divide-x sm:divide-y-0")}
           >
             {trustSignals.map(({ icon: Icon, label, description }) => (
               <div
@@ -137,7 +111,7 @@ export default function HomePage() {
                 </div>
               </div>
             ))}
-          </motion.div>
+          </div>
         </section>
 
         {/* ── Footer strip ── */}
