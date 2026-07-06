@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import Link from "next/link";
 import { Database } from "lucide-react";
+import { parseAddress } from "@/lib/utils/address";
 
 export interface ComparableResult {
   address: string;
@@ -46,6 +47,25 @@ function fmtDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/** Structured `/property?address=` href for a comparable, so the profile parser
+ * gets suburb/state/postcode as real fields instead of falling back to stuffing
+ * the whole string into streetName.
+ *
+ * Trusts parseAddress's own parsed suburb rather than a substring-match guess —
+ * a street name that happens to contain the suburb name (e.g. suburb "Clyde",
+ * street "Clyde Court") would make a substring check wrongly skip appending the
+ * suburb, and if comp.address itself has no trailing location suffix, parseAddress
+ * would then have no suburb token to find at all. Parse first; only append and
+ * re-parse if the result didn't already resolve to this comparable's suburb. */
+function comparableHref(comp: ComparableResult): string {
+  let structured = parseAddress(comp.address);
+  if (!comp.suburb || structured.suburb.toLowerCase() !== comp.suburb.toLowerCase()) {
+    structured = parseAddress(`${comp.address}, ${comp.suburb}`);
+  }
+  if (!structured.state) structured.state = "VIC";
+  return `/property?address=${encodeURIComponent(JSON.stringify(structured))}`;
 }
 
 function SimilarityBadge({ score }: { score: number }) {
@@ -151,12 +171,11 @@ export function ComparableSales({
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {comparables.map((comp, i) => (
-        <motion.div
+        <Link
           key={i}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: i * 0.07 }}
-          className="rounded-xl border border-[#E7E9EE] bg-white p-5 transition-shadow duration-200 hover:shadow-md"
+          href={comparableHref(comp)}
+          className="animate-fade-up block rounded-xl border border-[#E7E9EE] bg-white p-5 transition-shadow duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
+          style={{ animationDelay: `${i * 70}ms` }}
         >
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-semibold leading-snug text-[#16181D]">
@@ -192,7 +211,7 @@ export function ComparableSales({
               )}
             </div>
           )}
-        </motion.div>
+        </Link>
       ))}
     </div>
   );

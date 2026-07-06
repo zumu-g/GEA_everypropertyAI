@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { ChevronDown, ExternalLink, Clock } from "lucide-react";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import type { DataSource, ConfidenceScore } from "@/types/property";
@@ -71,7 +71,7 @@ function SourceRow({
   reduced: boolean;
 }) {
   return (
-    <motion.div
+    <m.div
       initial={reduced ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, delay }}
@@ -126,7 +126,7 @@ function SourceRow({
         />
         <ConfidenceBar score={entry.confidence.score} />
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 
@@ -212,7 +212,7 @@ export function DataSources({
       {/* Expandable source list */}
       <AnimatePresence initial={false}>
         {isOpen && (
-          <motion.div
+          <m.div
             key="sources-panel"
             initial={reduced ? false : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -237,7 +237,7 @@ export function DataSources({
               {sources.length !== 1 ? "s" : ""}. Timestamps reflect when each
               source was last crawled.
             </p>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </section>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
+import Link from "next/link";
 import { KeyRound, CheckCircle } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
@@ -57,12 +58,12 @@ function SetPasswordForm() {
         <p className="max-w-sm text-sm leading-relaxed text-[#6B7077]">
           This link is invalid or has expired. Request a new one to set your password.
         </p>
-        <a
+        <Link
           href="/forgot-password"
           className="mt-2 rounded-xl bg-[#2E5470] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#24435A]"
         >
           Request a new link
-        </a>
+        </Link>
       </div>
     );
   }

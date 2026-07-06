@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { m, AnimatePresence } from "framer-motion";
 import { Loader2, List } from "lucide-react";
 
 interface AddressSuggestion {
@@ -374,7 +374,7 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
       {/* Suggestions dropdown */}
       <AnimatePresence>
         {isOpen && suggestions.length > 0 && (
-          <motion.ul
+          <m.ul
             initial={prefersReducedMotion ? false : { opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
@@ -459,7 +459,7 @@ export function AddressSearch({ size = "lg" }: AddressSearchProps) {
                 )}
               </button>
             ))}
-          </motion.ul>
+          </m.ul>
         )}
       </AnimatePresence>
     </div>

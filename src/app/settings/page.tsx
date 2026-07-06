@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, FormEvent } from "react";
+import Link from "next/link";
 import { UserPlus, Shield, Trash2, CheckCircle, Lock } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
@@ -111,7 +112,7 @@ export default function SettingsPage() {
       {/* ── Navigation ── */}
       <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 px-safe pt-safe backdrop-blur-sm">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <a href="/" className="group flex items-center gap-3" aria-label="everypropertyAI home">
+          <Link href="/" className="group flex items-center gap-3" aria-label="everypropertyAI home">
             <span
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
               aria-hidden="true"
@@ -126,7 +127,7 @@ export default function SettingsPage() {
                 by Grants Estate Agents
               </span>
             </div>
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -283,12 +284,12 @@ function LockedState({
       <h2 className="text-lg text-[#16181D]">{title}</h2>
       <p className="max-w-sm text-sm leading-relaxed text-[#6B7077]">{body}</p>
       {cta && (
-        <a
+        <Link
           href={cta.href}
           className="mt-2 rounded-xl bg-[#2E5470] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#24435A]"
         >
           {cta.label}
-        </a>
+        </Link>
       )}
     </div>
   );

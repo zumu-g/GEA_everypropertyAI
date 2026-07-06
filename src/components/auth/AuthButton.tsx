@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
@@ -62,12 +63,12 @@ export function AuthButton() {
   if (authState === "signed-out") {
     const returnTo = encodeURIComponent(window.location.pathname + window.location.search);
     return (
-      <a
+      <Link
         href={`/sign-in?returnTo=${returnTo}`}
         className="rounded-lg border border-[#E7E9EE] bg-white px-4 py-2 text-sm font-medium text-[#16181D] transition-all hover:border-[#2E5470] hover:text-[#2E5470]"
       >
         Sign in
-      </a>
+      </Link>
     );
   }
 
@@ -84,18 +85,18 @@ export function AuthButton() {
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 w-44 max-w-[90vw] rounded-xl border border-[#E7E9EE] bg-white shadow-md z-50 py-1">
-          <a
+          <Link
             href="/my-properties"
             className="block px-4 py-2.5 text-sm text-[#16181D] hover:bg-[#FBFBFC]"
           >
             My Properties
-          </a>
-          <a
+          </Link>
+          <Link
             href="/settings"
             className="block px-4 py-2.5 text-sm text-[#16181D] hover:bg-[#FBFBFC]"
           >
             Team
-          </a>
+          </Link>
           <button
             onClick={handleSignOut}
             className="block w-full px-4 py-2.5 text-left text-sm text-[#4A4E57] hover:bg-[#FBFBFC]"

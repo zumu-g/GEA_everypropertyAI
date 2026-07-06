@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Sans } from "next/font/google";
+import { MotionProvider } from "@/components/MotionProvider";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
@@ -34,7 +35,7 @@ export default function RootLayout({
       className={instrumentSans.variable}
     >
       <body className="min-h-screen bg-[#FBFBFC] font-sans text-[#16181D] antialiased">
-        {children}
+        <MotionProvider>{children}</MotionProvider>
       </body>
     </html>
   );

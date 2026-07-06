@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { m, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   RefreshCw,
@@ -26,6 +26,7 @@ import {
   Landmark,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
@@ -209,6 +210,17 @@ export function EditableStat({
   );
 }
 
+/** Full "123 Smith St, Suburb VIC 3000" string from a StructuredAddress, used to
+ * build both /api/enrich's and /api/estimate*'s query params. */
+function addressToFullString(structured: StructuredAddress): string {
+  return (
+    structured.displayAddress ??
+    [structured.streetNumber, structured.streetName, structured.streetType]
+      .filter(Boolean)
+      .join(" ") + `, ${structured.suburb} ${structured.state} ${structured.postcode}`
+  );
+}
+
 export function PropertyProfile({ address }: PropertyProfileProps) {
   const [property, setProperty] = useState<MergedPropertyProfile | null>(null);
   const [enrichment, setEnrichment] = useState<EnrichmentData | null>(null);
@@ -232,7 +244,20 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false;
 
+  // Request-generation guard: rapid back-to-back navigation (address prop changes
+  // before the previous property's async fetches resolve) must not let a stale
+  // property's late-arriving enrich/estimate/rent response overwrite the newer
+  // property's state. Every fetchProperty call bumps this; each async setState
+  // below checks its own captured id against the current one before writing.
+  const requestIdRef = useRef(0);
+  // Latest resolved enrich marketData, read (not awaited) by fetchEstimates' local
+  // fallback so a same-property estimate failure can still use market-growth
+  // context if enrich happened to resolve first — without re-serializing the two.
+  const marketDataRef = useRef<EnrichmentData['marketData'] | null>(null);
+
   const fetchProperty = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    marketDataRef.current = null;
     setIsLoading(true);
     setError(null);
     try {
@@ -263,34 +288,33 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         );
       }
       const data = await res.json();
+      if (requestId !== requestIdRef.current) return; // superseded by a newer navigation
       setProperty(data.profile);
       setAddressSlug(data.addressSlug ?? null);
 
-      // Kick off enrichment fetch in background
-      fetchEnrichment(structured);
+      // Enrichment and estimates only need the property fetch to complete — not
+      // each other's response — so fire them together instead of chaining estimate
+      // behind enrich's round-trip. (U2: previously estimate/rent were nested inside
+      // enrich's `.then`, gated on `data?.marketData && property` where `property`
+      // read stale closure state that was always null on first load — see below.)
+      fetchEnrichment(structured, requestId);
+      fetchEstimates(structured, data.profile, requestId);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setError(
         err instanceof Error ? err.message : "An unexpected error occurred."
       );
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) setIsLoading(false);
     }
   }, [address]);
 
-  const fetchEnrichment = async (structured: StructuredAddress) => {
+  // Enrichment only: suburb/schools/transport market context. No longer carries
+  // the estimate/rent logic — see fetchEstimates, which runs concurrently with this.
+  const fetchEnrichment = async (structured: StructuredAddress, requestId: number) => {
     setEnrichLoading(true);
     try {
-      const fullAddr =
-        structured.displayAddress ??
-        [
-          structured.streetNumber,
-          structured.streetName,
-          structured.streetType,
-        ]
-          .filter(Boolean)
-          .join(" ") +
-          `, ${structured.suburb} ${structured.state} ${structured.postcode}`;
-
+      const fullAddr = addressToFullString(structured);
       const params = new URLSearchParams({
         address: fullAddr,
         suburb: structured.suburb ?? "",
@@ -300,123 +324,145 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
       const res = await fetch(`/api/enrich?${params.toString()}`);
       if (res.ok) {
-        const data = await res.json();
-        setEnrichment(data);
-
-        // Calculate enriched price estimate when market data is available
-        if (data?.marketData && property) {
-          const pd = property.data;
-          const sh =
-            (pd.saleHistory as Array<{
-              price?: number;
-              date?: string;
-              type?: string;
-              agency?: string;
-              agentName?: string;
-              daysOnMarket?: number;
-              listingPrice?: number;
-              isConfidential?: boolean;
-              description?: string;
-              settlementDate?: string;
-              source?: string;
-            }>) ?? [];
-          const rh =
-            (pd.rentalHistory as Array<{
-              date?: string;
-              weeklyRent?: number;
-              bond?: number;
-              agency?: string;
-              agentName?: string;
-              daysOnMarket?: number;
-              leaseTerm?: string;
-              description?: string;
-            }>) ?? [];
-          const fallbackInput = {
-            propertyType: pd.propertyType as string,
-            bedrooms: pd.bedrooms as number | undefined,
-            bathrooms: pd.bathrooms as number | undefined,
-            carSpaces: pd.carSpaces as number | undefined,
-            landAreaSqm: (pd.landArea ?? pd.landAreaSqm) as number | undefined,
-            priceNumeric: pd.priceNumeric as number | undefined,
-            priceFrom: pd.priceFrom as number | undefined,
-            priceTo: pd.priceTo as number | undefined,
-            saleHistory: sh,
-            rentalHistory: rh,
-            listingStatus: pd.listingStatus as string | undefined,
-            currentPrice: pd.currentPrice as number | undefined,
-            estimatedValue: pd.estimatedValue as number | undefined,
-          };
-
-          // Comparables-based estimate (server-side — needs DB access to nearby
-          // sales). Falls back to the legacy suburb-median cascade client-side
-          // only if the endpoint is unreachable.
-          const priorSale = sh.find((s) => s.price && s.price > 50000 && !s.isConfidential && s.date);
-          const coords = (data.coordinates ?? null) as { lat: number; lng: number } | null;
-          const estParams = new URLSearchParams();
-          estParams.set('suburb', structured.suburb ?? '');
-          estParams.set('state', structured.state ?? 'VIC');
-          if (structured.postcode) estParams.set('postcode', structured.postcode);
-          if (coords?.lat != null) estParams.set('lat', String(coords.lat));
-          if (coords?.lng != null) estParams.set('lng', String(coords.lng));
-          if (fallbackInput.propertyType) estParams.set('propertyType', fallbackInput.propertyType);
-          if (fallbackInput.bedrooms != null) estParams.set('beds', String(fallbackInput.bedrooms));
-          if (fallbackInput.bathrooms != null) estParams.set('baths', String(fallbackInput.bathrooms));
-          if (fallbackInput.landAreaSqm != null) estParams.set('land', String(fallbackInput.landAreaSqm));
-          if (priorSale?.price && priorSale.date) {
-            estParams.set('priorSalePrice', String(priorSale.price));
-            estParams.set('priorSaleDate', priorSale.date);
-          }
-          if (fallbackInput.priceFrom != null) estParams.set('listingLow', String(fallbackInput.priceFrom));
-          if (fallbackInput.priceTo != null) estParams.set('listingHigh', String(fallbackInput.priceTo));
-          if (fallbackInput.priceNumeric != null) estParams.set('listingMid', String(fallbackInput.priceNumeric));
-          estParams.set('excludeAddress', fullAddr);
-
-          let saleMid: number | undefined;
-          try {
-            const estRes = await fetch(`/api/estimate?${estParams.toString()}`);
-            const estJson = estRes.ok ? await estRes.json() : null;
-            const estimate = (estJson?.result as PriceEstimateResult | null) ??
-              calculateEnrichedPriceEstimate(fallbackInput, data.marketData);
-            setEnrichedEstimate(estimate);
-            saleMid = estimate?.priceMid;
-          } catch {
-            const fb = calculateEnrichedPriceEstimate(fallbackInput, data.marketData);
-            setEnrichedEstimate(fb);
-            saleMid = fb?.priceMid;
-          }
-
-          // Comparables-based weekly-rent range (server-side — needs DB access to
-          // nearby rentals + 12-month suburb rent growth).
-          const priorRent = rh.find((r) => r.weeklyRent && r.weeklyRent > 50 && r.date);
-          const rentParams = new URLSearchParams();
-          rentParams.set('suburb', structured.suburb ?? '');
-          rentParams.set('state', structured.state ?? 'VIC');
-          if (structured.postcode) rentParams.set('postcode', structured.postcode);
-          if (coords?.lat != null) rentParams.set('lat', String(coords.lat));
-          if (coords?.lng != null) rentParams.set('lng', String(coords.lng));
-          if (fallbackInput.propertyType) rentParams.set('propertyType', fallbackInput.propertyType);
-          if (fallbackInput.bedrooms != null) rentParams.set('beds', String(fallbackInput.bedrooms));
-          if (fallbackInput.bathrooms != null) rentParams.set('baths', String(fallbackInput.bathrooms));
-          if (fallbackInput.landAreaSqm != null) rentParams.set('land', String(fallbackInput.landAreaSqm));
-          if (saleMid != null) rentParams.set('saleEstimateMid', String(saleMid));
-          if (priorRent?.weeklyRent && priorRent.date) {
-            rentParams.set('priorRent', String(priorRent.weeklyRent));
-            rentParams.set('priorRentDate', priorRent.date);
-          }
-          rentParams.set('excludeAddress', fullAddr);
-          try {
-            const rentRes = await fetch(`/api/estimate-rent?${rentParams.toString()}`);
-            const rentJson = rentRes.ok ? await rentRes.json() : null;
-            setRentalEstimate((rentJson?.result as PriceEstimateResult | null) ?? null);
-          } catch {
-            setRentalEstimate(null);
-          }
-        }
+        const enrichData = await res.json();
+        if (requestId !== requestIdRef.current) return; // stale property, drop
+        setEnrichment(enrichData);
+        marketDataRef.current = enrichData?.marketData ?? null;
       }
     } catch (err) {
       console.warn("[PropertyProfile] Enrichment failed:", err);
     } finally {
-      setEnrichLoading(false);
+      if (requestId === requestIdRef.current) setEnrichLoading(false);
+    }
+  };
+
+  // Sale + rent estimates, sourced from the just-fetched `profile` parameter (not
+  // component state — the prior stale-closure bug read `property` state captured
+  // at mount, which was always null, so this whole block never ran on first load).
+  // Coordinates come from the property record itself (already geocoded at crawl
+  // time — src/lib/jobs/fetch-profile.ts sets profile.data.latitude/longitude), so
+  // estimate no longer waits on enrich's response to supply them.
+  const fetchEstimates = async (
+    structured: StructuredAddress,
+    profile: MergedPropertyProfile,
+    requestId: number
+  ) => {
+    const pd = profile.data;
+    const sh =
+      (pd.saleHistory as Array<{
+        price?: number;
+        date?: string;
+        type?: string;
+        agency?: string;
+        agentName?: string;
+        daysOnMarket?: number;
+        listingPrice?: number;
+        isConfidential?: boolean;
+        description?: string;
+        settlementDate?: string;
+        source?: string;
+      }>) ?? [];
+    const rh =
+      (pd.rentalHistory as Array<{
+        date?: string;
+        weeklyRent?: number;
+        bond?: number;
+        agency?: string;
+        agentName?: string;
+        daysOnMarket?: number;
+        leaseTerm?: string;
+        description?: string;
+      }>) ?? [];
+    const fallbackInput = {
+      propertyType: pd.propertyType as string,
+      bedrooms: pd.bedrooms as number | undefined,
+      bathrooms: pd.bathrooms as number | undefined,
+      carSpaces: pd.carSpaces as number | undefined,
+      landAreaSqm: (pd.landArea ?? pd.landAreaSqm) as number | undefined,
+      priceNumeric: pd.priceNumeric as number | undefined,
+      priceFrom: pd.priceFrom as number | undefined,
+      priceTo: pd.priceTo as number | undefined,
+      saleHistory: sh,
+      rentalHistory: rh,
+      listingStatus: pd.listingStatus as string | undefined,
+      currentPrice: pd.currentPrice as number | undefined,
+      estimatedValue: pd.estimatedValue as number | undefined,
+    };
+    const fullAddr = addressToFullString(structured);
+
+    // Comparables-based estimate (server-side — needs DB access to nearby sales).
+    // Falls back to the legacy suburb-median cascade client-side only if the
+    // endpoint is unreachable. That fallback reads marketDataRef.current — enrich's
+    // resolved marketData when it has already landed by the time estimate fails,
+    // or null if enrich is still in flight — so decoupling estimate from waiting on
+    // enrich doesn't cost market-growth context on the common path where enrich (a
+    // faster call) resolves first; it only degrades to null on the rarer case where
+    // estimate fails before enrich has returned anything at all.
+    const priorSale = sh.find((s) => s.price && s.price > 50000 && !s.isConfidential && s.date);
+    const lat = pd.latitude as number | undefined;
+    const lng = pd.longitude as number | undefined;
+    const estParams = new URLSearchParams();
+    estParams.set('suburb', structured.suburb ?? '');
+    estParams.set('state', structured.state ?? 'VIC');
+    if (structured.postcode) estParams.set('postcode', structured.postcode);
+    if (lat != null) estParams.set('lat', String(lat));
+    if (lng != null) estParams.set('lng', String(lng));
+    if (fallbackInput.propertyType) estParams.set('propertyType', fallbackInput.propertyType);
+    if (fallbackInput.bedrooms != null) estParams.set('beds', String(fallbackInput.bedrooms));
+    if (fallbackInput.bathrooms != null) estParams.set('baths', String(fallbackInput.bathrooms));
+    if (fallbackInput.landAreaSqm != null) estParams.set('land', String(fallbackInput.landAreaSqm));
+    if (priorSale?.price && priorSale.date) {
+      estParams.set('priorSalePrice', String(priorSale.price));
+      estParams.set('priorSaleDate', priorSale.date);
+    }
+    if (fallbackInput.priceFrom != null) estParams.set('listingLow', String(fallbackInput.priceFrom));
+    if (fallbackInput.priceTo != null) estParams.set('listingHigh', String(fallbackInput.priceTo));
+    if (fallbackInput.priceNumeric != null) estParams.set('listingMid', String(fallbackInput.priceNumeric));
+    estParams.set('excludeAddress', fullAddr);
+
+    let saleMid: number | undefined;
+    try {
+      const estRes = await fetch(`/api/estimate?${estParams.toString()}`);
+      const estJson = estRes.ok ? await estRes.json() : null;
+      const estimate = (estJson?.result as PriceEstimateResult | null) ??
+        calculateEnrichedPriceEstimate(fallbackInput, marketDataRef.current);
+      if (requestId !== requestIdRef.current) return; // stale property, drop
+      setEnrichedEstimate(estimate);
+      saleMid = estimate?.priceMid;
+    } catch {
+      const fb = calculateEnrichedPriceEstimate(fallbackInput, marketDataRef.current);
+      if (requestId !== requestIdRef.current) return;
+      setEnrichedEstimate(fb);
+      saleMid = fb?.priceMid;
+    }
+
+    // Comparables-based weekly-rent range — chained behind the sale estimate above
+    // (it needs saleMid as an anchor input), not parallelised with it.
+    const priorRent = rh.find((r) => r.weeklyRent && r.weeklyRent > 50 && r.date);
+    const rentParams = new URLSearchParams();
+    rentParams.set('suburb', structured.suburb ?? '');
+    rentParams.set('state', structured.state ?? 'VIC');
+    if (structured.postcode) rentParams.set('postcode', structured.postcode);
+    if (lat != null) rentParams.set('lat', String(lat));
+    if (lng != null) rentParams.set('lng', String(lng));
+    if (fallbackInput.propertyType) rentParams.set('propertyType', fallbackInput.propertyType);
+    if (fallbackInput.bedrooms != null) rentParams.set('beds', String(fallbackInput.bedrooms));
+    if (fallbackInput.bathrooms != null) rentParams.set('baths', String(fallbackInput.bathrooms));
+    if (fallbackInput.landAreaSqm != null) rentParams.set('land', String(fallbackInput.landAreaSqm));
+    if (saleMid != null) rentParams.set('saleEstimateMid', String(saleMid));
+    if (priorRent?.weeklyRent && priorRent.date) {
+      rentParams.set('priorRent', String(priorRent.weeklyRent));
+      rentParams.set('priorRentDate', priorRent.date);
+    }
+    rentParams.set('excludeAddress', fullAddr);
+    try {
+      const rentRes = await fetch(`/api/estimate-rent?${rentParams.toString()}`);
+      const rentJson = rentRes.ok ? await rentRes.json() : null;
+      if (requestId !== requestIdRef.current) return; // stale property, drop
+      setRentalEstimate((rentJson?.result as PriceEstimateResult | null) ?? null);
+    } catch {
+      if (requestId !== requestIdRef.current) return;
+      setRentalEstimate(null);
     }
   };
 
@@ -483,7 +529,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   if (error) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center px-6 text-center">
-        <motion.div
+        <m.div
           initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.3 }}
@@ -512,7 +558,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               Retry
             </button>
           </div>
-        </motion.div>
+        </m.div>
       </div>
     );
   }
@@ -598,7 +644,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         Back to Search
       </Link>
 
-      <motion.div
+      <m.div
         initial={prefersReducedMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4 }}
@@ -611,10 +657,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             onClick={() => heroImage && setSelectedPhotoIndex(0)}
           >
             {heroImage ? (
-              <img
+              <Image
                 src={heroImage}
                 alt={displayAddress}
-                className="h-full w-full object-cover"
+                fill
+                priority
+                sizes="(min-width: 1024px) 1024px, 100vw"
+                className="object-cover"
               />
             ) : (
               <div className="h-full w-full bg-gradient-to-br from-[#2E5470] to-[#16181D]" />
@@ -677,17 +726,19 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 <button
                   key={idx}
                   onClick={() => setSelectedPhotoIndex(idx)}
-                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-150 ${
+                  className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-150 ${
                     idx === 0
                       ? "border-[#2E5470]"
                       : "border-transparent hover:border-[#E4EBF1]"
                   }`}
                   aria-label={`View photo ${idx + 1}`}
                 >
-                  <img
+                  <Image
                     src={url}
                     alt={`Photo ${idx + 1}`}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="64px"
+                    className="object-cover"
                   />
                 </button>
               ))}
@@ -1550,12 +1601,12 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             Not financial advice — always verify with a licensed professional.
           </p>
         </footer>
-      </motion.div>
+      </m.div>
 
       {/* ─── Photo Lightbox ─── */}
       <AnimatePresence>
         {selectedPhotoIndex !== null && photos.length > 0 && (
-          <motion.div
+          <m.div
             key="lightbox"
             initial={prefersReducedMotion ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1616,7 +1667,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             )}
 
             {/* Main image */}
-            <motion.img
+            <m.img
               key={selectedPhotoIndex}
               initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.97 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -1643,7 +1694,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 <ChevronRight className="h-6 w-6" />
               </button>
             )}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
 import { geocodeAddress } from '@/lib/enrichment/geocoding';
 import { fetchPlanningData } from '@/lib/enrichment/planning';
 import { fetchNearbySchools } from '@/lib/enrichment/schools';
@@ -68,18 +69,21 @@ export async function GET(request: NextRequest) {
     } catch { /* logged inside */ }
   }
 
-  return NextResponse.json({
-    coordinates: coords,
-    planning:
-      planningResult.status === 'fulfilled' ? planningResult.value : null,
-    schools,
-    transport,
-    childcare,
-    suburbStats:
-      suburbStatsResult.status === 'fulfilled' ? suburbStatsResult.value : null,
-    buyerDemand:
-      buyerDemandResult.status === 'fulfilled' ? buyerDemandResult.value : null,
-    marketData:
-      marketDataResult.status === 'fulfilled' ? marketDataResult.value : null,
-  });
+  return NextResponse.json(
+    {
+      coordinates: coords,
+      planning:
+        planningResult.status === 'fulfilled' ? planningResult.value : null,
+      schools,
+      transport,
+      childcare,
+      suburbStats:
+        suburbStatsResult.status === 'fulfilled' ? suburbStatsResult.value : null,
+      buyerDemand:
+        buyerDemandResult.status === 'fulfilled' ? buyerDemandResult.value : null,
+      marketData:
+        marketDataResult.status === 'fulfilled' ? marketDataResult.value : null,
+    },
+    { status: 200, headers: PUBLIC_GET_CACHE_HEADERS }
+  );
 }
