@@ -1,7 +1,7 @@
 ---
 title: "feat: App-wide loading speed + clickable comparable sales"
 type: feat
-status: active
+status: completed
 created_at: 2026-07-06
 ---
 
