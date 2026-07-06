@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Database, MapPin, BarChart3 } from "lucide-react";
 import { AddressSearch } from "@/components/search/AddressSearch";
 import { AuthButton } from "@/components/auth/AuthButton";
@@ -25,7 +26,7 @@ export default function HomePage() {
       {/* ── Navigation ── */}
       <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm pt-safe px-safe">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <a href="/" className="flex items-center gap-3 group" aria-label="everypropertyAI home">
+          <Link href="/" className="flex items-center gap-3 group" aria-label="everypropertyAI home">
             {/* GEA monogram */}
             <span
               className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
@@ -43,7 +44,7 @@ export default function HomePage() {
                 by Grants Estate Agents
               </span>
             </div>
-          </a>
+          </Link>
 
           <nav aria-label="Site navigation" className="flex items-center gap-3">
             <a

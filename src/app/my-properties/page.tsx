@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { MapPin, Home } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
@@ -118,12 +119,12 @@ function PropertyCard({ property, onRemove }: PropertyCardProps) {
 
       {/* Actions row */}
       <div className="mt-4 flex items-center justify-between">
-        <a
+        <Link
           href={`/property?address=${encodeURIComponent(property.fullAddress)}`}
           className="text-sm font-medium text-[#2E5470] transition-colors hover:text-[#24435A] focus:outline-none focus:underline"
         >
           View Property →
-        </a>
+        </Link>
 
         <button
           type="button"
@@ -152,12 +153,12 @@ function EmptyState() {
           Search for your property to start tracking its value.
         </p>
       </div>
-      <a
+      <Link
         href="/"
         className="mt-2 rounded-xl border border-[#2E5470] px-5 py-2.5 text-sm font-medium text-[#2E5470] transition-colors hover:bg-[#2E5470] hover:text-white focus:outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2"
       >
         Search a property →
-      </a>
+      </Link>
     </div>
   );
 }
@@ -216,7 +217,7 @@ export default function MyPropertiesPage() {
       <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm pt-safe px-safe">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           {/* Wordmark */}
-          <a
+          <Link
             href="/"
             className="group flex items-center gap-3"
             aria-label="everypropertyAI home"
@@ -237,7 +238,7 @@ export default function MyPropertiesPage() {
                 by Grants Estate Agents
               </span>
             </div>
-          </a>
+          </Link>
 
           {/* User actions */}
           <div className="flex items-center gap-4">

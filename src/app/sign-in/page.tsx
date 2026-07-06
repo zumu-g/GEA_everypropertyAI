@@ -2,6 +2,7 @@
 
 import { Suspense, useState, FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Lock } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
@@ -133,12 +134,12 @@ function SignInForm() {
 
       {/* Forgot password */}
       <div className="text-center">
-        <a
+        <Link
           href="/forgot-password"
           className="text-sm text-[#2E5470] underline-offset-2 hover:underline focus:outline-none"
         >
           Forgot password?
-        </a>
+        </Link>
       </div>
     </form>
   );
@@ -152,7 +153,7 @@ export default function SignInPage() {
       {/* ── Navigation ── */}
       <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm pt-safe px-safe">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
-          <a
+          <Link
             href="/"
             className="group flex items-center gap-3"
             aria-label="everypropertyAI home"
@@ -171,7 +172,7 @@ export default function SignInPage() {
                 by Grants Estate Agents
               </span>
             </div>
-          </a>
+          </Link>
         </div>
       </header>
 

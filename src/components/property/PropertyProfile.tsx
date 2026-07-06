@@ -26,6 +26,7 @@ import {
   Landmark,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import dynamic from "next/dynamic";
 import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
@@ -629,10 +630,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             onClick={() => heroImage && setSelectedPhotoIndex(0)}
           >
             {heroImage ? (
-              <img
+              <Image
                 src={heroImage}
                 alt={displayAddress}
-                className="h-full w-full object-cover"
+                fill
+                priority
+                sizes="(min-width: 1024px) 1024px, 100vw"
+                className="object-cover"
               />
             ) : (
               <div className="h-full w-full bg-gradient-to-br from-[#2E5470] to-[#16181D]" />
@@ -695,17 +699,19 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 <button
                   key={idx}
                   onClick={() => setSelectedPhotoIndex(idx)}
-                  className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-150 ${
+                  className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-150 ${
                     idx === 0
                       ? "border-[#2E5470]"
                       : "border-transparent hover:border-[#E4EBF1]"
                   }`}
                   aria-label={`View photo ${idx + 1}`}
                 >
-                  <img
+                  <Image
                     src={url}
                     alt={`Photo ${idx + 1}`}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="64px"
+                    className="object-cover"
                   />
                 </button>
               ))}

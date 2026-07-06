@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { m, AnimatePresence } from "framer-motion";
 import { MapPin, Camera, ChevronLeft, ChevronRight, X } from "lucide-react";
 import type { PropertyProfile } from "@/types/property";
@@ -88,10 +89,13 @@ export function PropertyHero({ property }: PropertyHeroProps) {
                 onClick={() => openLightbox(0)}
                 aria-label="Open photo gallery"
               >
-                <img
+                <Image
                   src={mainPhoto}
                   alt={`${addressLine} — main photo`}
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                  fill
+                  priority
+                  sizes="(min-width: 640px) 66vw, 100vw"
+                  className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
 
@@ -137,10 +141,12 @@ export function PropertyHero({ property }: PropertyHeroProps) {
                     onClick={() => openLightbox(1)}
                     aria-label="View photo 2"
                   >
-                    <img
+                    <Image
                       src={sidePhoto1}
                       alt={`${addressLine} — photo 2`}
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                      fill
+                      sizes="(min-width: 640px) 33vw, 0px"
+                      className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                     />
                   </button>
                 )}
@@ -150,10 +156,12 @@ export function PropertyHero({ property }: PropertyHeroProps) {
                     onClick={() => openLightbox(2)}
                     aria-label="View photo 3"
                   >
-                    <img
+                    <Image
                       src={sidePhoto2}
                       alt={`${addressLine} — photo 3`}
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                      fill
+                      sizes="(min-width: 640px) 33vw, 0px"
+                      className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                     />
                     {/* "See all" overlay on last tile when there are more photos */}
                     {photoUrls.length > 3 && (
@@ -178,10 +186,13 @@ export function PropertyHero({ property }: PropertyHeroProps) {
                 onClick={() => openLightbox(0)}
                 aria-label="Open photo gallery"
               >
-                <img
+                <Image
                   src={mainPhoto}
                   alt={`${addressLine} — main photo`}
-                  className="h-full w-full object-cover"
+                  fill
+                  priority
+                  sizes="100vw"
+                  className="object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
                 <div className="absolute bottom-0 left-0 right-0 p-5">
@@ -222,13 +233,15 @@ export function PropertyHero({ property }: PropertyHeroProps) {
                     <button
                       key={idx}
                       onClick={() => openLightbox(idx + 1)}
-                      className="h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 border-transparent transition-all duration-150 hover:border-[#2E5470] focus:outline-none focus-visible:border-[#2E5470]"
+                      className="relative h-16 w-20 shrink-0 overflow-hidden rounded-lg border-2 border-transparent transition-all duration-150 hover:border-[#2E5470] focus:outline-none focus-visible:border-[#2E5470]"
                       aria-label={`View photo ${idx + 2}`}
                     >
-                      <img
+                      <Image
                         src={url}
                         alt={`Photo ${idx + 2}`}
-                        className="h-full w-full object-cover"
+                        fill
+                        sizes="80px"
+                        className="object-cover"
                       />
                     </button>
                   ))}

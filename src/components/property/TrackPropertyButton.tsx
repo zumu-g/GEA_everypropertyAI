@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { BookmarkPlus, CheckCircle } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
@@ -92,12 +93,12 @@ export function TrackPropertyButton({ addressSlug, fullAddress }: TrackPropertyB
         : ""
     );
     return (
-      <a
+      <Link
         href={`/sign-in?returnTo=${returnTo}`}
         className="border border-[#E7E9EE] rounded-xl px-4 py-2 text-sm text-[#6B7077] hover:border-[#2E5470] hover:text-[#2E5470] transition-colors"
       >
         Track this property
-      </a>
+      </Link>
     );
   }
 

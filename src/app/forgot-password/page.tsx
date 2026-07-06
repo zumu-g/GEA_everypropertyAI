@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import Link from "next/link";
 import { Mail, CheckCircle } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
@@ -49,12 +50,12 @@ function ForgotPasswordForm() {
             If an account exists for that address, we&apos;ve sent a link to reset your password.
           </p>
         </div>
-        <a
+        <Link
           href="/sign-in"
           className="mt-1 text-sm text-[#2E5470] underline-offset-2 hover:underline focus:outline-none"
         >
           Back to sign in
-        </a>
+        </Link>
       </div>
     );
   }
@@ -98,9 +99,9 @@ function ForgotPasswordForm() {
       </button>
 
       <div className="text-center">
-        <a href="/sign-in" className="text-sm text-[#2E5470] underline-offset-2 hover:underline">
+        <Link href="/sign-in" className="text-sm text-[#2E5470] underline-offset-2 hover:underline">
           Back to sign in
-        </a>
+        </Link>
       </div>
     </form>
   );
