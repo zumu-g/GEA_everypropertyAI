@@ -209,6 +209,17 @@ export function EditableStat({
   );
 }
 
+/** Full "123 Smith St, Suburb VIC 3000" string from a StructuredAddress, used to
+ * build both /api/enrich's and /api/estimate*'s query params. */
+function addressToFullString(structured: StructuredAddress): string {
+  return (
+    structured.displayAddress ??
+    [structured.streetNumber, structured.streetName, structured.streetType]
+      .filter(Boolean)
+      .join(" ") + `, ${structured.suburb} ${structured.state} ${structured.postcode}`
+  );
+}
+
 export function PropertyProfile({ address }: PropertyProfileProps) {
   const [property, setProperty] = useState<MergedPropertyProfile | null>(null);
   const [enrichment, setEnrichment] = useState<EnrichmentData | null>(null);
@@ -266,8 +277,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       setProperty(data.profile);
       setAddressSlug(data.addressSlug ?? null);
 
-      // Kick off enrichment fetch in background
+      // Enrichment and estimates only need the property fetch to complete — not
+      // each other's response — so fire them together instead of chaining estimate
+      // behind enrich's round-trip. (U2: previously estimate/rent were nested inside
+      // enrich's `.then`, gated on `data?.marketData && property` where `property`
+      // read stale closure state that was always null on first load — see below.)
       fetchEnrichment(structured);
+      fetchEstimates(structured, data.profile);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "An unexpected error occurred."
@@ -277,20 +293,12 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     }
   }, [address]);
 
+  // Enrichment only: suburb/schools/transport market context. No longer carries
+  // the estimate/rent logic — see fetchEstimates, which runs concurrently with this.
   const fetchEnrichment = async (structured: StructuredAddress) => {
     setEnrichLoading(true);
     try {
-      const fullAddr =
-        structured.displayAddress ??
-        [
-          structured.streetNumber,
-          structured.streetName,
-          structured.streetType,
-        ]
-          .filter(Boolean)
-          .join(" ") +
-          `, ${structured.suburb} ${structured.state} ${structured.postcode}`;
-
+      const fullAddr = addressToFullString(structured);
       const params = new URLSearchParams({
         address: fullAddr,
         suburb: structured.suburb ?? "",
@@ -300,123 +308,133 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
       const res = await fetch(`/api/enrich?${params.toString()}`);
       if (res.ok) {
-        const data = await res.json();
-        setEnrichment(data);
-
-        // Calculate enriched price estimate when market data is available
-        if (data?.marketData && property) {
-          const pd = property.data;
-          const sh =
-            (pd.saleHistory as Array<{
-              price?: number;
-              date?: string;
-              type?: string;
-              agency?: string;
-              agentName?: string;
-              daysOnMarket?: number;
-              listingPrice?: number;
-              isConfidential?: boolean;
-              description?: string;
-              settlementDate?: string;
-              source?: string;
-            }>) ?? [];
-          const rh =
-            (pd.rentalHistory as Array<{
-              date?: string;
-              weeklyRent?: number;
-              bond?: number;
-              agency?: string;
-              agentName?: string;
-              daysOnMarket?: number;
-              leaseTerm?: string;
-              description?: string;
-            }>) ?? [];
-          const fallbackInput = {
-            propertyType: pd.propertyType as string,
-            bedrooms: pd.bedrooms as number | undefined,
-            bathrooms: pd.bathrooms as number | undefined,
-            carSpaces: pd.carSpaces as number | undefined,
-            landAreaSqm: (pd.landArea ?? pd.landAreaSqm) as number | undefined,
-            priceNumeric: pd.priceNumeric as number | undefined,
-            priceFrom: pd.priceFrom as number | undefined,
-            priceTo: pd.priceTo as number | undefined,
-            saleHistory: sh,
-            rentalHistory: rh,
-            listingStatus: pd.listingStatus as string | undefined,
-            currentPrice: pd.currentPrice as number | undefined,
-            estimatedValue: pd.estimatedValue as number | undefined,
-          };
-
-          // Comparables-based estimate (server-side — needs DB access to nearby
-          // sales). Falls back to the legacy suburb-median cascade client-side
-          // only if the endpoint is unreachable.
-          const priorSale = sh.find((s) => s.price && s.price > 50000 && !s.isConfidential && s.date);
-          const coords = (data.coordinates ?? null) as { lat: number; lng: number } | null;
-          const estParams = new URLSearchParams();
-          estParams.set('suburb', structured.suburb ?? '');
-          estParams.set('state', structured.state ?? 'VIC');
-          if (structured.postcode) estParams.set('postcode', structured.postcode);
-          if (coords?.lat != null) estParams.set('lat', String(coords.lat));
-          if (coords?.lng != null) estParams.set('lng', String(coords.lng));
-          if (fallbackInput.propertyType) estParams.set('propertyType', fallbackInput.propertyType);
-          if (fallbackInput.bedrooms != null) estParams.set('beds', String(fallbackInput.bedrooms));
-          if (fallbackInput.bathrooms != null) estParams.set('baths', String(fallbackInput.bathrooms));
-          if (fallbackInput.landAreaSqm != null) estParams.set('land', String(fallbackInput.landAreaSqm));
-          if (priorSale?.price && priorSale.date) {
-            estParams.set('priorSalePrice', String(priorSale.price));
-            estParams.set('priorSaleDate', priorSale.date);
-          }
-          if (fallbackInput.priceFrom != null) estParams.set('listingLow', String(fallbackInput.priceFrom));
-          if (fallbackInput.priceTo != null) estParams.set('listingHigh', String(fallbackInput.priceTo));
-          if (fallbackInput.priceNumeric != null) estParams.set('listingMid', String(fallbackInput.priceNumeric));
-          estParams.set('excludeAddress', fullAddr);
-
-          let saleMid: number | undefined;
-          try {
-            const estRes = await fetch(`/api/estimate?${estParams.toString()}`);
-            const estJson = estRes.ok ? await estRes.json() : null;
-            const estimate = (estJson?.result as PriceEstimateResult | null) ??
-              calculateEnrichedPriceEstimate(fallbackInput, data.marketData);
-            setEnrichedEstimate(estimate);
-            saleMid = estimate?.priceMid;
-          } catch {
-            const fb = calculateEnrichedPriceEstimate(fallbackInput, data.marketData);
-            setEnrichedEstimate(fb);
-            saleMid = fb?.priceMid;
-          }
-
-          // Comparables-based weekly-rent range (server-side — needs DB access to
-          // nearby rentals + 12-month suburb rent growth).
-          const priorRent = rh.find((r) => r.weeklyRent && r.weeklyRent > 50 && r.date);
-          const rentParams = new URLSearchParams();
-          rentParams.set('suburb', structured.suburb ?? '');
-          rentParams.set('state', structured.state ?? 'VIC');
-          if (structured.postcode) rentParams.set('postcode', structured.postcode);
-          if (coords?.lat != null) rentParams.set('lat', String(coords.lat));
-          if (coords?.lng != null) rentParams.set('lng', String(coords.lng));
-          if (fallbackInput.propertyType) rentParams.set('propertyType', fallbackInput.propertyType);
-          if (fallbackInput.bedrooms != null) rentParams.set('beds', String(fallbackInput.bedrooms));
-          if (fallbackInput.bathrooms != null) rentParams.set('baths', String(fallbackInput.bathrooms));
-          if (fallbackInput.landAreaSqm != null) rentParams.set('land', String(fallbackInput.landAreaSqm));
-          if (saleMid != null) rentParams.set('saleEstimateMid', String(saleMid));
-          if (priorRent?.weeklyRent && priorRent.date) {
-            rentParams.set('priorRent', String(priorRent.weeklyRent));
-            rentParams.set('priorRentDate', priorRent.date);
-          }
-          rentParams.set('excludeAddress', fullAddr);
-          try {
-            const rentRes = await fetch(`/api/estimate-rent?${rentParams.toString()}`);
-            const rentJson = rentRes.ok ? await rentRes.json() : null;
-            setRentalEstimate((rentJson?.result as PriceEstimateResult | null) ?? null);
-          } catch {
-            setRentalEstimate(null);
-          }
-        }
+        setEnrichment(await res.json());
       }
     } catch (err) {
       console.warn("[PropertyProfile] Enrichment failed:", err);
     } finally {
       setEnrichLoading(false);
+    }
+  };
+
+  // Sale + rent estimates, sourced from the just-fetched `profile` parameter (not
+  // component state — the prior stale-closure bug read `property` state captured
+  // at mount, which was always null, so this whole block never ran on first load).
+  // Coordinates come from the property record itself (already geocoded at crawl
+  // time — src/lib/jobs/fetch-profile.ts sets profile.data.latitude/longitude), so
+  // estimate no longer waits on enrich's response to supply them.
+  const fetchEstimates = async (
+    structured: StructuredAddress,
+    profile: MergedPropertyProfile
+  ) => {
+    const pd = profile.data;
+    const sh =
+      (pd.saleHistory as Array<{
+        price?: number;
+        date?: string;
+        type?: string;
+        agency?: string;
+        agentName?: string;
+        daysOnMarket?: number;
+        listingPrice?: number;
+        isConfidential?: boolean;
+        description?: string;
+        settlementDate?: string;
+        source?: string;
+      }>) ?? [];
+    const rh =
+      (pd.rentalHistory as Array<{
+        date?: string;
+        weeklyRent?: number;
+        bond?: number;
+        agency?: string;
+        agentName?: string;
+        daysOnMarket?: number;
+        leaseTerm?: string;
+        description?: string;
+      }>) ?? [];
+    const fallbackInput = {
+      propertyType: pd.propertyType as string,
+      bedrooms: pd.bedrooms as number | undefined,
+      bathrooms: pd.bathrooms as number | undefined,
+      carSpaces: pd.carSpaces as number | undefined,
+      landAreaSqm: (pd.landArea ?? pd.landAreaSqm) as number | undefined,
+      priceNumeric: pd.priceNumeric as number | undefined,
+      priceFrom: pd.priceFrom as number | undefined,
+      priceTo: pd.priceTo as number | undefined,
+      saleHistory: sh,
+      rentalHistory: rh,
+      listingStatus: pd.listingStatus as string | undefined,
+      currentPrice: pd.currentPrice as number | undefined,
+      estimatedValue: pd.estimatedValue as number | undefined,
+    };
+    const fullAddr = addressToFullString(structured);
+
+    // Comparables-based estimate (server-side — needs DB access to nearby sales).
+    // Falls back to the legacy suburb-median cascade client-side only if the
+    // endpoint is unreachable; that fallback has no market-growth context available
+    // here (enrich may still be in flight) and degrades gracefully with `null`.
+    const priorSale = sh.find((s) => s.price && s.price > 50000 && !s.isConfidential && s.date);
+    const lat = pd.latitude as number | undefined;
+    const lng = pd.longitude as number | undefined;
+    const estParams = new URLSearchParams();
+    estParams.set('suburb', structured.suburb ?? '');
+    estParams.set('state', structured.state ?? 'VIC');
+    if (structured.postcode) estParams.set('postcode', structured.postcode);
+    if (lat != null) estParams.set('lat', String(lat));
+    if (lng != null) estParams.set('lng', String(lng));
+    if (fallbackInput.propertyType) estParams.set('propertyType', fallbackInput.propertyType);
+    if (fallbackInput.bedrooms != null) estParams.set('beds', String(fallbackInput.bedrooms));
+    if (fallbackInput.bathrooms != null) estParams.set('baths', String(fallbackInput.bathrooms));
+    if (fallbackInput.landAreaSqm != null) estParams.set('land', String(fallbackInput.landAreaSqm));
+    if (priorSale?.price && priorSale.date) {
+      estParams.set('priorSalePrice', String(priorSale.price));
+      estParams.set('priorSaleDate', priorSale.date);
+    }
+    if (fallbackInput.priceFrom != null) estParams.set('listingLow', String(fallbackInput.priceFrom));
+    if (fallbackInput.priceTo != null) estParams.set('listingHigh', String(fallbackInput.priceTo));
+    if (fallbackInput.priceNumeric != null) estParams.set('listingMid', String(fallbackInput.priceNumeric));
+    estParams.set('excludeAddress', fullAddr);
+
+    let saleMid: number | undefined;
+    try {
+      const estRes = await fetch(`/api/estimate?${estParams.toString()}`);
+      const estJson = estRes.ok ? await estRes.json() : null;
+      const estimate = (estJson?.result as PriceEstimateResult | null) ??
+        calculateEnrichedPriceEstimate(fallbackInput, null);
+      setEnrichedEstimate(estimate);
+      saleMid = estimate?.priceMid;
+    } catch {
+      const fb = calculateEnrichedPriceEstimate(fallbackInput, null);
+      setEnrichedEstimate(fb);
+      saleMid = fb?.priceMid;
+    }
+
+    // Comparables-based weekly-rent range — chained behind the sale estimate above
+    // (it needs saleMid as an anchor input), not parallelised with it.
+    const priorRent = rh.find((r) => r.weeklyRent && r.weeklyRent > 50 && r.date);
+    const rentParams = new URLSearchParams();
+    rentParams.set('suburb', structured.suburb ?? '');
+    rentParams.set('state', structured.state ?? 'VIC');
+    if (structured.postcode) rentParams.set('postcode', structured.postcode);
+    if (lat != null) rentParams.set('lat', String(lat));
+    if (lng != null) rentParams.set('lng', String(lng));
+    if (fallbackInput.propertyType) rentParams.set('propertyType', fallbackInput.propertyType);
+    if (fallbackInput.bedrooms != null) rentParams.set('beds', String(fallbackInput.bedrooms));
+    if (fallbackInput.bathrooms != null) rentParams.set('baths', String(fallbackInput.bathrooms));
+    if (fallbackInput.landAreaSqm != null) rentParams.set('land', String(fallbackInput.landAreaSqm));
+    if (saleMid != null) rentParams.set('saleEstimateMid', String(saleMid));
+    if (priorRent?.weeklyRent && priorRent.date) {
+      rentParams.set('priorRent', String(priorRent.weeklyRent));
+      rentParams.set('priorRentDate', priorRent.date);
+    }
+    rentParams.set('excludeAddress', fullAddr);
+    try {
+      const rentRes = await fetch(`/api/estimate-rent?${rentParams.toString()}`);
+      const rentJson = rentRes.ok ? await rentRes.json() : null;
+      setRentalEstimate((rentJson?.result as PriceEstimateResult | null) ?? null);
+    } catch {
+      setRentalEstimate(null);
     }
   };
 
