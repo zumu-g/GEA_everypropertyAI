@@ -14,7 +14,11 @@ function req(url: string) {
 
 // enrich fans out to several live external services (geocoding, schools,
 // transport, market data...) — mock them all so this test is fast and
-// deterministic rather than exercising real network calls.
+// deterministic rather than exercising real network calls. market-data is also
+// estimate/estimate-rent's own dependency (estimate-service.ts,
+// estimate-rental-service.ts both import it), so this one mock covers those
+// routes' network calls too. address-suggest is street-details' own live
+// dependency (hits realestate.com.au directly) and needs its own mock.
 vi.mock('@/lib/enrichment/geocoding', () => ({ geocodeAddress: async () => null }));
 vi.mock('@/lib/enrichment/planning', () => ({ fetchPlanningData: async () => null }));
 vi.mock('@/lib/enrichment/schools', () => ({ fetchNearbySchools: async () => [] }));
@@ -23,6 +27,7 @@ vi.mock('@/lib/enrichment/childcare', () => ({ fetchNearbyChildcare: async () =>
 vi.mock('@/lib/enrichment/suburb-stats', () => ({ fetchSuburbStats: async () => null }));
 vi.mock('@/lib/enrichment/buyer-demand', () => ({ fetchBuyerDemand: async () => null }));
 vi.mock('@/lib/enrichment/market-data', () => ({ fetchSuburbMarketData: async () => null }));
+vi.mock('@/lib/address-suggest', () => ({ fetchAddressSuggestions: async () => [] }));
 
 describe('browser cache headers on public GET routes', () => {
   it('comparable-sales: 200 (in-memory fallback) carries Cache-Control; 400 does not', async () => {

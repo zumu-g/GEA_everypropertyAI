@@ -51,12 +51,19 @@ function fmtDate(iso: string): string {
 
 /** Structured `/property?address=` href for a comparable, so the profile parser
  * gets suburb/state/postcode as real fields instead of falling back to stuffing
- * the whole string into streetName. */
+ * the whole string into streetName.
+ *
+ * Trusts parseAddress's own parsed suburb rather than a substring-match guess —
+ * a street name that happens to contain the suburb name (e.g. suburb "Clyde",
+ * street "Clyde Court") would make a substring check wrongly skip appending the
+ * suburb, and if comp.address itself has no trailing location suffix, parseAddress
+ * would then have no suburb token to find at all. Parse first; only append and
+ * re-parse if the result didn't already resolve to this comparable's suburb. */
 function comparableHref(comp: ComparableResult): string {
-  const hasSuburb =
-    !!comp.suburb && comp.address.toLowerCase().includes(comp.suburb.toLowerCase());
-  const fullAddress = hasSuburb ? comp.address : `${comp.address}, ${comp.suburb}`;
-  const structured = parseAddress(fullAddress);
+  let structured = parseAddress(comp.address);
+  if (!comp.suburb || structured.suburb.toLowerCase() !== comp.suburb.toLowerCase()) {
+    structured = parseAddress(`${comp.address}, ${comp.suburb}`);
+  }
   if (!structured.state) structured.state = "VIC";
   return `/property?address=${encodeURIComponent(JSON.stringify(structured))}`;
 }

@@ -66,6 +66,21 @@ describe('ComparableSales links', () => {
     expect((structured.streetName + ' ' + structured.streetType).match(/berwick/i)).toBeNull();
   });
 
+  it('resolves the suburb correctly when the street name contains the suburb name (adversarial edge case)', async () => {
+    // Suburb "Clyde" with a street literally named "Clyde Court" — a naive
+    // substring check on comp.address would think the suburb is already present
+    // and skip appending it, leaving parseAddress with no suburb token to find.
+    mockFetch([comp({ address: '10 Clyde Court', suburb: 'Clyde' })]);
+    render(<ComparableSales suburb="Clyde" />);
+
+    const link = await waitFor(() => screen.getByRole('link'));
+    const href = link.getAttribute('href')!;
+    const structured = JSON.parse(decodeURIComponent(href.replace('/property?address=', '')));
+    expect(structured.suburb).toBe('Clyde');
+    expect(structured.streetName).toBe('Clyde');
+    expect(structured.streetType).toBe('Court');
+  });
+
   it('wraps the whole card (price, date, badges) inside the link, not just the address text', async () => {
     mockFetch([comp()]);
     render(<ComparableSales suburb="Berwick" />);

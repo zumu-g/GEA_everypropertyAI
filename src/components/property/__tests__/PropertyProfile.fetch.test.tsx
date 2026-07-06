@@ -4,10 +4,15 @@
 // state captured before the first fetch committed, so `data?.marketData &&
 // property` was always false on first load) and the corrected fetch graph
 // (estimate no longer waits on enrich's response for coordinates; estimate-rent
-// still waits on estimate's saleMid).
+// still waits on estimate's saleMid). Also covers two code-review findings fixed
+// in the same pass: the client-side fallback estimate now uses enrich's resolved
+// marketData when available instead of always null, and a request-generation
+// guard prevents a stale (superseded) property's late-arriving fetch from
+// overwriting a newer property's displayed state.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/react';
 import { PropertyProfile } from '../PropertyProfile';
+import * as priceEstimator from '@/lib/estimation/price-estimator';
 
 vi.mock('@/lib/db/supabase', () => ({
   getSupabaseBrowserClient: () => ({
@@ -175,5 +180,144 @@ describe('PropertyProfile fetch graph (U2)', () => {
     await waitFor(() => screen.getByText(/Failed to load property data/i));
     expect(log.some((c) => c.url.startsWith('/api/enrich'))).toBe(false);
     expect(log.some((c) => c.url.startsWith('/api/estimate'))).toBe(false);
+  });
+});
+
+describe('fetchEstimates fallback marketData (code-review fix)', () => {
+  it('uses enrich\'s resolved marketData in the local fallback estimate when /api/estimate fails', async () => {
+    const spy = vi.spyOn(priceEstimator, 'calculateEnrichedPriceEstimate');
+    const log: FetchLog = [];
+    // /api/estimate fails outright -> forces the local fallback branch.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        log.push({ url });
+        if (url.startsWith('/api/property')) {
+          return { ok: true, json: async () => ({ profile: PROFILE, addressSlug: 'test-slug' }) } as Response;
+        }
+        if (url.startsWith('/api/enrich')) {
+          return {
+            ok: true,
+            json: async () => ({
+              marketData: { houses: { medianPrice: 900000, annualGrowth: 5 }, units: { medianPrice: 600000, annualGrowth: 4 } },
+              coordinates: ENRICH_COORDS,
+              buyerDemand: { score: 50, level: 'medium', factors: [] },
+              planning: { zone: null, overlays: [], council: null, planningScheme: null, source: 'test' },
+              schools: [], childcare: [], transport: [],
+              suburbStats: { suburb: 'Berwick' },
+            }),
+          } as Response;
+        }
+        if (url.startsWith('/api/estimate')) {
+          // Small delay so enrich (2 awaits: fetch + res.json()) reliably sets
+          // marketDataRef.current before estimate's fallback reads it — this
+          // models the realistic case where enrich (typically faster) resolves
+          // before an estimate failure is discovered.
+          await new Promise((r) => setTimeout(r, 10));
+          return { ok: false, json: async () => ({}) } as Response;
+        }
+        return { ok: true, json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch,
+    );
+
+    render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const marketDataArg = spy.mock.calls[0][1];
+    expect(marketDataArg).not.toBeNull();
+    expect(marketDataArg?.houses?.medianPrice).toBe(900000);
+    spy.mockRestore();
+  });
+
+  it('falls back to null marketData when enrich has not resolved by the time estimate fails', async () => {
+    const spy = vi.spyOn(priceEstimator, 'calculateEnrichedPriceEstimate');
+    let resolveEnrich: (() => void) | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.startsWith('/api/property')) {
+          return { ok: true, json: async () => ({ profile: PROFILE, addressSlug: 'test-slug' }) } as Response;
+        }
+        if (url.startsWith('/api/enrich')) {
+          // Never resolves within this test — estimate fails first.
+          await new Promise<void>((resolve) => { resolveEnrich = resolve; });
+          return { ok: true, json: async () => ({}) } as Response;
+        }
+        if (url.startsWith('/api/estimate')) return { ok: false, json: async () => ({}) } as Response;
+        return { ok: true, json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch,
+    );
+
+    render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const marketDataArg = spy.mock.calls[0][1];
+    expect(marketDataArg).toBeNull();
+    spy.mockRestore();
+    resolveEnrich?.();
+  });
+});
+
+describe('stale-property race guard (code-review fix)', () => {
+  it('does not let an earlier property\'s late-resolving estimate overwrite a newer property\'s displayed state', async () => {
+    let resolvePropertyA: ((body: unknown) => void) | undefined;
+    let estimateCallCount = 0;
+    const PROFILE_B = { ...PROFILE, data: { ...PROFILE.data, latitude: -37.5, longitude: 144.9 } };
+    const enrichResponse = {
+      marketData: null,
+      coordinates: null,
+      buyerDemand: { score: 50, level: 'medium', factors: [] },
+      planning: { zone: null, overlays: [], council: null, planningScheme: null, source: 'test' },
+      schools: [], childcare: [], transport: [],
+      suburbStats: { suburb: 'Berwick' },
+    };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.startsWith('/api/property')) {
+          const body = await new Promise<unknown>((resolve) => {
+            // First call (property A) never resolves until we manually trigger it below.
+            if (!resolvePropertyA) resolvePropertyA = resolve;
+            else resolve({ profile: PROFILE_B, addressSlug: 'slug-b' });
+          });
+          return { ok: true, json: async () => body } as Response;
+        }
+        if (url.startsWith('/api/enrich')) return { ok: true, json: async () => enrichResponse } as Response;
+        if (url.startsWith('/api/estimate-rent')) {
+          return { ok: true, json: async () => ({ result: { priceLow: 1, priceMid: 1, priceHigh: 1, confidenceLevel: 'high', priceSource: 'rent-comparables', methodology: 'x' } }) } as Response;
+        }
+        if (url.startsWith('/api/estimate')) {
+          // Call order (not fetchProperty order): B's /api/property resolves
+          // immediately (see the else-branch above), so B's fetchEstimates fires
+          // and hits this mock FIRST — slightly delayed, price 100, the genuine
+          // current-property value. A's /api/property is only resolved manually
+          // below, after B is already showing, so A's fetchEstimates hits this
+          // mock SECOND — fast, price 999999 — but by then requestIdRef has moved
+          // on to B's request, so A's setEnrichedEstimate call must be dropped.
+          estimateCallCount += 1;
+          if (estimateCallCount === 1) {
+            await new Promise((r) => setTimeout(r, 50));
+            return { ok: true, json: async () => ({ result: { priceLow: 100, priceMid: 100, priceHigh: 100, confidenceLevel: 'high', priceSource: 'comparables', methodology: 'x' } }) } as Response;
+          }
+          return { ok: true, json: async () => ({ result: { priceLow: 999999, priceMid: 999999, priceHigh: 999999, confidenceLevel: 'high', priceSource: 'comparables', methodology: 'x' } }) } as Response;
+        }
+        return { ok: true, json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch,
+    );
+
+    const { rerender } = render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+    // Navigate to a different property before A's /api/property call resolves.
+    const STRUCTURED_ADDRESS_B = JSON.stringify({ streetNumber: '99', streetName: 'Other', streetType: 'Rd', suburb: 'Cranbourne', state: 'VIC', postcode: '3977' });
+    rerender(<PropertyProfile address={STRUCTURED_ADDRESS_B} />);
+    // Now let A's long-pending /api/property resolve with stale data — its
+    // fetchEstimates call is in flight but must never win the state race.
+    resolvePropertyA?.({ profile: PROFILE, addressSlug: 'slug-a' });
+
+    await waitFor(() => expect(document.body.textContent).toContain('$100'));
+    expect(document.body.textContent).not.toContain('999,999');
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { m, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
@@ -244,7 +244,20 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false;
 
+  // Request-generation guard: rapid back-to-back navigation (address prop changes
+  // before the previous property's async fetches resolve) must not let a stale
+  // property's late-arriving enrich/estimate/rent response overwrite the newer
+  // property's state. Every fetchProperty call bumps this; each async setState
+  // below checks its own captured id against the current one before writing.
+  const requestIdRef = useRef(0);
+  // Latest resolved enrich marketData, read (not awaited) by fetchEstimates' local
+  // fallback so a same-property estimate failure can still use market-growth
+  // context if enrich happened to resolve first — without re-serializing the two.
+  const marketDataRef = useRef<EnrichmentData['marketData'] | null>(null);
+
   const fetchProperty = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    marketDataRef.current = null;
     setIsLoading(true);
     setError(null);
     try {
@@ -275,6 +288,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         );
       }
       const data = await res.json();
+      if (requestId !== requestIdRef.current) return; // superseded by a newer navigation
       setProperty(data.profile);
       setAddressSlug(data.addressSlug ?? null);
 
@@ -283,20 +297,21 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       // behind enrich's round-trip. (U2: previously estimate/rent were nested inside
       // enrich's `.then`, gated on `data?.marketData && property` where `property`
       // read stale closure state that was always null on first load — see below.)
-      fetchEnrichment(structured);
-      fetchEstimates(structured, data.profile);
+      fetchEnrichment(structured, requestId);
+      fetchEstimates(structured, data.profile, requestId);
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       setError(
         err instanceof Error ? err.message : "An unexpected error occurred."
       );
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) setIsLoading(false);
     }
   }, [address]);
 
   // Enrichment only: suburb/schools/transport market context. No longer carries
   // the estimate/rent logic — see fetchEstimates, which runs concurrently with this.
-  const fetchEnrichment = async (structured: StructuredAddress) => {
+  const fetchEnrichment = async (structured: StructuredAddress, requestId: number) => {
     setEnrichLoading(true);
     try {
       const fullAddr = addressToFullString(structured);
@@ -309,12 +324,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
       const res = await fetch(`/api/enrich?${params.toString()}`);
       if (res.ok) {
-        setEnrichment(await res.json());
+        const enrichData = await res.json();
+        if (requestId !== requestIdRef.current) return; // stale property, drop
+        setEnrichment(enrichData);
+        marketDataRef.current = enrichData?.marketData ?? null;
       }
     } catch (err) {
       console.warn("[PropertyProfile] Enrichment failed:", err);
     } finally {
-      setEnrichLoading(false);
+      if (requestId === requestIdRef.current) setEnrichLoading(false);
     }
   };
 
@@ -326,7 +344,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   // estimate no longer waits on enrich's response to supply them.
   const fetchEstimates = async (
     structured: StructuredAddress,
-    profile: MergedPropertyProfile
+    profile: MergedPropertyProfile,
+    requestId: number
   ) => {
     const pd = profile.data;
     const sh =
@@ -373,8 +392,12 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
     // Comparables-based estimate (server-side — needs DB access to nearby sales).
     // Falls back to the legacy suburb-median cascade client-side only if the
-    // endpoint is unreachable; that fallback has no market-growth context available
-    // here (enrich may still be in flight) and degrades gracefully with `null`.
+    // endpoint is unreachable. That fallback reads marketDataRef.current — enrich's
+    // resolved marketData when it has already landed by the time estimate fails,
+    // or null if enrich is still in flight — so decoupling estimate from waiting on
+    // enrich doesn't cost market-growth context on the common path where enrich (a
+    // faster call) resolves first; it only degrades to null on the rarer case where
+    // estimate fails before enrich has returned anything at all.
     const priorSale = sh.find((s) => s.price && s.price > 50000 && !s.isConfidential && s.date);
     const lat = pd.latitude as number | undefined;
     const lng = pd.longitude as number | undefined;
@@ -402,11 +425,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       const estRes = await fetch(`/api/estimate?${estParams.toString()}`);
       const estJson = estRes.ok ? await estRes.json() : null;
       const estimate = (estJson?.result as PriceEstimateResult | null) ??
-        calculateEnrichedPriceEstimate(fallbackInput, null);
+        calculateEnrichedPriceEstimate(fallbackInput, marketDataRef.current);
+      if (requestId !== requestIdRef.current) return; // stale property, drop
       setEnrichedEstimate(estimate);
       saleMid = estimate?.priceMid;
     } catch {
-      const fb = calculateEnrichedPriceEstimate(fallbackInput, null);
+      const fb = calculateEnrichedPriceEstimate(fallbackInput, marketDataRef.current);
+      if (requestId !== requestIdRef.current) return;
       setEnrichedEstimate(fb);
       saleMid = fb?.priceMid;
     }
@@ -433,8 +458,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     try {
       const rentRes = await fetch(`/api/estimate-rent?${rentParams.toString()}`);
       const rentJson = rentRes.ok ? await rentRes.json() : null;
+      if (requestId !== requestIdRef.current) return; // stale property, drop
       setRentalEstimate((rentJson?.result as PriceEstimateResult | null) ?? null);
     } catch {
+      if (requestId !== requestIdRef.current) return;
       setRentalEstimate(null);
     }
   };
