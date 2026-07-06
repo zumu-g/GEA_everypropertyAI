@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { motion } from "framer-motion";
 import { Database } from "lucide-react";
+import { parseAddress } from "@/lib/utils/address";
 
 export interface ComparableResult {
   address: string;
@@ -46,6 +48,18 @@ function fmtDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/** Structured `/property?address=` href for a comparable, so the profile parser
+ * gets suburb/state/postcode as real fields instead of falling back to stuffing
+ * the whole string into streetName. */
+function comparableHref(comp: ComparableResult): string {
+  const hasSuburb =
+    !!comp.suburb && comp.address.toLowerCase().includes(comp.suburb.toLowerCase());
+  const fullAddress = hasSuburb ? comp.address : `${comp.address}, ${comp.suburb}`;
+  const structured = parseAddress(fullAddress);
+  if (!structured.state) structured.state = "VIC";
+  return `/property?address=${encodeURIComponent(JSON.stringify(structured))}`;
 }
 
 function SimilarityBadge({ score }: { score: number }) {
@@ -156,42 +170,46 @@ export function ComparableSales({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: i * 0.07 }}
-          className="rounded-xl border border-[#E7E9EE] bg-white p-5 transition-shadow duration-200 hover:shadow-md"
         >
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold leading-snug text-[#16181D]">
-              {comp.address}
-            </p>
-            <SimilarityBadge score={comp.similarityScore} />
-          </div>
-
-          <p className="mt-2 text-xl font-semibold text-[#2E5470] tabular-nums">
-            {fmtPrice(comp.price)}
-          </p>
-
-          {comp.saleDate && (
-            <p className="mt-0.5 text-xs text-[#6B7077]">{fmtDate(comp.saleDate)}</p>
-          )}
-
-          {(comp.beds != null || comp.baths != null || comp.landAreaSqm != null) && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {comp.beds != null && (
-                <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
-                  {comp.beds} bed
-                </span>
-              )}
-              {comp.baths != null && (
-                <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
-                  {comp.baths} bath
-                </span>
-              )}
-              {comp.landAreaSqm != null && (
-                <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
-                  {comp.landAreaSqm.toLocaleString("en-AU")}m²
-                </span>
-              )}
+          <Link
+            href={comparableHref(comp)}
+            className="block rounded-xl border border-[#E7E9EE] bg-white p-5 transition-shadow duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold leading-snug text-[#16181D]">
+                {comp.address}
+              </p>
+              <SimilarityBadge score={comp.similarityScore} />
             </div>
-          )}
+
+            <p className="mt-2 text-xl font-semibold text-[#2E5470] tabular-nums">
+              {fmtPrice(comp.price)}
+            </p>
+
+            {comp.saleDate && (
+              <p className="mt-0.5 text-xs text-[#6B7077]">{fmtDate(comp.saleDate)}</p>
+            )}
+
+            {(comp.beds != null || comp.baths != null || comp.landAreaSqm != null) && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {comp.beds != null && (
+                  <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
+                    {comp.beds} bed
+                  </span>
+                )}
+                {comp.baths != null && (
+                  <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
+                    {comp.baths} bath
+                  </span>
+                )}
+                {comp.landAreaSqm != null && (
+                  <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
+                    {comp.landAreaSqm.toLocaleString("en-AU")}m²
+                  </span>
+                )}
+              </div>
+            )}
+          </Link>
         </motion.div>
       ))}
     </div>
