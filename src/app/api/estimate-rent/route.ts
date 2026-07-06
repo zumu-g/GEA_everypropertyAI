@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRentalEstimate, type RentalEstimateSubjectInput } from '@/lib/estimation/estimate-rental-service';
+import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
 
 export const maxDuration = 60;
 
@@ -8,6 +9,9 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
+
+// Cache only successful (200) responses — never error responses.
+const OK_HEADERS = { ...CORS_HEADERS, ...PUBLIC_GET_CACHE_HEADERS };
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
@@ -60,10 +64,10 @@ export async function GET(request: NextRequest) {
     if (!result) {
       return NextResponse.json(
         { result: null, reason: 'insufficient data to estimate rent' },
-        { status: 200, headers: CORS_HEADERS },
+        { status: 200, headers: OK_HEADERS },
       );
     }
-    return NextResponse.json({ result }, { status: 200, headers: CORS_HEADERS });
+    return NextResponse.json({ result }, { status: 200, headers: OK_HEADERS });
   } catch (err) {
     console.error('[estimate-rent] error:', err);
     return NextResponse.json(

@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/db/supabase';
 import { getSalesForSuburb } from '@/lib/db/queries';
 import { propertyCache } from '@/lib/cache';
+import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
+
+// Cache only successful (200) responses — never error responses.
+const OK_HEADERS = { ...CORS_HEADERS, ...PUBLIC_GET_CACHE_HEADERS };
 
 /**
  * OPTIONS /api/comparable-sales — CORS preflight
@@ -161,7 +165,7 @@ export async function GET(request: NextRequest) {
     const comparables = findComparablesFromCache(suburb, beds, baths, propertyType, excludeSlug);
     return NextResponse.json(
       { comparables: comparables.slice(0, 4) },
-      { status: 200, headers: CORS_HEADERS }
+      { status: 200, headers: OK_HEADERS }
     );
   }
 
@@ -310,7 +314,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       { comparables: top4 },
-      { status: 200, headers: CORS_HEADERS }
+      { status: 200, headers: OK_HEADERS }
     );
   } catch (err) {
     console.error('[comparable-sales] Unexpected error:', err);

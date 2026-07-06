@@ -3,12 +3,17 @@ import { fetchAddressSuggestions, type AddressSuggestion } from '@/lib/address-s
 import { getCachedProfilesBySlugs, getSalesForSuburb, type PropertySaleRecord } from '@/lib/db/queries';
 import { toSlug } from '@/lib/utils/address';
 import type { StructuredAddress } from '@/types/property';
+import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
+
+// Cache only genuine-success responses — never the 400, and never the
+// outer catch's `fallback: true` response, which is a soft failure, not data.
+const OK_HEADERS = { ...CORS_HEADERS, ...PUBLIC_GET_CACHE_HEADERS };
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
@@ -73,7 +78,7 @@ export async function GET(request: NextRequest) {
     if (suggestions.length === 0) {
       return NextResponse.json(
         { rows: [], streetLabel: streetLabelOf(query), locationLabel: '' },
-        { status: 200, headers: CORS_HEADERS }
+        { status: 200, headers: OK_HEADERS }
       );
     }
 
@@ -148,7 +153,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       { rows, streetLabel: streetLabelOf(query), locationLabel },
-      { status: 200, headers: CORS_HEADERS }
+      { status: 200, headers: OK_HEADERS }
     );
   } catch (error) {
     console.error('[/api/street-details] Error:', error);
