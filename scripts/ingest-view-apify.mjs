@@ -41,7 +41,7 @@ const ACTOR_ID = '7iwbnQ1XMHHObYxTv'; // abotapi/view-com-au-scraper
 // City of Casey + Shire of Cardinia ONLY — {suburb, postcode}.
 const SUBURBS = [
   // Casey
-  ['Berwick', '3806'], ['Narre Warren', '3805'], ['Narre Warren South', '3805'], ['Cranbourne', '3977'],
+  ['Berwick', '3806'], ['Harkaway', '3806'], ['Narre Warren', '3805'], ['Narre Warren South', '3805'], ['Cranbourne', '3977'],
   ['Cranbourne East', '3977'], ['Cranbourne North', '3977'], ['Cranbourne West', '3977'], ['Hallam', '3803'],
   ['Hampton Park', '3976'], ['Doveton', '3177'], ['Endeavour Hills', '3802'], ['Lynbrook', '3975'],
   ['Lyndhurst', '3975'], ['Clyde', '3978'], ['Clyde North', '3978'],

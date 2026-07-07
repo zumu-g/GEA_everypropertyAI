@@ -53,7 +53,7 @@ const HEALTHCHECK_UUID = process.env.HEALTHCHECK_UUID;
 
 // City of Casey + Shire of Cardinia ONLY — slugs are {suburb}-vic-{postcode}.
 const SUBURB_SLUGS = [
-  'berwick-vic-3806', 'narre-warren-vic-3805', 'narre-warren-south-vic-3805', 'cranbourne-vic-3977',
+  'berwick-vic-3806', 'harkaway-vic-3806', 'narre-warren-vic-3805', 'narre-warren-south-vic-3805', 'cranbourne-vic-3977',
   'cranbourne-east-vic-3977', 'cranbourne-north-vic-3977', 'cranbourne-west-vic-3977', 'hallam-vic-3803',
   'hampton-park-vic-3976', 'doveton-vic-3177', 'endeavour-hills-vic-3802', 'lynbrook-vic-3975',
   'lyndhurst-vic-3975', 'clyde-vic-3978', 'clyde-north-vic-3978',
