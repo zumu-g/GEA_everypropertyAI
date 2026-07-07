@@ -171,7 +171,7 @@ html {
 @media print {
   @page {
     margin: 14mm;
-    size: A4 landscape;
+    size: A4 portrait;
   }
   /* Preserve table backgrounds/accents if the user enables background graphics */
   table,
