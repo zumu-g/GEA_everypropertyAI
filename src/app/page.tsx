@@ -92,7 +92,7 @@ export default function HomePage() {
           </p>
 
           {/* Search */}
-          <div {...fadeUpProps(240, "mt-10 w-full max-w-2xl")}>
+          <div {...fadeUpProps(240, "relative z-20 mt-10 w-full max-w-2xl")}>
             <AddressSearch size="lg" />
           </div>
 

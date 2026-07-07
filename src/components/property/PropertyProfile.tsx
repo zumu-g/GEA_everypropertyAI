@@ -823,9 +823,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {/* ─── Estimated Price Range ─── */}
         {(enrichedEstimate || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
           <section>
-            <div className="grid gap-6 sm:grid-cols-2">
+            <div className="grid items-stretch gap-6 sm:grid-cols-2">
               {/* Price estimate card */}
-              <div>
+              <div className="flex h-full flex-col">
                 {enrichedEstimate ? (
                   <>
                     <div className="mb-6 flex items-center gap-2">
@@ -850,7 +850,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         {enrichedEstimate.confidenceLevel} confidence
                       </span>
                     </div>
-                    <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                    <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                       <div>
                         <div className="flex items-end gap-4 mb-4">
                           <div className="text-center flex-1">
@@ -895,7 +895,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                       priceSource === 'last-sale' ? 'Estimated Value' :
                       'Estimated Price Range'
                     } />
-                    <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                    <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                       {(priceLow != null && priceHigh != null) ? (
                         <div>
                           <div className="flex items-end gap-4 mb-4">
@@ -950,7 +950,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 // nearby rentals time-adjusted by 12-month suburb rent growth.
                 if (rentalEstimate) {
                   return (
-                    <div>
+                    <div className="flex h-full flex-col">
                       <div className="mb-6 flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
                           <TrendingUp className="h-4 w-4 text-[#2E5470]" />
@@ -968,7 +968,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                           {rentalEstimate.confidenceLevel} confidence
                         </span>
                       </div>
-                      <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                      <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                         <div className="flex items-end gap-4 mb-4">
                           <div className="text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
@@ -1018,7 +1018,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 const highRent = Math.round(midRent * 1.1);
 
                 return (
-                  <div>
+                  <div className="flex h-full flex-col">
                     <div className="mb-6 flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
                         <TrendingUp className="h-4 w-4 text-[#2E5470]" />
@@ -1032,7 +1032,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         {confidence} confidence
                       </span>
                     </div>
-                    <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                    <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                       <div className="flex items-end gap-4 mb-4">
                         <div className="text-center flex-1">
                           <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
