@@ -11,8 +11,10 @@ export interface NearbyChildcare {
 
 interface OverpassElement {
   id: number;
-  lat: number;
-  lon: number;
+  lat?: number;
+  lon?: number;
+  /** Ways/relations return their centroid here when queried with `out center`. */
+  center?: { lat: number; lon: number };
   tags: {
     name?: string;
     'addr:housenumber'?: string;
@@ -32,7 +34,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 export async function fetchNearbyChildcare(
   lat: number,
   lng: number,
-  radiusMetres: number = 1500
+  radiusMetres: number = 2000
 ): Promise<NearbyChildcare[]> {
   const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`;
   const cached = cache.get(cacheKey);
@@ -41,7 +43,10 @@ export async function fetchNearbyChildcare(
   }
 
   try {
-    const query = `data=[out:json][timeout:10];node["amenity"="childcare"](around:${radiusMetres},${lat},${lng});out body;`;
+    // nwr (node+way+relation) with `out center`: most centres are mapped as
+    // building outlines (ways), and many are tagged kindergarten — nodes-only
+    // childcare-only returned 0 results across much of Casey/Cardinia.
+    const query = `data=[out:json][timeout:10];nwr["amenity"~"^(childcare|kindergarten)$"](around:${radiusMetres},${lat},${lng});out center;`;
 
     const res = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
@@ -62,8 +67,10 @@ export async function fetchNearbyChildcare(
     if (!Array.isArray(json.elements)) return [];
 
     const centres: NearbyChildcare[] = json.elements
-      .filter((el) => el.tags?.name)
+      .filter((el) => el.tags?.name && (el.lat ?? el.center?.lat) != null)
       .map((el) => {
+        const elLat = el.lat ?? el.center!.lat;
+        const elLon = el.lon ?? el.center!.lon;
         const parts = [
           el.tags['addr:housenumber'],
           el.tags['addr:street'],
@@ -72,7 +79,7 @@ export async function fetchNearbyChildcare(
 
         return {
           name: el.tags.name as string,
-          distanceKm: haversine(lat, lng, el.lat, el.lon),
+          distanceKm: haversine(lat, lng, elLat, elLon),
           address: parts.length > 0 ? parts.join(' ') : undefined,
         };
       })
