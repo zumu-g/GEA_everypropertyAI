@@ -1,4 +1,5 @@
 import type {
+  AgentListingsResponse,
   CmaPack,
   ComparableResult,
   EnrichResponse,
@@ -11,7 +12,16 @@ import type {
   SoldSaleResult,
   StreetRow,
   StructuredAddress,
+  VendorReportResponse,
 } from "./types.js";
+
+/**
+ * Per-request fetch timeouts. A live crawl (POST /api/property) runs ≤110s
+ * synchronously, so property/proposal tools get 130s; every other endpoint is
+ * a fast DB query and gets the 30s default.
+ */
+const CRAWL_TIMEOUT_MS = 130_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 // Street-type splitter — mirrors src/components/search/AddressSearch.tsx so the
 // StructuredAddress we build matches exactly what the app's UI sends to /api/property.
@@ -36,7 +46,7 @@ export interface ClientOptions {
   baseUrl?: string;
   /** Optional bearer token sent as Authorization header. Default: $EVERYPROPERTY_API_TOKEN */
   token?: string;
-  /** Per-request timeout (ms). Property/CMA may trigger a live crawl. Default: 120000. */
+  /** Default per-request timeout (ms) for fast endpoints. Property/proposal override to 130s. Default: 30000. */
   timeoutMs?: number;
 }
 
@@ -76,12 +86,17 @@ export class PropertyIQClient {
       opts.baseUrl ?? process.env.EVERYPROPERTY_API_URL ?? "http://localhost:3007"
     ).replace(/\/$/, "");
     this.token = opts.token ?? process.env.EVERYPROPERTY_API_TOKEN;
-    this.timeoutMs = opts.timeoutMs ?? 120_000;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   private async request<T>(
     path: string,
-    init: { method?: "GET" | "POST"; query?: Record<string, unknown>; body?: unknown } = {},
+    init: {
+      method?: "GET" | "POST";
+      query?: Record<string, unknown>;
+      body?: unknown;
+      timeoutMs?: number;
+    } = {},
   ): Promise<T> {
     const url = new URL(this.baseUrl + path);
     for (const [k, v] of Object.entries(init.query ?? {})) {
@@ -97,7 +112,7 @@ export class PropertyIQClient {
         method: init.method ?? "GET",
         headers,
         body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(init.timeoutMs ?? this.timeoutMs),
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -164,6 +179,7 @@ export class PropertyIQClient {
     return this.request("/api/property", {
       method: "POST",
       body: { address, fast: opts?.fast ?? false },
+      timeoutMs: CRAWL_TIMEOUT_MS,
     });
   }
 
@@ -228,6 +244,34 @@ export class PropertyIQClient {
     query: string,
   ): Promise<{ rows: StreetRow[]; streetLabel: string; locationLabel: string }> {
     return this.request("/api/street-details", { query: { q: query } });
+  }
+
+  /**
+   * An agent's recent listings + sales (≤20, newest first). Provide `name`
+   * (+ optional `agency` to disambiguate) OR `agentId`. An unknown agent
+   * returns 200 `{ agent: null, listings: [] }` — not an error.
+   */
+  agentListings(params: {
+    name?: string;
+    agency?: string;
+    agentId?: string;
+  }): Promise<AgentListingsResponse> {
+    return this.request("/api/agents/listings", { query: params });
+  }
+
+  /**
+   * Vendor report around a point: the 3 closest sold sales + 3 newest on-market
+   * listings. Provide `address` (geocoded server-side) OR `lat`+`lng`. `radius`
+   * is in km; `excludeAddress` drops the subject property from the results.
+   */
+  vendorReport(params: {
+    address?: string;
+    lat?: number;
+    lng?: number;
+    radius?: number;
+    excludeAddress?: string;
+  }): Promise<VendorReportResponse> {
+    return this.request("/api/vendor-report", { query: params });
   }
 
   // ── Composites (everypropertyAI value-add) ────────────────────────────────
