@@ -921,7 +921,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                          enrichedEstimate.priceSource === 'suburb-median' ? 'Estimated Value (Suburb)' :
                          'Estimated Price Range'}
                       </h2>
-                      <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      <span className={`ml-2 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         enrichedEstimate.confidenceLevel === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' :
                         enrichedEstimate.confidenceLevel === 'medium' ? 'bg-[#F5EEDD] text-[#8A6425]' :
                         'bg-[#F7E7E5] text-[#C5544A]'
@@ -931,23 +931,26 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     </div>
                     <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                       <div>
-                        <div className="flex items-end gap-3 mb-4">
-                          <div className="min-w-0 text-center flex-1">
-                            <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                            <p className="text-lg font-semibold text-[#6B7077] tabular-nums sm:text-xl">{fmtCurrency(enrichedEstimate.priceLow)}</p>
-                          </div>
-                          <div className="min-w-0 text-center flex-[1.4]">
-                            <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
-                            <p className="text-3xl font-semibold text-[#2E5470] tabular-nums sm:text-4xl">{fmtCurrency(enrichedEstimate.priceMid)}</p>
-                          </div>
-                          <div className="min-w-0 text-center flex-1">
-                            <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                            <p className="text-lg font-semibold text-[#6B7077] tabular-nums sm:text-xl">{fmtCurrency(enrichedEstimate.priceHigh)}</p>
-                          </div>
+                        {/* Estimate alone on its own line — three 7-digit figures
+                            can't share one row at display size without colliding. */}
+                        <div className="mb-4 text-center">
+                          <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
+                          <p className="text-3xl font-semibold text-[#2E5470] tabular-nums sm:text-4xl">{fmtCurrency(enrichedEstimate.priceMid)}</p>
                         </div>
                         <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
                           <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#E7E9EE] via-[#2E5470] to-[#E7E9EE]" />
                           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#2E5470] shadow-md" />
+                        </div>
+                        {/* Low/High anchored to the slider ends — can never collide with the estimate */}
+                        <div className="mt-2 mb-4 flex items-baseline justify-between">
+                          <div>
+                            <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
+                            <p className="text-base font-semibold text-[#6B7077] tabular-nums sm:text-lg">{fmtCurrency(enrichedEstimate.priceLow)}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
+                            <p className="text-base font-semibold text-[#6B7077] tabular-nums sm:text-lg">{fmtCurrency(enrichedEstimate.priceHigh)}</p>
+                          </div>
                         </div>
                         {enrichedEstimate.growthAdjustment && (
                           <p className="mt-3 text-xs text-[#6B7077] text-center">
@@ -977,25 +980,25 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                       {(priceLow != null && priceHigh != null) ? (
                         <div>
-                          <div className="flex items-end gap-4 mb-4">
-                            <div className="text-center flex-1">
-                              <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                              <p className="text-xl font-semibold text-[#6B7077] tabular-nums">{fmtCurrency(priceLow)}</p>
-                            </div>
-                            <div className="text-center flex-1">
-                              <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">
-                                {priceSource === 'listing-guide' ? 'Guide' : priceSource === 'listing-price' ? 'Listed' : 'Estimated'}
-                              </p>
-                              <p className="text-3xl font-semibold text-[#2E5470] tabular-nums">{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
-                            </div>
-                            <div className="text-center flex-1">
-                              <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                              <p className="text-xl font-semibold text-[#6B7077] tabular-nums">{fmtCurrency(priceHigh)}</p>
-                            </div>
+                          <div className="mb-4 text-center">
+                            <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">
+                              {priceSource === 'listing-guide' ? 'Guide' : priceSource === 'listing-price' ? 'Listed' : 'Estimated'}
+                            </p>
+                            <p className="text-3xl font-semibold text-[#2E5470] tabular-nums sm:text-4xl">{fmtCurrency(priceMid ?? currentPrice ?? 0)}</p>
                           </div>
                           <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
                             <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#E7E9EE] via-[#2E5470] to-[#E7E9EE]" />
                             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#2E5470] shadow-md" />
+                          </div>
+                          <div className="mt-2 mb-4 flex items-baseline justify-between">
+                            <div>
+                              <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
+                              <p className="text-base font-semibold text-[#6B7077] tabular-nums sm:text-lg">{fmtCurrency(priceLow)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
+                              <p className="text-base font-semibold text-[#6B7077] tabular-nums sm:text-lg">{fmtCurrency(priceHigh)}</p>
+                            </div>
                           </div>
                           <p className="mt-3 text-sm text-[#8A8F97] text-center">
                             {priceSource === 'listing-guide' ? 'Based on listing price guide' :
@@ -1039,7 +1042,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                             ? 'Estimated Rent (Comparables)'
                             : 'Estimated Rent (Suburb)'}
                         </h2>
-                        <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        <span className={`ml-2 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${
                           rentalEstimate.confidenceLevel === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' :
                           rentalEstimate.confidenceLevel === 'medium' ? 'bg-[#F5EEDD] text-[#8A6425]' :
                           'bg-[#F7E7E5] text-[#C5544A]'
@@ -1105,7 +1108,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                       <h2 className="text-2xl font-semibold tracking-tight text-[#16181D]">
                         Estimated Rental Income
                       </h2>
-                      <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      <span className={`ml-2 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         confidence === 'high' ? 'bg-[#E4F1EB] text-[#2F8F6B]' : 'bg-[#F5EEDD] text-[#8A6425]'
                       }`}>
                         {confidence} confidence

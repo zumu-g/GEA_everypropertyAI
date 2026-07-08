@@ -176,22 +176,22 @@ export function ComparableSales({
         <Link
           key={i}
           href={comparableHref(comp)}
-          className="animate-fade-up block rounded-xl border border-[#E7E9EE] bg-white p-5 transition-shadow duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
+          className="animate-fade-up block overflow-hidden rounded-xl border border-[#E7E9EE] bg-white transition-shadow duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
           style={{ animationDelay: `${i * 70}ms` }}
         >
-          <div className="flex gap-4">
-            {comp.imageUrl && (
-              <div className="relative h-20 w-24 shrink-0 overflow-hidden rounded-lg border border-[#E7E9EE] bg-[#F4F5F7]">
-                <Image
-                  src={comp.imageUrl}
-                  alt={comp.address}
-                  fill
-                  sizes="96px"
-                  className="object-cover"
-                />
-              </div>
-            )}
-
+          {/* Full-width photo on top — same treatment as On the Market Nearby */}
+          {comp.imageUrl && (
+            <div className="relative h-40 w-full">
+              <Image
+                src={comp.imageUrl}
+                alt={comp.address}
+                fill
+                sizes="(min-width: 640px) 50vw, 100vw"
+                className="object-cover"
+              />
+            </div>
+          )}
+          <div className="p-5">
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-semibold leading-snug text-[#16181D]">
