@@ -41,14 +41,17 @@ const ACTOR_ID = '7iwbnQ1XMHHObYxTv'; // abotapi/view-com-au-scraper
 // City of Casey + Shire of Cardinia ONLY — {suburb, postcode}.
 const SUBURBS = [
   // Casey
-  ['Berwick', '3806'], ['Harkaway', '3806'], ['Narre Warren', '3805'], ['Narre Warren South', '3805'], ['Cranbourne', '3977'],
+  ['Berwick', '3806'], ['Harkaway', '3806'], ['Narre Warren', '3805'], ['Narre Warren South', '3805'],
+  ['Narre Warren North', '3804'], ['Narre Warren East', '3804'], ['Cranbourne', '3977'],
   ['Cranbourne East', '3977'], ['Cranbourne North', '3977'], ['Cranbourne West', '3977'], ['Hallam', '3803'],
   ['Hampton Park', '3976'], ['Doveton', '3177'], ['Endeavour Hills', '3802'], ['Lynbrook', '3975'],
-  ['Lyndhurst', '3975'], ['Clyde', '3978'], ['Clyde North', '3978'],
+  ['Lyndhurst', '3975'], ['Clyde', '3978'], ['Clyde North', '3978'], ['Lysterfield South', '3156'],
   // Cardinia
-  ['Pakenham', '3810'], ['Officer', '3809'], ['Beaconsfield', '3807'], ['Beaconsfield Upper', '3808'],
-  ['Emerald', '3782'], ['Cockatoo', '3781'], ['Gembrook', '3783'], ['Koo Wee Rup', '3981'],
-  ['Nar Nar Goon', '3812'], ['Bunyip', '3815'], ['Garfield', '3814'], ['Tynong', '3813'],
+  ['Pakenham', '3810'], ['Pakenham Upper', '3810'], ['Officer', '3809'], ['Officer South', '3809'],
+  ['Beaconsfield', '3807'], ['Beaconsfield Upper', '3808'], ['Guys Hill', '3807'], ['Dewhurst', '3808'],
+  ['Emerald', '3782'], ['Cockatoo', '3781'], ['Gembrook', '3783'], ['Koo Wee Rup', '3981'], ['Dalmore', '3981'],
+  ['Nar Nar Goon', '3812'], ['Maryknoll', '3812'], ['Bunyip', '3815'], ['Garfield', '3814'], ['Garfield North', '3814'],
+  ['Tynong', '3813'], ['Tynong North', '3813'],
   ['Cardinia', '3978'], ['Lang Lang', '3984'],
 ].map(([suburb, postcode]) => ({ suburb, state: 'VIC', postcode }));
 
