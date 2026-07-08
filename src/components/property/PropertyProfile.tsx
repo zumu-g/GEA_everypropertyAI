@@ -1051,18 +1051,23 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                         </span>
                       </div>
                       <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
-                        <div className="flex items-end gap-4 mb-4">
-                          <div className="text-center flex-1">
+                        {/* Same layout as the value card: estimate on top, slider, low/high at the ends */}
+                        <div className="mb-4 text-center">
+                          <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
+                          <p className="text-3xl font-semibold text-[#2E5470] tabular-nums sm:text-4xl">${rentalEstimate.priceMid}/pw</p>
+                        </div>
+                        <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#E7E9EE] via-[#2E5470] to-[#E7E9EE]" />
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#2E5470] shadow-md" />
+                        </div>
+                        <div className="mt-2 mb-4 flex items-baseline justify-between">
+                          <div>
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                            <p className="text-xl font-semibold text-[#6B7077] tabular-nums">${rentalEstimate.priceLow}/pw</p>
+                            <p className="text-base font-semibold text-[#6B7077] tabular-nums sm:text-lg">${rentalEstimate.priceLow}/pw</p>
                           </div>
-                          <div className="text-center flex-1">
-                            <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
-                            <p className="text-3xl font-semibold text-[#2E5470] tabular-nums">${rentalEstimate.priceMid}/pw</p>
-                          </div>
-                          <div className="text-center flex-1">
+                          <div className="text-right">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                            <p className="text-xl font-semibold text-[#6B7077] tabular-nums">${rentalEstimate.priceHigh}/pw</p>
+                            <p className="text-base font-semibold text-[#6B7077] tabular-nums sm:text-lg">${rentalEstimate.priceHigh}/pw</p>
                           </div>
                         </div>
                         <p className="mt-3 text-xs text-[#8A8F97] text-center leading-relaxed">
@@ -1115,18 +1120,23 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                       </span>
                     </div>
                     <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
-                      <div className="flex items-end gap-4 mb-4">
-                        <div className="text-center flex-1">
+                      {/* Same layout as the value card: estimate on top, slider, low/high at the ends */}
+                      <div className="mb-4 text-center">
+                        <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
+                        <p className="text-3xl font-semibold text-[#2E5470] tabular-nums sm:text-4xl">${midRent}/pw</p>
+                      </div>
+                      <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
+                        <div className="absolute inset-0 rounded-full bg-gradient-to-r from-[#E7E9EE] via-[#2E5470] to-[#E7E9EE]" />
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white border-3 border-[#2E5470] shadow-md" />
+                      </div>
+                      <div className="mt-2 mb-4 flex items-baseline justify-between">
+                        <div>
                           <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                          <p className="text-xl font-semibold text-[#6B7077] tabular-nums">${lowRent}/pw</p>
+                          <p className="text-base font-semibold text-[#6B7077] tabular-nums sm:text-lg">${lowRent}/pw</p>
                         </div>
-                        <div className="text-center flex-1">
-                          <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
-                          <p className="text-3xl font-semibold text-[#2E5470] tabular-nums">${midRent}/pw</p>
-                        </div>
-                        <div className="text-center flex-1">
+                        <div className="text-right">
                           <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                          <p className="text-xl font-semibold text-[#6B7077] tabular-nums">${highRent}/pw</p>
+                          <p className="text-base font-semibold text-[#6B7077] tabular-nums sm:text-lg">${highRent}/pw</p>
                         </div>
                       </div>
                       <p className="text-xs text-[#8A8F97] text-center leading-relaxed">
