@@ -99,5 +99,6 @@ export const config = {
     '/api/vendor-report',
     '/api/street-details',
     '/api/enrich',
+    '/api/map-static',
   ],
 };

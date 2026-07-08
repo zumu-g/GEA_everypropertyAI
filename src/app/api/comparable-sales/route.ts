@@ -29,6 +29,21 @@ interface ComparableResult {
   baths?: number;
   landAreaSqm?: number;
   similarityScore: number;
+  imageUrl?: string;
+}
+
+/**
+ * First valid photo URL from a profile's inner data. `photos` entries may be
+ * plain URL strings or `{ url }` objects (same contract as /api/proposal).
+ */
+function firstPhotoUrl(innerData: Record<string, unknown>): string | undefined {
+  const photos = innerData.photos;
+  if (!Array.isArray(photos)) return undefined;
+  for (const p of photos) {
+    const url = typeof p === 'string' ? p : (p as { url?: unknown } | null)?.url;
+    if (typeof url === 'string' && url) return url;
+  }
+  return undefined;
 }
 
 /**
@@ -125,6 +140,7 @@ function findComparablesFromCache(
       baths: rowBaths,
       landAreaSqm: typeof d.landAreaSqm === 'number' ? d.landAreaSqm : undefined,
       similarityScore: score,
+      imageUrl: firstPhotoUrl(d),
     });
   }
 
@@ -268,6 +284,7 @@ export async function GET(request: NextRequest) {
         baths: rowBaths,
         landAreaSqm,
         similarityScore: score,
+        imageUrl: firstPhotoUrl(innerData),
       });
     }
 
@@ -301,6 +318,7 @@ export async function GET(request: NextRequest) {
           saleDate: vg.sale_date ?? '',
           landAreaSqm: vg.land_area_sqm ?? undefined,
           similarityScore: score,
+          imageUrl: vg.image_url ?? undefined,
         });
       }
     } catch (vgErr) {

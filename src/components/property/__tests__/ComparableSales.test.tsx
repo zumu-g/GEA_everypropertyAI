@@ -98,6 +98,23 @@ describe('ComparableSales links', () => {
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
   });
 
+  it('renders a thumbnail image when imageUrl is present', async () => {
+    mockFetch([comp({ imageUrl: 'https://i2.au.reastatic.net/photo.jpg' })]);
+    render(<ComparableSales suburb="Berwick" />);
+
+    const img = await waitFor(() => screen.getByRole('img'));
+    expect(img).toHaveAttribute('alt', '12 Smith St, Berwick VIC 3806');
+    expect(img.getAttribute('src')).toContain(encodeURIComponent('https://i2.au.reastatic.net/photo.jpg'));
+  });
+
+  it('renders no img element when imageUrl is absent', async () => {
+    mockFetch([comp()]);
+    render(<ComparableSales suburb="Berwick" />);
+
+    await waitFor(() => screen.getByRole('link'));
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
   it('preserves the per-card stagger via an increasing animation-delay (U4: CSS replaces framer-motion)', async () => {
     mockFetch([comp({ address: '1 A St' }), comp({ address: '2 B St' }), comp({ address: '3 C St' })]);
     render(<ComparableSales suburb="Berwick" />);
