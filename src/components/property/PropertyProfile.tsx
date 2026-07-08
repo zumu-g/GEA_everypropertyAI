@@ -32,6 +32,7 @@ import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
 import { ComparableSales } from "./ComparableSales";
+import { OnMarketNearby } from "./OnMarketNearby";
 import { TrackPropertyButton } from "./TrackPropertyButton";
 
 // Chart components pull in recharts (~the heaviest dep on this page). They render
@@ -803,8 +804,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             </div>
           )}
 
-          {addressSlug && property.data && (
-            <div className="px-6 pb-4 sm:px-8">
+          {/* Track + quick stats + on-market tag: one row */}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-[#E7E9EE] px-6 py-4 sm:px-8">
+            {addressSlug && property.data && (
               <TrackPropertyButton
                 addressSlug={addressSlug}
                 fullAddress={
@@ -813,11 +815,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   ?? ''
                 }
               />
-            </div>
-          )}
-
-          {/* Quick stats */}
-          <div className="flex flex-wrap items-center gap-6 border-t border-[#E7E9EE] px-6 py-4 sm:px-8">
+            )}
+            {(() => {
+              const status = String(d.listingStatus ?? '').toLowerCase();
+              return (status === 'for-sale' || status === 'active') ? (
+                <span className="inline-flex items-center rounded-full bg-[#E4F1EB] px-2.5 py-1 text-xs font-medium text-[#2F8F6B]">
+                  On Market
+                </span>
+              ) : null;
+            })()}
             {d.bedrooms != null && (
               <EditableStat
                 field="bedrooms"
@@ -865,6 +871,21 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 field="landArea"
                 value={String(d.landArea)}
                 label="Land"
+                suffix="m²"
+                editingField={editingField}
+                editValue={editValue}
+                editSaving={editSaving}
+                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                onSave={saveOverride}
+                onCancel={() => setEditingField(null)}
+                onEditValueChange={setEditValue}
+              />
+            )}
+            {(d.buildingArea ?? d.buildingAreaSqm) != null && (
+              <EditableStat
+                field="buildingArea"
+                value={String(d.buildingArea ?? d.buildingAreaSqm)}
+                label="House"
                 suffix="m²"
                 editingField={editingField}
                 editValue={editValue}
@@ -1117,14 +1138,35 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         )}
 
         {/* ─── About This Property ─── */}
-        {typeof d.description === 'string' && (d.description as string).length > 20 && (
-          <section>
-            <SectionTitle icon={FileText} title="About This Property" />
-            <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
-              <p className="max-w-[68ch] text-sm leading-relaxed text-[#33363D]">{d.description as string}</p>
-            </div>
-          </section>
-        )}
+        {/* ─── Property at a Glance ─── */}
+        {(() => {
+          const glance = [
+            d.propertyType != null ? String(d.propertyType).charAt(0).toUpperCase() + String(d.propertyType).slice(1) : 'Property',
+            d.bedrooms != null ? `with ${d.bedrooms} bedroom${d.bedrooms === 1 ? '' : 's'}` : null,
+            d.bathrooms != null ? `${d.bathrooms} bathroom${d.bathrooms === 1 ? '' : 's'}` : null,
+            d.carSpaces != null ? `${d.carSpaces} car space${d.carSpaces === 1 ? '' : 's'}` : null,
+          ].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
+          const extras = [
+            d.landArea != null ? `on a ${d.landArea} m² block` : null,
+            (d.buildingArea ?? d.buildingAreaSqm) != null ? `approx. ${d.buildingArea ?? d.buildingAreaSqm} m² of internal living` : null,
+            d.yearBuilt != null ? `built ${d.yearBuilt}` : null,
+            addr.suburb ? `in ${addr.suburb}` : null,
+          ].filter(Boolean).join(', ');
+          const summary = extras ? `${glance}, ${extras}.` : `${glance}.`;
+          const hasDescription = typeof d.description === 'string' && (d.description as string).length > 20;
+          if (!hasDescription && d.bedrooms == null && d.propertyType == null) return null;
+          return (
+            <section>
+              <SectionTitle icon={FileText} title="Property at a Glance" />
+              <div className="rounded-xl border border-[#E7E9EE] bg-white p-6 ">
+                <p className="max-w-[68ch] text-sm font-medium leading-relaxed text-[#16181D]">{summary}</p>
+                {hasDescription && (
+                  <p className="mt-3 max-w-[68ch] text-sm leading-relaxed text-[#33363D]">{d.description as string}</p>
+                )}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* ─── Buyer Demand ─── */}
         {enrichment?.buyerDemand && (
@@ -1362,6 +1404,32 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               propertyType={(d.propertyType as string) ?? undefined}
               excludeSlug={(d.slug as string) ?? (d.id as string) ?? undefined}
             />
+          </section>
+        )}
+
+        {/* ─── On the Market Nearby ─── */}
+        {typeof d.latitude === 'number' && typeof d.longitude === 'number' && (
+          <OnMarketNearby
+            lat={d.latitude as number}
+            lng={d.longitude as number}
+            excludeAddress={displayAddress}
+          />
+        )}
+
+        {/* ─── Location map ─── */}
+        {typeof d.latitude === 'number' && typeof d.longitude === 'number' && (
+          <section>
+            <SectionTitle icon={MapPin} title="Location" />
+            <div className="overflow-hidden rounded-xl border border-[#E7E9EE] bg-white">
+              {/* Muted static map (light style) via same-origin proxy — token stays server-side */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/map-static?lat=${d.latitude}&lng=${d.longitude}`}
+                alt={`Map showing ${displayAddress}`}
+                className="h-auto w-full"
+                loading="lazy"
+              />
+            </div>
           </section>
         )}
 
