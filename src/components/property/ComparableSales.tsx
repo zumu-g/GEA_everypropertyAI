@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Database } from "lucide-react";
+import { Database, Home } from "lucide-react";
 import { parseAddress } from "@/lib/utils/address";
 
 export interface ComparableResult {
@@ -179,8 +179,9 @@ export function ComparableSales({
           className="animate-fade-up block overflow-hidden rounded-xl border border-[#E7E9EE] bg-white transition-shadow duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
           style={{ animationDelay: `${i * 70}ms` }}
         >
-          {/* Full-width photo on top — same treatment as On the Market Nearby */}
-          {comp.imageUrl && (
+          {/* Full-width photo on top — same treatment as On the Market Nearby.
+              No photo → filled placeholder so all cards stay the same height. */}
+          {comp.imageUrl ? (
             <div className="relative h-40 w-full">
               <Image
                 src={comp.imageUrl}
@@ -189,6 +190,10 @@ export function ComparableSales({
                 sizes="(min-width: 640px) 50vw, 100vw"
                 className="object-cover"
               />
+            </div>
+          ) : (
+            <div className="flex h-40 w-full items-center justify-center bg-[#F4F5F7]" aria-hidden="true">
+              <Home className="h-8 w-8 text-[#C9CDD3]" />
             </div>
           )}
           <div className="p-5">
