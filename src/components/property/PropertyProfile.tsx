@@ -910,18 +910,18 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     </div>
                     <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                       <div>
-                        <div className="flex items-end gap-4 mb-4">
-                          <div className="text-center flex-1">
+                        <div className="flex items-end gap-3 mb-4">
+                          <div className="min-w-0 text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">Low</p>
-                            <p className="text-xl font-semibold text-[#6B7077] tabular-nums">{fmtCurrency(enrichedEstimate.priceLow)}</p>
+                            <p className="text-lg font-semibold text-[#6B7077] tabular-nums sm:text-xl">{fmtCurrency(enrichedEstimate.priceLow)}</p>
                           </div>
-                          <div className="text-center flex-1">
+                          <div className="min-w-0 text-center flex-[1.4]">
                             <p className="text-xs font-medium text-[#2E5470] uppercase tracking-wide">Estimated</p>
-                            <p className="text-4xl font-semibold text-[#2E5470] tabular-nums sm:text-5xl">{fmtCurrency(enrichedEstimate.priceMid)}</p>
+                            <p className="text-3xl font-semibold text-[#2E5470] tabular-nums sm:text-4xl">{fmtCurrency(enrichedEstimate.priceMid)}</p>
                           </div>
-                          <div className="text-center flex-1">
+                          <div className="min-w-0 text-center flex-1">
                             <p className="text-xs font-medium text-[#8A8F97] uppercase tracking-wide">High</p>
-                            <p className="text-xl font-semibold text-[#6B7077] tabular-nums">{fmtCurrency(enrichedEstimate.priceHigh)}</p>
+                            <p className="text-lg font-semibold text-[#6B7077] tabular-nums sm:text-xl">{fmtCurrency(enrichedEstimate.priceHigh)}</p>
                           </div>
                         </div>
                         <div className="relative h-3 rounded-full bg-[#F4F5F7] overflow-hidden">
