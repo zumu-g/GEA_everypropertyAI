@@ -321,3 +321,72 @@ describe('stale-property race guard (code-review fix)', () => {
     expect(document.body.textContent).not.toContain('999,999');
   });
 });
+
+// ── Fast-partial load + background upgrade (plan 2026-07-08-004) ──────────────
+describe('PropertyProfile fast-partial upgrade', () => {
+  /** Mock where the first /api/property POST returns a fast partial, and
+   * cachedOnly polls 404 until `fullReady` flips, then return the full profile. */
+  function mockFastFetch(bodies: Array<Record<string, unknown>>, state: { fullReady: boolean }) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.startsWith('/api/property')) {
+          const body = JSON.parse(String(init?.body ?? '{}'));
+          bodies.push(body);
+          if (body.cachedOnly) {
+            if (!state.fullReady) return { ok: false, status: 404, json: async () => ({ error: 'Not cached.' }) } as Response;
+            return { ok: true, json: async () => ({ profile: { ...PROFILE, crawlMode: 'full' }, addressSlug: 'test-slug', source: 'cache' }) } as Response;
+          }
+          return { ok: true, json: async () => ({ profile: { ...PROFILE, crawlMode: 'fast' }, addressSlug: 'test-slug', source: 'fresh' }) } as Response;
+        }
+        if (url.startsWith('/api/enrich')) return { ok: false, json: async () => ({}) } as Response;
+        if (url.startsWith('/api/estimate-rent')) return { ok: true, json: async () => ({ result: null }) } as Response;
+        if (url.startsWith('/api/estimate')) return { ok: true, json: async () => ({ result: { priceLow: 700000, priceMid: 750000, priceHigh: 800000, confidenceLevel: 'high', priceSource: 'comparables', methodology: 'x' } }) } as Response;
+        if (url.startsWith('/api/comparable-sales')) return { ok: true, json: async () => ({ comparables: [] }) } as Response;
+        return { ok: true, json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch,
+    );
+  }
+
+  it('sends fast:true, shows the gathering indicator, polls cachedOnly, and swaps in the full profile', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const state = { fullReady: false };
+    mockFastFetch(bodies, state);
+    render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+
+    await waitFor(() => screen.getByText(/still gathering data/i));
+    expect(bodies[0].fast).toBe(true);
+
+    // First poll 404s (fullReady false), second poll succeeds.
+    await waitFor(() => expect(bodies.some((b) => b.cachedOnly)).toBe(true), { timeout: 7000 });
+    state.fullReady = true;
+    await waitFor(() => expect(screen.queryByText(/still gathering data/i)).toBeNull(), { timeout: 12000 });
+
+    // Estimates were re-fired after the upgrade (an /api/estimate call follows the successful poll).
+    const cachedOnlyCount = bodies.filter((b) => b.cachedOnly).length;
+    expect(cachedOnlyCount).toBeGreaterThanOrEqual(1);
+  }, 25000);
+
+  it('does not poll or show the indicator when the profile is already full (cache hit)', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.startsWith('/api/property')) {
+          bodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return { ok: true, json: async () => ({ profile: { ...PROFILE, crawlMode: 'full' }, addressSlug: 'test-slug', source: 'cache' }) } as Response;
+        }
+        if (url.startsWith('/api/enrich')) return { ok: false, json: async () => ({}) } as Response;
+        if (url.startsWith('/api/comparable-sales')) return { ok: true, json: async () => ({ comparables: [] }) } as Response;
+        return { ok: true, json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch,
+    );
+    render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+
+    await waitFor(() => screen.getByText(/Back to Search/i));
+    expect(screen.queryByText(/still gathering data/i)).toBeNull();
+    expect(bodies.every((b) => !b.cachedOnly)).toBe(true);
+  });
+});

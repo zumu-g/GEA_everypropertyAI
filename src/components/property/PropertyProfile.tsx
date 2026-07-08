@@ -236,6 +236,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [editSaving, setEditSaving] = useState(false);
+  // True while a fast partial is on screen and the background full crawl is
+  // still filling the cache — drives the "still gathering data" indicator.
+  const [upgrading, setUpgrading] = useState(false);
   // Photo gallery lightbox state
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
 
@@ -260,6 +263,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     marketDataRef.current = null;
     setIsLoading(true);
     setError(null);
+    setUpgrading(false); // reset any prior property's pending upgrade indicator
     try {
       let structured: StructuredAddress;
       try {
@@ -276,10 +280,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       }
       setParsedAddress(structured);
 
+      // fast: render a quick partial in seconds; the route kicks the full crawl
+      // off in the background and we poll the cache for the completed profile.
+      // Cached full profiles are still served instantly (fast is a no-op there).
       const res = await fetch("/api/property", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: structured }),
+        body: JSON.stringify({ address: structured, fast: true }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -299,6 +306,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       // read stale closure state that was always null on first load — see below.)
       fetchEnrichment(structured, requestId);
       fetchEstimates(structured, data.profile, requestId);
+
+      // Fast partial (or queued empty) → poll the cache until the background
+      // full crawl lands, then swap the complete profile in.
+      if (data.profile?.crawlMode === 'fast' || data.source === 'queued') {
+        setUpgrading(true);
+        pollForFullProfile(structured, requestId);
+      } else {
+        setUpgrading(false);
+      }
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
       setError(
@@ -308,6 +324,38 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       if (requestId === requestIdRef.current) setIsLoading(false);
     }
   }, [address]);
+
+  // Poll the property cache (cachedOnly never crawls) until the background full
+  // crawl finishes, then swap the complete profile in and re-run the estimates
+  // (the fast partial often lacks coords/attrs, degrading the first estimate).
+  // Stops on supersession (requestId), success, or a ~3-minute cap.
+  const pollForFullProfile = async (structured: StructuredAddress, requestId: number) => {
+    const POLL_MS = 5_000;
+    const MAX_ATTEMPTS = 36;
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await new Promise((r) => setTimeout(r, POLL_MS));
+      if (requestId !== requestIdRef.current) return; // user navigated away
+      try {
+        const res = await fetch("/api/property", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: structured, cachedOnly: true }),
+        });
+        if (!res.ok) continue; // 404 = full crawl not cached yet
+        const data = await res.json();
+        if (requestId !== requestIdRef.current) return;
+        if (data.profile && data.profile.crawlMode !== 'fast') {
+          setProperty(data.profile);
+          setUpgrading(false);
+          fetchEstimates(structured, data.profile, requestId);
+          return;
+        }
+      } catch {
+        // transient network error — keep polling
+      }
+    }
+    if (requestId === requestIdRef.current) setUpgrading(false); // gave up quietly
+  };
 
   // Enrichment only: suburb/schools/transport market context. No longer carries
   // the estimate/rent logic — see fetchEstimates, which runs concurrently with this.
@@ -643,6 +691,16 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         <ArrowLeft className="h-4 w-4" />
         Back to Search
       </Link>
+
+      {upgrading && (
+        <div
+          role="status"
+          className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#E7E9EE] bg-[#FBFBFC] px-3 py-1.5 text-xs font-medium text-[#6B7077]"
+        >
+          <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#2E5470]" />
+          Still gathering data — this page will update automatically
+        </div>
+      )}
 
       <m.div
         initial={prefersReducedMotion ? false : { opacity: 0 }}
