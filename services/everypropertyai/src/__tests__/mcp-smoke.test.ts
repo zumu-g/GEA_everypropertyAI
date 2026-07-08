@@ -54,7 +54,7 @@ d('everypropertyai MCP server (live)', () => {
     const data = parseToolResult(res as never);
     expect(Array.isArray(data.results)).toBe(true);
     expect(data.results.length).toBeGreaterThan(0);
-    expect(data.results[0]).toHaveProperty('address');
+    expect(data.results[0]).toHaveProperty('rawAddress');
     await client.close();
   });
 });
