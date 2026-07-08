@@ -27,13 +27,23 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm pt-safe px-safe">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-3 group" aria-label="everypropertyAI home">
-            {/* GEA monogram */}
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
+            {/* Building mark */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#2E5470"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-7 w-7 transition-opacity duration-150 group-hover:opacity-80"
               aria-hidden="true"
             >
-              GEA
-            </span>
+              <path d="M8 21V5a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v16" />
+              <path d="M8 11H6a2 2 0 0 0-2 2v8" />
+              <path d="M17 9h1a2 2 0 0 1 2 2v10" />
+              <path d="M3 21h18" />
+              <path d="M11.5 6.5h2.5M11.5 10h2.5M11.5 13.5h2.5M11.5 17h2.5" />
+            </svg>
             <div className="leading-none">
               <span
                 className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]"
