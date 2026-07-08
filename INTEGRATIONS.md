@@ -6,8 +6,9 @@ consumer needs, and the outstanding deploy config.
 
 Public base URL (Railway): `https://geaeverypropertyai-production.up.railway.app`
 
-> **Consumer status (2026-06-16):** Live consumers are GEA_ST_CMA (`epai_cma_`), GEA_ST_Proposals,
-> GEA_CRM (`epai_crm_`), GEA_HR_recruitAI, and GEA_Reports_WeeklyCampaignVendor (`epai_wcv_`).
+> **Consumer status (2026-07-08):** Live consumers are GEA_ST_CMA (`epai_cma_`), GEA_ST_Proposals,
+> GEA_CRM (`epai_crm_`), GEA_HR_recruitAI, GEA_Reports_WeeklyCampaignVendor (`epai_wcv_`), and
+> GEA_ST_SG_assistant (`epai_stsg_`, consumes the API via the MCP server — see the **MCP server** section below).
 > **MAP_findAI has been merged into GEA_CRM** — its market-appraisal/nurture capability (the CLI
 > `sold` / `comps` / `street` commands) is now owned by GEA_CRM and served by the existing `epai_crm_`
 > key. MAP_findAI is no longer a separate consumer; it was never separately keyed, so there is nothing
@@ -75,7 +76,8 @@ EVERYPROPERTY_API_TOKEN=<the epai_… key>     # sent as Authorization: Bearer
 
 Each consumer app gets its **own** key so it can be rotated or revoked independently of the others.
 Convention: `epai_<consumer>_<random>` (e.g. `epai_cma_…` for GEA_ST_CMA, `epai_wcv_…` for the vendor
-report, `epai_crm_…` for the GEA CRM). The random suffix is CSPRNG entropy (≈32 hex chars).
+report, `epai_crm_…` for the GEA CRM, `epai_stsg_…` for GEA_ST_SG_assistant). The random suffix is
+CSPRNG entropy (≈32 hex chars).
 
 **The allowlist is `EVERYPROPERTY_API_KEYS`** — a comma-separated list on the everypropertyAI service.
 The **middleware** (`src/middleware.ts`, gates `/api/address-suggest`, `/api/property`, sold/listing
@@ -154,6 +156,23 @@ instead of a bare `returned 401`.
 - `property_rentals`: **empty** — needs a fresh Apify `rent` run (blocked on the Apify monthly
   spend cap). See `PICKUP_listings_rentals.md`.
 - Suburb casing normalised; reversed-name aliases resolve (e.g. "Upper Beaconsfield").
+
+## MCP server (`services/everypropertyai`)
+
+A thin stdio MCP server wraps the HTTP API so Claude-based agents can call it as tools. It is a pure
+wrapper (official `@modelcontextprotocol/sdk`, bearer header, no DB access, no business logic). Config
+via `EVERYPROPERTY_API_URL` + `EVERYPROPERTY_API_TOKEN`.
+
+**Consumer:** GEA_ST_SG_assistant (Stuart's work-assistant bot + its OpenClaw agent) runs the server on
+the Vultr VPS and on Stuart's Mac, pointed at prod with its own `epai_stsg_` key.
+
+**Tools (1:1 with endpoints):** `search_address`, `fetch_property`, `comparable_sales`, `sold_sales`,
+`on_market_listings`, `rental_listings`, `agent_listings`, `vendor_report`, `enrich`, `street_details`,
+plus composites `generate_cma_pack`, `proposal_property_data`. Crawl tools (`fetch_property` and the
+composites) use a 130s timeout; all others 30s.
+
+Setup snippet, env vars, and a live smoke test (`search_address` + `sold_sales` over the MCP protocol)
+are in `services/everypropertyai/README.md`.
 
 ## Outstanding (pick up here)
 Prod env + data routes are live (see status note above). Remaining:

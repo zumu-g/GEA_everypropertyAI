@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { PropertyIQClient } from "./client.js";
 
 const client = new PropertyIQClient();
+
+/** Build the MCP server with all tools registered. Exported so tests can connect it to an in-memory transport. */
+export function buildServer(): McpServer {
 const server = new McpServer({ name: "everypropertyai", version: "0.1.0" });
 
 /** Wrap a client call so every tool returns JSON text content and never throws to the transport. */
@@ -115,6 +119,30 @@ server.tool(
   ({ query }) => safe(() => client.streetDetails(query)),
 );
 
+server.tool(
+  "agent_listings",
+  "A real-estate agent's recent listings and sales (up to 20, newest first). Provide `name` (and optionally `agency` to disambiguate agents with the same name), OR `agentId`. An unknown agent returns an empty result, not an error. Fast DB query.",
+  {
+    name: z.string().optional().describe("agent full name; required unless agentId is given"),
+    agency: z.string().optional().describe("optional, disambiguates same-named agents"),
+    agentId: z.string().optional().describe("base64url id of 'name|agency'; used instead of name"),
+  },
+  (args) => safe(() => client.agentListings(args)),
+);
+
+server.tool(
+  "vendor_report",
+  "Vendor report around a point: the 3 closest sold sales plus the 3 newest on-market listings. Provide `address` (geocoded server-side) OR `lat`+`lng`. `radius` is in kilometres (server default applies if omitted); `excludeAddress` removes the subject property from results. Fast DB query.",
+  {
+    address: z.string().optional().describe("free-text address; geocoded if lat/lng absent"),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+    radius: z.number().optional().describe("search radius in km"),
+    excludeAddress: z.string().optional().describe("subject address to exclude from results"),
+  },
+  (args) => safe(() => client.vendorReport(args)),
+);
+
 // ── Composites ───────────────────────────────────────────────────────────────
 
 server.tool(
@@ -131,8 +159,14 @@ server.tool(
   ({ address }) => safe(() => client.proposalPropertyData(address)),
 );
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
-console.error(
-  `[everypropertyai] MCP server ready (API: ${process.env.EVERYPROPERTY_API_URL ?? "http://localhost:3007"})`,
-);
+  return server;
+}
+
+// Connect over stdio only when run directly (not when imported by a test).
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  const transport = new StdioServerTransport();
+  await buildServer().connect(transport);
+  console.error(
+    `[everypropertyai] MCP server ready (API: ${process.env.EVERYPROPERTY_API_URL ?? "http://localhost:3007"})`,
+  );
+}

@@ -8,10 +8,10 @@ scraping/merge logic or API keys are duplicated here; the app owns those.
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `EVERYPROPERTY_API_URL` | `http://localhost:3007` | Base URL of the running PropertyIQ app (local or deployed) |
-| `EVERYPROPERTY_API_TOKEN` | — | Optional bearer sent to the API (if you add shared-secret auth to the data routes) |
+| `EVERYPROPERTY_API_URL` | `http://localhost:3007` | Base URL of the everypropertyAI API. Prod: `https://geaeverypropertyai-production.up.railway.app` |
+| `EVERYPROPERTY_API_TOKEN` | — | Bearer token sent as `Authorization: Bearer <token>`. Must be one of the server's `EVERYPROPERTY_API_KEYS`. Required against prod. |
 
-Install: `npm install` (from this directory). Requires the PropertyIQ app to be running/reachable.
+Install: `npm install` (from this directory). Requires the everypropertyAI API to be running/reachable.
 
 ## CLI
 
@@ -28,8 +28,9 @@ After `npm run build` it's installable as the `everypropertyai` binary.
 
 ## MCP server
 
-Tools: `search_address`, `fetch_property`, `comparable_sales`, `sold_sales`, `enrich`,
-`street_details`, `generate_cma_pack`, `proposal_property_data`.
+Tools (1:1 over the HTTP API): `search_address`, `fetch_property`, `comparable_sales`,
+`sold_sales`, `on_market_listings`, `rental_listings`, `agent_listings`, `vendor_report`,
+`enrich`, `street_details`, plus composites `generate_cma_pack`, `proposal_property_data`.
 
 Inspect locally:
 
@@ -37,29 +38,56 @@ Inspect locally:
 npx @modelcontextprotocol/inspector npm run mcp
 ```
 
-Add to Claude Code:
+### Consumer setup (server-to-server, e.g. GEA_ST_SG_assistant)
+
+Build once (`npm run build`), then register the server pointing at prod with the consumer's
+own key. **Claude Code:**
 
 ```bash
-claude mcp add everypropertyai -- npm --prefix /ABS/PATH/services/everypropertyai run mcp
+claude mcp add everypropertyai \
+  --env EVERYPROPERTY_API_URL=https://geaeverypropertyai-production.up.railway.app \
+  --env EVERYPROPERTY_API_TOKEN=epai_stsg_… \
+  -- node /ABS/PATH/services/everypropertyai/dist/mcp.js
 ```
 
-Or Claude Desktop (`claude_desktop_config.json`):
+**Claude Desktop / OpenClaw (`claude_desktop_config.json`):**
 
 ```json
 {
   "mcpServers": {
     "everypropertyai": {
-      "command": "npx",
-      "args": ["tsx", "/ABS/PATH/services/everypropertyai/src/mcp.ts"],
-      "env": { "EVERYPROPERTY_API_URL": "http://localhost:3007" }
+      "command": "node",
+      "args": ["/ABS/PATH/services/everypropertyai/dist/mcp.js"],
+      "env": {
+        "EVERYPROPERTY_API_URL": "https://geaeverypropertyai-production.up.railway.app",
+        "EVERYPROPERTY_API_TOKEN": "epai_stsg_…"
+      }
     }
   }
 }
 ```
 
+Required env: `EVERYPROPERTY_API_URL` (prod URL above) and `EVERYPROPERTY_API_TOKEN` (the
+consumer's `epai_…` key, which must be present in the server's `EVERYPROPERTY_API_KEYS`
+allowlist). Never commit the token.
+
+## Smoke test
+
+`services/everypropertyai/src/__tests__/mcp-smoke.test.ts` drives `search_address` and
+`sold_sales` through the MCP protocol against the live API. It skips unless a real token is
+set:
+
+```bash
+EVERYPROPERTY_API_TOKEN=epai_stsg_… \
+EVERYPROPERTY_API_URL=https://geaeverypropertyai-production.up.railway.app \
+npx vitest run services/everypropertyai/src/__tests__/mcp-smoke.test.ts
+```
+
 ## Notes
 
-- `fetch_property` / `generate_cma_pack` for an **uncached** address can take up to ~120s
-  (the API runs the live Apify/Firecrawl/stealth cascade). Cached addresses return fast.
-- Composite tools (`cma_pack`, `proposal_property_data`) bundle several primitive calls into
-  one ready-to-use result for the CMA and proposal tools respectively.
+- `fetch_property` / `generate_cma_pack` / `proposal_property_data` for an **uncached**
+  address can take ~120s (the API runs the live crawl cascade); the MCP client uses a 130s
+  timeout for these. All other tools use a 30s timeout. Cached addresses return fast.
+- Rent figures are **weekly**. Address autocomplete is VIC-biased. `agent_listings` returns
+  an empty result (not an error) for an unknown agent.
+- Composite tools bundle several primitive calls into one ready-to-use result.

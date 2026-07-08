@@ -188,3 +188,35 @@ export interface ProposalPropertyData {
   description?: string;
   confidence: number;
 }
+
+/** One row from GET /api/agents/listings (a listing or a sold sale). */
+export interface AgentReferenceListing {
+  address: string;
+  suburb: string | null;
+  status: string;
+  price: string | null;
+  date: string | null;
+  url: string | null;
+  imageUrl: string | null;
+}
+
+/** GET /api/agents/listings — unknown agent returns { agent: null, listings: [] }. */
+export interface AgentListingsResponse {
+  agent: { name: string; agency: string | null } | null;
+  listings: AgentReferenceListing[];
+}
+
+/** One nearby comparable in a vendor report (sold or on-market). */
+export interface VendorReportRow {
+  rawAddress?: string;
+  suburb: string | null;
+  distanceMetres: number;
+  [key: string]: unknown;
+}
+
+/** GET /api/vendor-report — 3 closest sold sales + 3 newest listings around a point. */
+export interface VendorReportResponse {
+  solds: VendorReportRow[];
+  listings: VendorReportRow[];
+  [key: string]: unknown;
+}

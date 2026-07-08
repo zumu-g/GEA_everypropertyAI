@@ -71,3 +71,73 @@ describe('PropertyIQClient auth-failure hardening', () => {
     expect(out.suggestions).toHaveLength(1);
   });
 });
+
+describe('agent_listings + vendor_report client methods', () => {
+  it('agentListings issues GET /api/agents/listings with name+agency and bearer', async () => {
+    const calls = stubFetch(200, JSON.stringify({ agent: { name: 'Jane Smith', agency: 'Barry Plant' }, listings: [] }));
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+    const out = await client.agentListings({ name: 'Jane Smith', agency: 'Barry Plant' });
+    const url = new URL(calls[0].url);
+    expect(url.pathname).toBe('/api/agents/listings');
+    expect(url.searchParams.get('name')).toBe('Jane Smith');
+    expect(url.searchParams.get('agency')).toBe('Barry Plant');
+    expect(calls[0].headers['Authorization']).toBe('Bearer epai_good');
+    expect(out.agent?.name).toBe('Jane Smith');
+  });
+
+  it('agentListings passes an unknown agent through as { agent: null, listings: [] } (not an error)', async () => {
+    stubFetch(200, JSON.stringify({ agent: null, listings: [] }));
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+    const out = await client.agentListings({ name: 'Nobody' });
+    expect(out.agent).toBeNull();
+    expect(out.listings).toEqual([]);
+  });
+
+  it('vendorReport issues ?address= when given an address, and ?lat=&lng= when given coords', async () => {
+    const calls = stubFetch(200, JSON.stringify({ solds: [], listings: [] }));
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+
+    await client.vendorReport({ address: '10 Smith St, Berwick' });
+    expect(new URL(calls[0].url).searchParams.get('address')).toBe('10 Smith St, Berwick');
+
+    await client.vendorReport({ lat: -38.03, lng: 145.3, radius: 2 });
+    const q = new URL(calls[1].url).searchParams;
+    expect(q.get('lat')).toBe('-38.03');
+    expect(q.get('lng')).toBe('145.3');
+    expect(q.get('radius')).toBe('2');
+  });
+
+  it('non-200 surfaces as a PropertyIQError carrying the response body (not swallowed)', async () => {
+    stubFetch(500, 'downstream boom');
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+    const err = await client.vendorReport({ lat: 1, lng: 2 }).catch((e) => e as PropertyIQError);
+    expect(err).toBeInstanceOf(PropertyIQError);
+    expect(err.status).toBe(500);
+    expect(err.body).toBe('downstream boom');
+  });
+});
+
+describe('per-request timeouts', () => {
+  it('fetchProperty uses the 130s crawl timeout; fast endpoints use 30s', async () => {
+    stubFetch(
+      200,
+      JSON.stringify({
+        suggestions: [
+          { streetAddress: '10 Smith St', suburb: 'Berwick', state: 'VIC', postcode: '3806', fullAddress: '10 Smith St, Berwick VIC 3806' },
+        ],
+        profile: {},
+      }),
+    );
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+
+    await client.soldSales({ suburb: 'Berwick' });
+    expect(timeoutSpy).toHaveBeenLastCalledWith(30_000);
+
+    timeoutSpy.mockClear();
+    await client.fetchProperty('10 Smith St, Berwick');
+    // resolveAddress (fast, 30s) then POST /api/property (crawl, 130s).
+    expect(timeoutSpy).toHaveBeenCalledWith(30_000);
+    expect(timeoutSpy).toHaveBeenCalledWith(130_000);
+  });
+});
