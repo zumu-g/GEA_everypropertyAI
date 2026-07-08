@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Tag } from "lucide-react";
+import { Home, Tag } from "lucide-react";
 
 interface NearbyListing {
   rawAddress: string;
@@ -73,7 +73,7 @@ export function OnMarketNearby({ lat, lng, excludeAddress }: OnMarketNearbyProps
         {listings.map((l, i) => {
           const card = (
             <div className="flex h-full flex-col overflow-hidden rounded-xl border border-[#E7E9EE] bg-white transition-shadow duration-150 hover:shadow-md">
-              {l.imageUrl && (
+              {l.imageUrl ? (
                 <div className="relative h-40 w-full">
                   <Image
                     src={l.imageUrl}
@@ -82,6 +82,12 @@ export function OnMarketNearby({ lat, lng, excludeAddress }: OnMarketNearbyProps
                     sizes="(min-width: 1024px) 340px, (min-width: 640px) 50vw, 100vw"
                     className="object-cover"
                   />
+                </div>
+              ) : (
+                // Filled placeholder keeps every card the same height when a
+                // listing has no photo.
+                <div className="flex h-40 w-full items-center justify-center bg-[#F4F5F7]" aria-hidden="true">
+                  <Home className="h-8 w-8 text-[#C9CDD3]" />
                 </div>
               )}
               <div className="flex flex-1 flex-col gap-1 p-4">
