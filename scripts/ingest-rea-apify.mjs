@@ -53,13 +53,16 @@ const HEALTHCHECK_UUID = process.env.HEALTHCHECK_UUID;
 
 // City of Casey + Shire of Cardinia ONLY — slugs are {suburb}-vic-{postcode}.
 const SUBURB_SLUGS = [
-  'berwick-vic-3806', 'harkaway-vic-3806', 'narre-warren-vic-3805', 'narre-warren-south-vic-3805', 'cranbourne-vic-3977',
+  'berwick-vic-3806', 'harkaway-vic-3806', 'narre-warren-vic-3805', 'narre-warren-south-vic-3805',
+  'narre-warren-north-vic-3804', 'narre-warren-east-vic-3804', 'cranbourne-vic-3977',
   'cranbourne-east-vic-3977', 'cranbourne-north-vic-3977', 'cranbourne-west-vic-3977', 'hallam-vic-3803',
   'hampton-park-vic-3976', 'doveton-vic-3177', 'endeavour-hills-vic-3802', 'lynbrook-vic-3975',
-  'lyndhurst-vic-3975', 'clyde-vic-3978', 'clyde-north-vic-3978',
-  'pakenham-vic-3810', 'officer-vic-3809', 'beaconsfield-vic-3807', 'beaconsfield-upper-vic-3808',
-  'emerald-vic-3782', 'cockatoo-vic-3781', 'gembrook-vic-3783', 'koo-wee-rup-vic-3981',
-  'nar-nar-goon-vic-3812', 'bunyip-vic-3815', 'garfield-vic-3814', 'tynong-vic-3813',
+  'lyndhurst-vic-3975', 'clyde-vic-3978', 'clyde-north-vic-3978', 'lysterfield-south-vic-3156',
+  'pakenham-vic-3810', 'pakenham-upper-vic-3810', 'officer-vic-3809', 'officer-south-vic-3809',
+  'beaconsfield-vic-3807', 'beaconsfield-upper-vic-3808', 'guys-hill-vic-3807', 'dewhurst-vic-3808',
+  'emerald-vic-3782', 'cockatoo-vic-3781', 'gembrook-vic-3783', 'koo-wee-rup-vic-3981', 'dalmore-vic-3981',
+  'nar-nar-goon-vic-3812', 'maryknoll-vic-3812', 'bunyip-vic-3815', 'garfield-vic-3814', 'garfield-north-vic-3814',
+  'tynong-vic-3813', 'tynong-north-vic-3813',
   'cardinia-vic-3978', 'lang-lang-vic-3984',
 ];
 
