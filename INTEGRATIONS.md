@@ -71,6 +71,7 @@ EVERYPROPERTY_API_TOKEN=<the epai_… key>     # sent as Authorization: Bearer
 - recruitAI → `GET /api/agents/listings?name=<agent>`
 - proposals → `GET /api/search?q=<partial>` for type-ahead, then `GET /api/proposal?address=<fullAddress>`
 - weeklycampaign_vendor (GEA_reports_weeklycampaign_vendor) → `GET /api/vendor-report?lat=<lat>&lng=<lng>` (or `?address=<addr>`) → 3 closest solds + 3 newest listings within 500m
+- SG_assistant (GEA_ST_SG_assistant, `epai_stsg_` key) → `GET /api/property-report?address=<fullAddress>` (POST `{address}` also accepted) → GEA-branded property-details report as raw **PDF bytes** (`application/pdf`, not a URL). Details only (attributes, estimate band, sales history, photos) — no comparables or commentary. 401 bad key, 404 unresolvable address; thin profiles return 200 with gaps noted in the footnote. Uncached address runs the full crawl (~2 min)
 
 ### API keys (per-consumer, append-only)
 

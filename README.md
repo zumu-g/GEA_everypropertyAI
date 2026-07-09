@@ -207,6 +207,7 @@ Casey, Cardinia, and Baw Baw council areas. Includes Ray White, Barry Plant, Har
 | GET | `/api/agents/listings?name=...&agency=...` (or `?agentId=...`) | An agent's recent listings + sales (cap 20, newest first) — fixed shape for GEA_HR_recruitAI; **hard Bearer auth**, unknown agent → `{agent:null,listings:[]}` |
 | GET | `/api/proposal?address=...` (`&fast=1`) | Presentation-ready property data (estimate, attributes, agency/agent, hero photos) for GEA_ST_proposals; **hard Bearer auth**. Uncached address runs the full crawl (~up to 120s); cached is instant |
 | GET | `/api/vendor-report?lat=...&lng=...` (or `?address=...`, `&radius=...`) | 3 closest sold sales + 3 newest on-market listings within `radius` km (default 0.5 = 500m) of a point, each with `distanceMetres`; empty arrays when none. DB-only, no crawl. For GEA_reports_weeklycampaign_vendor |
+| GET | `/api/property-report?address=...` (or POST `{address}`) | GEA-branded property-details report as **PDF bytes** (`application/pdf`) — details, estimate band, sales history, hero photos; no comparables/commentary. For GEA_ST_SG_assistant; **hard Bearer auth**. Uncached address runs the full crawl (~up to 120s); thin profiles render with gaps noted in the footnote |
 | GET | `/api/street-details?q=...` | All known addresses on a street |
 | GET | `/api/enrich?address=...&suburb=...&state=...&postcode=...` | Planning, schools, transport, market data |
 | POST | `/api/ingest/domain?category=<sold\|on-market\|rent>&token=...` | Apify→Supabase ingest webhook (see `DAILY_SYNC_SETUP.md`) |
