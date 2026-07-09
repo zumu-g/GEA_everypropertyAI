@@ -824,78 +824,80 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 </span>
               ) : null;
             })()}
-            {d.bedrooms != null && (
-              <EditableStat
-                field="bedrooms"
-                value={String(d.bedrooms)}
-                label="Beds"
-                editingField={editingField}
-                editValue={editValue}
-                editSaving={editSaving}
-                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
-                onSave={saveOverride}
-                onCancel={() => setEditingField(null)}
-                onEditValueChange={setEditValue}
-              />
-            )}
-            {d.bathrooms != null && (
-              <EditableStat
-                field="bathrooms"
-                value={String(d.bathrooms)}
-                label="Baths"
-                editingField={editingField}
-                editValue={editValue}
-                editSaving={editSaving}
-                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
-                onSave={saveOverride}
-                onCancel={() => setEditingField(null)}
-                onEditValueChange={setEditValue}
-              />
-            )}
-            {d.carSpaces != null && (
-              <EditableStat
-                field="carSpaces"
-                value={String(d.carSpaces)}
-                label="Cars"
-                editingField={editingField}
-                editValue={editValue}
-                editSaving={editSaving}
-                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
-                onSave={saveOverride}
-                onCancel={() => setEditingField(null)}
-                onEditValueChange={setEditValue}
-              />
-            )}
-            {d.landArea != null && (
-              <EditableStat
-                field="landArea"
-                value={String(d.landArea)}
-                label="Land"
-                suffix="m²"
-                editingField={editingField}
-                editValue={editValue}
-                editSaving={editSaving}
-                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
-                onSave={saveOverride}
-                onCancel={() => setEditingField(null)}
-                onEditValueChange={setEditValue}
-              />
-            )}
-            {(d.buildingArea ?? d.buildingAreaSqm) != null && (
-              <EditableStat
-                field="buildingArea"
-                value={String(d.buildingArea ?? d.buildingAreaSqm)}
-                label="House"
-                suffix="m²"
-                editingField={editingField}
-                editValue={editValue}
-                editSaving={editSaving}
-                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
-                onSave={saveOverride}
-                onCancel={() => setEditingField(null)}
-                onEditValueChange={setEditValue}
-              />
-            )}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-[#E7E9EE] bg-white px-4 py-2">
+              {d.bedrooms != null && (
+                <EditableStat
+                  field="bedrooms"
+                  value={String(d.bedrooms)}
+                  label="Beds"
+                  editingField={editingField}
+                  editValue={editValue}
+                  editSaving={editSaving}
+                  onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                  onSave={saveOverride}
+                  onCancel={() => setEditingField(null)}
+                  onEditValueChange={setEditValue}
+                />
+              )}
+              {d.bathrooms != null && (
+                <EditableStat
+                  field="bathrooms"
+                  value={String(d.bathrooms)}
+                  label="Baths"
+                  editingField={editingField}
+                  editValue={editValue}
+                  editSaving={editSaving}
+                  onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                  onSave={saveOverride}
+                  onCancel={() => setEditingField(null)}
+                  onEditValueChange={setEditValue}
+                />
+              )}
+              {d.carSpaces != null && (
+                <EditableStat
+                  field="carSpaces"
+                  value={String(d.carSpaces)}
+                  label="Garage"
+                  editingField={editingField}
+                  editValue={editValue}
+                  editSaving={editSaving}
+                  onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                  onSave={saveOverride}
+                  onCancel={() => setEditingField(null)}
+                  onEditValueChange={setEditValue}
+                />
+              )}
+              {(d.buildingArea ?? d.buildingAreaSqm) != null && (
+                <EditableStat
+                  field="buildingArea"
+                  value={String(d.buildingArea ?? d.buildingAreaSqm)}
+                  label="Build"
+                  suffix="m²"
+                  editingField={editingField}
+                  editValue={editValue}
+                  editSaving={editSaving}
+                  onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                  onSave={saveOverride}
+                  onCancel={() => setEditingField(null)}
+                  onEditValueChange={setEditValue}
+                />
+              )}
+              {d.landArea != null && (
+                <EditableStat
+                  field="landArea"
+                  value={String(d.landArea)}
+                  label="Land"
+                  suffix="m²"
+                  editingField={editingField}
+                  editValue={editValue}
+                  editSaving={editSaving}
+                  onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                  onSave={saveOverride}
+                  onCancel={() => setEditingField(null)}
+                  onEditValueChange={setEditValue}
+                />
+              )}
+            </div>
           </div>
         </section>
 
