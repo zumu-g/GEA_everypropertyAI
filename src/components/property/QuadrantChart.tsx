@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Building2, BedDouble, Home } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { formatCurrency } from "@/lib/format-currency";
@@ -94,8 +94,13 @@ function EditableField({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  // Escape sets editing=false, which unmounts this input; in real browsers that
+  // unmount fires a blur event too, and without this guard commit() would read
+  // the (stale, pre-reset) draft via its closure and save it anyway.
+  const cancelledRef = useRef(false);
 
   const commit = () => {
+    if (cancelledRef.current) return;
     const parsed = parse ? parse(draft) : draft.trim() || null;
     onSave(parsed && parsed.trim() ? parsed : value);
     setEditing(false);
@@ -113,6 +118,7 @@ function EditableField({
           e.stopPropagation();
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           if (e.key === "Escape") {
+            cancelledRef.current = true;
             setDraft(value);
             setEditing(false);
           }
@@ -131,6 +137,7 @@ function EditableField({
       type="button"
       onClick={(e) => {
         e.stopPropagation();
+        cancelledRef.current = false;
         setDraft(value);
         setEditing(true);
       }}
@@ -327,7 +334,7 @@ export function QuadrantChart({
                   toggleSelected(index);
                 }
               }}
-              className="cursor-pointer outline-none"
+              className="cursor-pointer outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2E5470]"
             >
               <line
                 x1={CENTER}
@@ -347,7 +354,7 @@ export function QuadrantChart({
               />
               <foreignObject
                 x={labelAnchor.x - labelWidth / 2}
-                y={labelAnchor.y - (angle < 0 ? labelHeight : 0)}
+                y={labelAnchor.y - (labelHeight / 2) * (1 - Math.sin(angle))}
                 width={labelWidth}
                 height={labelHeight}
                 className="overflow-visible"
