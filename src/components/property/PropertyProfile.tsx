@@ -32,6 +32,7 @@ import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
 import { ComparableSales } from "./ComparableSales";
+import { QuadrantChartSection } from "./QuadrantChartSection";
 import { OnMarketNearby } from "./OnMarketNearby";
 import { TrackPropertyButton } from "./TrackPropertyButton";
 
@@ -1418,6 +1419,19 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               baths={d.bathrooms != null ? Number(d.bathrooms) : undefined}
               propertyType={(d.propertyType as string) ?? undefined}
               excludeSlug={(d.slug as string) ?? (d.id as string) ?? undefined}
+            />
+          </section>
+        )}
+
+        {/* ─── Market Position ─── */}
+        {parsedAddress?.suburb && (
+          <section>
+            <SectionTitle icon={Scale} title="Market Position" />
+            <QuadrantChartSection
+              suburb={parsedAddress.suburb}
+              propertyType={(d.propertyType as string) ?? undefined}
+              bedrooms={d.bedrooms != null ? Number(d.bedrooms) : undefined}
+              targetAddress={displayAddress}
             />
           </section>
         )}
