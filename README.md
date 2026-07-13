@@ -260,6 +260,41 @@ npm run mcp                                            # MCP stdio server (8 too
 - CMA-project integration prompt: `services/everypropertyai/CMA_INTEGRATION_PROMPT.md`.
 - See `services/everypropertyai/README.md` for the full surface.
 
+## QuadrantChart
+
+`src/components/property/QuadrantChart.tsx` — market position 2x2 quadrant chart for listing
+presentations/appraisal packs, demo at `/quadrant`. Segment-agnostic and props-driven (no data
+fetching): pass `segments` per the property type (e.g. Units/3-bed/4-bed/5+-bed, or shift down a
+notch for a unit — 1-bed/2-bed unit + 3-bed/4-bed house). Currently ships with hardcoded Berwick
+defaults; wiring segments from everypropertyAI comparable-sales + published suburb medians is
+deferred follow-up work (see the plan).
+
+```ts
+interface QuadrantSegment {
+  name: string;
+  low: number;
+  avg: number;
+  median: number;
+  icon?: React.ReactNode; // optional; falls back to a name-based heuristic
+}
+
+interface QuadrantChartProps {
+  segments?: QuadrantSegment[];      // defaults to 4 Berwick house segments
+  targetAddress?: string;            // defaults to a placeholder Berwick address
+  suburb?: string;
+  dataDate?: string;
+  onChange?: (state: {
+    segments: QuadrantSegment[];
+    targetAddress: string;
+    selectedIndex: number | null;    // which quadrant is "most similar to yours"
+  }) => void;
+}
+```
+
+State (segments, address, selection) is managed locally with `useState`; `onChange` fires on every
+edit/selection so a parent can persist it. Print-friendly (`print:` variants hide edit affordances);
+quadrants stack to one column below the `sm` breakpoint.
+
 ## Design system
 
 UI follows `DESIGN.md` — a cooler/whiter, sans-dominant "data site" aesthetic (intentional
