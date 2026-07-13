@@ -136,7 +136,11 @@ export async function GET(request: NextRequest) {
   const state = (searchParams.get('state') ?? 'VIC').toUpperCase();
   const propertyType = searchParams.get('propertyType') ?? undefined;
   const sinceDaysParam = searchParams.get('sinceDays');
-  const sinceDays = sinceDaysParam && Number.isFinite(Number(sinceDaysParam)) ? Number(sinceDaysParam) : 730;
+  const sinceDaysRaw = sinceDaysParam && Number.isFinite(Number(sinceDaysParam)) ? Number(sinceDaysParam) : 730;
+  // Clamp to a sane range: <=0 would silently return zero rows (every segment
+  // flagged insufficient) rather than a clear error; an unbounded huge value
+  // risks pathological date math downstream. 10 years is a generous ceiling.
+  const sinceDays = Math.min(Math.max(sinceDaysRaw, 1), 3650);
 
   if (!suburb) {
     return NextResponse.json(

@@ -61,6 +61,28 @@ describe("QuadrantChartSection", () => {
     await waitFor(() => expect(container).toBeEmptyDOMElement());
   });
 
+  it("renders the chart (not nothing) when the fetch succeeds but all 4 segments are flagged insufficient (R5a)", async () => {
+    mockFetchOnce({
+      ok: true,
+      json: async () => ({
+        segments: [
+          { name: "3 bedroom homes", low: 0, avg: 0, median: 0, sufficientData: false },
+          { name: "4 bedroom homes", low: 0, avg: 0, median: 0, sufficientData: false },
+          { name: "5+ bedroom homes", low: 0, avg: 0, median: 0, sufficientData: false },
+          { name: "Units / townhouses", low: 0, avg: 0, median: 0, sufficientData: false },
+        ],
+        dataDate: null,
+      }),
+    });
+
+    const { container } = render(
+      <QuadrantChartSection suburb="Nowhereville" targetAddress="1 Empty St, Nowhereville VIC 3999" />,
+    );
+
+    await waitFor(() => expect(container).not.toBeEmptyDOMElement());
+    expect(screen.getAllByText("Not enough recent sales").length).toBeGreaterThan(0);
+  });
+
   it("passes targetAddress/suburb/dataDate through to QuadrantChart", async () => {
     mockFetchOnce({
       ok: true,

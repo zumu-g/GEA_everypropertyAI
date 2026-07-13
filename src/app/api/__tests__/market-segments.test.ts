@@ -59,6 +59,20 @@ describe('GET /api/market-segments', () => {
     expect(body.segments.every((s: { sufficientData: boolean }) => s.sufficientData)).toBe(true);
   });
 
+  it('excludes non-positive and implausibly large sale prices from aggregation', async () => {
+    const { getSalesForSuburb } = await import('@/lib/db/queries');
+    vi.mocked(getSalesForSuburb).mockResolvedValue([
+      houseSale(3, 700_000), houseSale(3, 720_000), houseSale(3, 680_000),
+      houseSale(3, 0), houseSale(3, 60_000_000), // dropped: non-positive / implausible
+    ] as never);
+
+    const { body } = await callRoute('suburb=Berwick');
+    const threeBed = body.segments.find((s: { name: string }) => s.name === '3 bedroom homes');
+    expect(threeBed.sufficientData).toBe(true);
+    expect(threeBed.low).toBe(680_000);
+    expect(threeBed.median).toBe(700_000);
+  });
+
   it('flags a bucket with fewer than 3 matching sales as insufficient, not omitted or zeroed with false confidence', async () => {
     const { getSalesForSuburb } = await import('@/lib/db/queries');
     vi.mocked(getSalesForSuburb).mockResolvedValue([
@@ -96,6 +110,18 @@ describe('GET /api/market-segments', () => {
 
     await callRoute('suburb=Berwick&sinceDays=30');
     expect(mockFn).toHaveBeenCalledWith('Berwick', 'VIC', 30, 1000);
+  });
+
+  it('clamps a non-positive or implausibly large sinceDays to a sane range instead of passing it through raw', async () => {
+    const { getSalesForSuburb } = await import('@/lib/db/queries');
+    const mockFn = vi.mocked(getSalesForSuburb);
+    mockFn.mockResolvedValue([] as never);
+
+    await callRoute('suburb=Berwick&sinceDays=-5');
+    expect(mockFn).toHaveBeenCalledWith('Berwick', 'VIC', 1, 1000);
+
+    await callRoute('suburb=Berwick&sinceDays=999999');
+    expect(mockFn).toHaveBeenCalledWith('Berwick', 'VIC', 3650, 1000);
   });
 
   it('dataDate reflects the most recent sale_date among rows used in aggregation', async () => {
