@@ -30,6 +30,7 @@ import Image from "next/image";
 import dynamic from "next/dynamic";
 import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
+import { titleCaseSuburb } from "@/lib/utils/address";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
 import { ComparableSales } from "./ComparableSales";
 import { QuadrantChartSection } from "./QuadrantChartSection";
@@ -883,10 +884,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onEditValueChange={setEditValue}
                 />
               )}
-              {d.landArea != null && (
+              {(d.landArea ?? d.landAreaSqm) != null && (
                 <EditableStat
                   field="landArea"
-                  value={String(d.landArea)}
+                  value={String(d.landArea ?? d.landAreaSqm)}
                   label="Land"
                   suffix="m²"
                   editingField={editingField}
@@ -1163,7 +1164,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             d.carSpaces != null ? `${d.carSpaces} car space${d.carSpaces === 1 ? '' : 's'}` : null,
           ].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
           const extras = [
-            d.landArea != null ? `on a ${d.landArea} m² block` : null,
+            (d.landArea ?? d.landAreaSqm) != null ? `on a ${d.landArea ?? d.landAreaSqm} m² block` : null,
             (d.buildingArea ?? d.buildingAreaSqm) != null ? `approx. ${d.buildingArea ?? d.buildingAreaSqm} m² of internal living` : null,
             d.yearBuilt != null ? `built ${d.yearBuilt}` : null,
             addr.suburb ? `in ${addr.suburb}` : null,
@@ -1223,7 +1224,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {/* ─── Market Overview (CoreLogic data) ─── */}
         {enrichment?.marketData && (
           <section>
-            <SectionTitle icon={Building2} title={`${enrichment.marketData.suburb} Market Overview`} />
+            <SectionTitle icon={Building2} title={`${titleCaseSuburb(enrichment.marketData.suburb) ?? enrichment.marketData.suburb} Market Overview`} />
 
             {/* Houses vs Units comparison */}
             <div className="grid gap-4 sm:grid-cols-2 mb-6">
@@ -1344,15 +1345,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         )}
 
         {/* ─── Property Details ─── */}
-        {(d.yearBuilt != null || d.landArea != null) && (
+        {(d.yearBuilt != null || (d.landArea ?? d.landAreaSqm) != null) && (
           <section>
             <SectionTitle title="Property Details" />
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
               {d.yearBuilt != null && (
                 <StatCard label="Year Built" value={String(d.yearBuilt)} />
               )}
-              {d.landArea != null && (
-                <StatCard label="Land Area" value={`${d.landArea} m²`} />
+              {(d.landArea ?? d.landAreaSqm) != null && (
+                <StatCard label="Land Area" value={`${d.landArea ?? d.landAreaSqm} m²`} />
               )}
             </div>
           </section>
@@ -1368,8 +1369,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           if (d.garages != null) featureRows.push({ label: 'Garage spaces', value: String(d.garages) });
           const openSpaces = (d.carSpaces != null && d.garages != null) ? Number(d.carSpaces) - Number(d.garages) : null;
           if (openSpaces != null && openSpaces > 0) featureRows.push({ label: 'Open car spaces', value: String(openSpaces) });
-          if (d.landArea != null) featureRows.push({ label: 'Land size', value: `${d.landArea}m²` });
-          if (d.buildingArea != null) featureRows.push({ label: 'Building area', value: `${d.buildingArea}m²` });
+          if ((d.landArea ?? d.landAreaSqm) != null) featureRows.push({ label: 'Land size', value: `${d.landArea ?? d.landAreaSqm}m²` });
+          if ((d.buildingArea ?? d.buildingAreaSqm) != null) featureRows.push({ label: 'Building area', value: `${d.buildingArea ?? d.buildingAreaSqm}m²` });
           if (d.yearBuilt != null) featureRows.push({ label: 'Year built', value: String(d.yearBuilt) });
           const connectivity = d.connectivity as Record<string, unknown> | undefined;
           if (connectivity?.nbn) {

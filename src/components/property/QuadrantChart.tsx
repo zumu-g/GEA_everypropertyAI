@@ -42,19 +42,36 @@ const DEFAULT_SEGMENTS: QuadrantSegment[] = [
 
 const DEFAULT_ADDRESS = "9 Gloucester Ave, Berwick VIC 3806";
 
-// SVG geometry: 0deg is up, segments placed clockwise at 90deg intervals.
+// SVG geometry: a radial bar chart — concentric rings, one per segment, each
+// sweeping clockwise from the top (12 o'clock) by an angle proportional to
+// its value. 0deg is up; increasing degrees sweeps clockwise.
 const VIEWBOX = 320;
 const CENTER = VIEWBOX / 2;
-const MAX_RADIUS = 110;
-const HUB_RADIUS = 22;
-const GRIDLINE_FRACTIONS = [0.5, 1];
+const MAX_RADIUS = 118;
+const HUB_RADIUS = 30;
+const START_ANGLE_DEG = -90;
+const MAX_SWEEP_DEG = 352; // leaves a seam so the largest bar never fully closes the ring
+const TICK_COUNT = 6;
 
-function angleFor(index: number): number {
-  return (index * 90 - 90) * (Math.PI / 180);
+function pointAt(radius: number, angleDeg: number): { x: number; y: number } {
+  const angle = angleDeg * (Math.PI / 180);
+  return { x: CENTER + radius * Math.cos(angle), y: CENTER + radius * Math.sin(angle) };
 }
 
-function pointAt(radius: number, angle: number): { x: number; y: number } {
-  return { x: CENTER + radius * Math.cos(angle), y: CENTER + radius * Math.sin(angle) };
+/** Arc path for a ring bar: fixed radius, sweeping clockwise from the top. */
+function ringArcPath(radius: number, sweepDeg: number): string {
+  const clamped = Math.min(Math.max(sweepDeg, 0), 359.9);
+  const start = pointAt(radius, START_ANGLE_DEG);
+  const end = pointAt(radius, START_ANGLE_DEG + clamped);
+  const largeArc = clamped > 180 ? 1 : 0;
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y}`;
+}
+
+/** Ring-tint scale: darkest (full accent) at the centre, lightening outward. */
+function ringTint(index: number, selected: boolean): string {
+  if (selected) return "#2E5470";
+  const opacity = Math.max(1 - index * 0.16, 0.32);
+  return `rgba(46, 84, 112, ${opacity})`;
 }
 
 /** Digits-only parse; returns null when the input has no usable number. */
@@ -236,6 +253,8 @@ export function QuadrantChart({
   };
 
   const maxMedian = Math.max(...segments.map((s) => s.median), 1);
+  const scaleMax = maxMedian * 1.15;
+  const ringStep = (MAX_RADIUS - HUB_RADIUS) / Math.max(segments.length, 1);
 
   const segmentLabel = (s: QuadrantSegment) =>
     s.sufficientData === false
@@ -280,32 +299,56 @@ export function QuadrantChart({
         </button>
       </header>
 
-      {/* Radial chart: hidden below the sm breakpoint in favour of a stacked list. */}
+      {/* Radial bar chart: concentric rings, one per segment, sweeping clockwise
+          from the top in proportion to its median. Labels live in the legend
+          list below rather than on the chart, so nothing gets clipped. */}
       <svg
         viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
-        className="mx-auto hidden w-full max-w-[420px] sm:block print:[print-color-adjust:exact]"
+        className="mx-auto hidden w-full max-w-[360px] sm:block print:[print-color-adjust:exact]"
         role="img"
         aria-label={`Market position for ${targetAddress}: ${segments.map(segmentLabel).join("; ")}`}
       >
-        {GRIDLINE_FRACTIONS.map((f) => (
-          <g key={f}>
-            <circle
-              cx={CENTER}
-              cy={CENTER}
-              r={HUB_RADIUS + f * (MAX_RADIUS - HUB_RADIUS)}
-              fill="none"
-              stroke="#E7E9EE"
-              strokeWidth={1}
-            />
-            <text
-              x={CENTER + 4}
-              y={CENTER - (HUB_RADIUS + f * (MAX_RADIUS - HUB_RADIUS)) - 2}
-              className="fill-[#8A8F97] text-[9px]"
-            >
-              {formatCurrency(Math.round((maxMedian * f) / 1000) * 1000)}
-            </text>
-          </g>
+        {/* Angular scale ticks around the outer ring, like a clock face. */}
+        {Array.from({ length: TICK_COUNT }, (_, i) => i + 1).map((i) => {
+          const tickAngle = START_ANGLE_DEG + (MAX_SWEEP_DEG * i) / TICK_COUNT;
+          const spoke = pointAt(MAX_RADIUS, tickAngle);
+          const labelPt = pointAt(MAX_RADIUS + 16, tickAngle);
+          return (
+            <g key={i}>
+              <line
+                x1={CENTER}
+                y1={CENTER}
+                x2={spoke.x}
+                y2={spoke.y}
+                stroke="#EEF0F3"
+                strokeWidth={1}
+              />
+              <text
+                x={labelPt.x}
+                y={labelPt.y}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="fill-[#8A8F97] text-[9px]"
+              >
+                {formatCurrency(Math.round((scaleMax * i) / TICK_COUNT / 1000) * 1000)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Concentric grid circles, one per ring band. */}
+        {segments.map((_, index) => (
+          <circle
+            key={index}
+            cx={CENTER}
+            cy={CENTER}
+            r={HUB_RADIUS + ringStep * (index + 1)}
+            fill="none"
+            stroke="#E7E9EE"
+            strokeWidth={1}
+          />
         ))}
+
         <circle cx={CENTER} cy={CENTER} r={HUB_RADIUS} fill="#F4F5F7" stroke="#E7E9EE" />
         <text
           x={CENTER}
@@ -319,12 +362,9 @@ export function QuadrantChart({
 
         {segments.map((segment, index) => {
           const selected = selectedIndex === index;
-          const angle = angleFor(index);
-          const barLength = HUB_RADIUS + (segment.median / maxMedian) * (MAX_RADIUS - HUB_RADIUS);
-          const tip = pointAt(barLength, angle);
-          const labelAnchor = pointAt(MAX_RADIUS + 18, angle);
-          const labelWidth = 128;
-          const labelHeight = 78;
+          const ringRadius = HUB_RADIUS + ringStep * (index + 0.5);
+          const sweepDeg =
+            segment.sufficientData === false ? 0 : (segment.median / scaleMax) * MAX_SWEEP_DEG;
 
           return (
             <g
@@ -342,78 +382,23 @@ export function QuadrantChart({
               }}
               className="cursor-pointer outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2E5470]"
             >
-              <line
-                x1={CENTER}
-                y1={CENTER}
-                x2={tip.x}
-                y2={tip.y}
-                stroke={selected ? "#2E5470" : "#5C7466"}
-                strokeWidth={selected ? 10 : 7}
-                strokeLinecap="round"
-                className="print:[print-color-adjust:exact]"
-              />
-              <circle
-                cx={tip.x}
-                cy={tip.y}
-                r={selected ? 7 : 5}
-                fill={selected ? "#2E5470" : "#5C7466"}
-              />
-              <foreignObject
-                x={labelAnchor.x - labelWidth / 2}
-                y={labelAnchor.y - (labelHeight / 2) * (1 - Math.sin(angle))}
-                width={labelWidth}
-                height={labelHeight}
-                className="overflow-visible"
-              >
-                <div
-                  className={cn(
-                    "flex flex-col items-center gap-0.5 rounded-lg border p-2 text-center",
-                    selected
-                      ? "border-[#2E5470] bg-[#E4EBF1]"
-                      : "border-[#E7E9EE] bg-[#FBFBFC]",
-                  )}
-                >
-                  <div className="flex items-center gap-1 text-[#2E5470]">
-                    {segment.icon ?? segmentIcon(segment.name)}
-                    <EditableField
-                      value={segment.name}
-                      onSave={(v) => updateSegment(index, "name", v)}
-                      label={`${segment.name} segment name`}
-                      className="text-xs font-semibold text-[#16181D]"
-                      displayClassName="text-xs font-semibold text-[#16181D] -mx-1 px-1"
-                    />
-                  </div>
-                  {selected && <Badge tone="accent">Most similar to yours</Badge>}
-                  {segment.sufficientData === false ? (
-                    <p className="text-[10px] italic text-[#8A8F97]">Not enough recent sales</p>
-                  ) : (
-                    <div className="flex gap-1.5 text-[10px] tabular-nums">
-                      {(["low", "avg", "median"] as const).map((field) => (
-                        <EditableField
-                          key={field}
-                          value={String(segment[field])}
-                          onSave={(v) => updateSegment(index, field, v)}
-                          label={`${segment.name} ${field} price`}
-                          format={(v) => formatCurrency(Number(v))}
-                          parse={(raw) => {
-                            const parsed = parseCurrencyInput(raw);
-                            return parsed === null ? null : String(parsed);
-                          }}
-                          className="w-16 text-[10px] font-medium text-[#16181D]"
-                          displayClassName="text-[10px] font-medium text-[#16181D]"
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </foreignObject>
+              {sweepDeg > 0 && (
+                <path
+                  d={ringArcPath(ringRadius, sweepDeg)}
+                  fill="none"
+                  stroke={ringTint(index, selected)}
+                  strokeWidth={selected ? ringStep * 0.85 : ringStep * 0.7}
+                  strokeLinecap="round"
+                  className="print:[print-color-adjust:exact]"
+                />
+              )}
             </g>
           );
         })}
       </svg>
 
-      {/* Mobile fallback: stacked list, chart not shown below sm. */}
-      <div className="flex flex-col gap-3 sm:hidden" data-testid="quadrant-stacked-fallback">
+      {/* Legend: the value details for each segment, always visible (chart above is desktop-only). */}
+      <div className="flex flex-col gap-3" data-testid="quadrant-legend">
         {segments.map((segment, index) => {
           const selected = selectedIndex === index;
           return (
@@ -439,6 +424,11 @@ export function QuadrantChart({
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2 text-[#2E5470]">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: ringTint(index, selected) }}
+                    aria-hidden="true"
+                  />
                   {segment.icon ?? segmentIcon(segment.name)}
                   <EditableField
                     value={segment.name}
@@ -481,7 +471,7 @@ export function QuadrantChart({
       </div>
 
       <footer className="mt-6 flex items-center justify-between border-t border-[#E7E9EE] pt-4 text-xs text-[#8A8F97]">
-        <span>Prepared by Grants Estate Agents</span>
+        <span>© {new Date().getFullYear()} Grants Estate Agents</span>
         <span>{new Date().toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })}</span>
       </footer>
     </section>
