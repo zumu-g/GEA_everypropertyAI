@@ -3,6 +3,7 @@ import { getSupabaseServerClient, isSupabaseConfigured } from '@/lib/db/supabase
 import { getSalesForSuburb } from '@/lib/db/queries';
 import { propertyCache } from '@/lib/cache';
 import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
+import { parseAddress, toSlug } from '@/lib/utils/address';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -60,6 +61,55 @@ function extractAddress(rawData: Record<string, unknown>): string {
     if (typeof a.displayAddress === 'string') return a.displayAddress;
   }
   return '';
+}
+
+/**
+ * Normalized dedup key for a comparable's address — tolerant of case,
+ * punctuation, and street-type formatting differences between the
+ * property_cache and Valuer-General (property_sales) sources.
+ */
+function dedupKey(address: string): string {
+  const slug = toSlug(parseAddress(address));
+  return slug || address.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+/**
+ * Field-richness score used to break ties when two comparables share a
+ * dedup key — prefers the record with more populated display fields.
+ */
+function richnessScore(c: ComparableResult): number {
+  let score = 0;
+  if (c.imageUrl) score += 1;
+  if (c.beds != null) score += 1;
+  if (c.baths != null) score += 1;
+  if (c.landAreaSqm != null && c.landAreaSqm > 0) score += 1;
+  return score;
+}
+
+/**
+ * Collapse comparables that refer to the same property (same normalized
+ * address) into one — keeping the higher similarity score, then the
+ * richer record on ties. The same property can legitimately appear once
+ * from property_cache and once from the Valuer-General supplement.
+ */
+function dedupeComparables(comparables: ComparableResult[]): ComparableResult[] {
+  const byKey = new Map<string, ComparableResult>();
+
+  for (const candidate of comparables) {
+    const key = dedupKey(candidate.address);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, candidate);
+      continue;
+    }
+    const candidateWins =
+      candidate.similarityScore > existing.similarityScore ||
+      (candidate.similarityScore === existing.similarityScore &&
+        richnessScore(candidate) > richnessScore(existing));
+    if (candidateWins) byKey.set(key, candidate);
+  }
+
+  return Array.from(byKey.values());
 }
 
 /**
@@ -144,8 +194,9 @@ function findComparablesFromCache(
     });
   }
 
-  comparables.sort((a, b) => b.similarityScore - a.similarityScore);
-  return comparables;
+  const deduped = dedupeComparables(comparables);
+  deduped.sort((a, b) => b.similarityScore - a.similarityScore);
+  return deduped;
 }
 
 /**
@@ -326,9 +377,11 @@ export async function GET(request: NextRequest) {
       console.warn('[comparable-sales] VG sales query failed:', vgErr);
     }
 
-    // Sort by score descending, return top 4
-    comparables.sort((a, b) => b.similarityScore - a.similarityScore);
-    const top4 = comparables.slice(0, 4);
+    // Dedup across property_cache and VG sources (same property can appear
+    // in both), then sort by score descending and return top 4.
+    const deduped = dedupeComparables(comparables);
+    deduped.sort((a, b) => b.similarityScore - a.similarityScore);
+    const top4 = deduped.slice(0, 4);
 
     return NextResponse.json(
       { comparables: top4 },
