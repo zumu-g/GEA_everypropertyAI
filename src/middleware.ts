@@ -85,6 +85,7 @@ export const config = {
   matcher: [
     '/my-properties',
     '/my-properties/:path*',
+    '/quadrant',
     // Public data routes consumed by the CLI / external apps (NOT ingest or cron,
     // which authenticate with their own secrets). Note: /api/search and
     // /api/proposal and /api/agents/listings self-authenticate in-route, so they
