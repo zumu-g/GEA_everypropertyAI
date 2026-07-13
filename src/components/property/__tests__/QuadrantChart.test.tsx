@@ -20,6 +20,35 @@ function svgTree() {
   return within(svg as unknown as HTMLElement);
 }
 
+describe("QuadrantChart insufficient-data segments", () => {
+  const segments = [
+    { name: "Units / townhouses", low: 520_000, avg: 605_000, median: 590_000 },
+    { name: "3 bedroom homes", low: 640_000, avg: 715_000, median: 700_000 },
+    { name: "4 bedroom homes", low: 0, avg: 0, median: 0, sufficientData: false },
+    { name: "5+ bedroom homes", low: 950_000, avg: 1_100_000, median: 1_050_000 },
+  ];
+
+  it("hides price figures and shows a muted note for a segment flagged sufficientData: false", () => {
+    render(<QuadrantChart segments={segments} />);
+    const svg = svgTree();
+    expect(svg.getAllByText("Not enough recent sales").length).toBeGreaterThan(0);
+    // The flagged segment's own $0 figures must not be rendered anywhere.
+    expect(svg.queryByText("$0")).not.toBeInTheDocument();
+  });
+
+  it("gives the insufficient segment's bar an accessible name that doesn't claim real prices", () => {
+    render(<QuadrantChart segments={segments} />);
+    const bar = svgTree().getByRole("button", { name: "4 bedroom homes: not enough recent sales data" });
+    expect(bar).toBeInTheDocument();
+  });
+
+  it("a sufficient segment (sufficientData omitted or true) still renders its real prices", () => {
+    render(<QuadrantChart segments={segments} />);
+    const svg = svgTree();
+    expect(svg.getAllByText("$700,000").length).toBeGreaterThan(0);
+  });
+});
+
 describe("QuadrantChart defaults", () => {
   it("renders four segments with names, and low/avg/median formatted as AUD", () => {
     render(<QuadrantChart />);
