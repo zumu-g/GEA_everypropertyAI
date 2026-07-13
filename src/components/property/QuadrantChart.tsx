@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Building2, BedDouble, Home } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { formatCurrency } from "@/lib/format-currency";
+import { Badge } from "@/components/ui/Badge";
 
 export interface QuadrantSegment {
   name: string;
@@ -36,12 +38,19 @@ const DEFAULT_SEGMENTS: QuadrantSegment[] = [
 
 const DEFAULT_ADDRESS = "9 Gloucester Ave, Berwick VIC 3806";
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD",
-    maximumFractionDigits: 0,
-  }).format(amount);
+// SVG geometry: 0deg is up, segments placed clockwise at 90deg intervals.
+const VIEWBOX = 320;
+const CENTER = VIEWBOX / 2;
+const MAX_RADIUS = 110;
+const HUB_RADIUS = 22;
+const GRIDLINE_FRACTIONS = [0.5, 1];
+
+function angleFor(index: number): number {
+  return (index * 90 - 90) * (Math.PI / 180);
+}
+
+function pointAt(radius: number, angle: number): { x: number; y: number } {
+  return { x: CENTER + radius * Math.cos(angle), y: CENTER + radius * Math.sin(angle) };
 }
 
 /** Digits-only parse; returns null when the input has no usable number. */
@@ -55,16 +64,17 @@ function parseCurrencyInput(raw: string): number | null {
 function segmentIcon(name: string): React.ReactNode {
   const lower = name.toLowerCase();
   if (lower.includes("unit") || lower.includes("townhouse")) {
-    return <Building2 className="h-5 w-5" aria-hidden="true" />;
+    return <Building2 className="h-4 w-4" aria-hidden="true" />;
   }
   if (lower.includes("bed")) {
-    return <BedDouble className="h-5 w-5" aria-hidden="true" />;
+    return <BedDouble className="h-4 w-4" aria-hidden="true" />;
   }
-  return <Home className="h-5 w-5" aria-hidden="true" />;
+  return <Home className="h-4 w-4" aria-hidden="true" />;
 }
 
 /** Self-contained click-to-edit / blur-to-save text field. Reverts to the last
- * valid value on blur if left empty/whitespace-only. */
+ * valid value on blur if left empty/whitespace-only. Guards click/keydown so
+ * they never bubble to a selectable ancestor (e.g. the segment bar). */
 function EditableField({
   value,
   onSave,
@@ -97,8 +107,10 @@ function EditableField({
         autoFocus
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
         onBlur={commit}
         onKeyDown={(e) => {
+          e.stopPropagation();
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           if (e.key === "Escape") {
             setDraft(value);
@@ -107,7 +119,7 @@ function EditableField({
         }}
         aria-label={label}
         className={cn(
-          "rounded-lg border border-[#2E5470] bg-white px-2 py-1 outline-none focus:ring-2 focus:ring-[#2E5470]/30",
+          "rounded-lg border border-[#2E5470] bg-white px-2 py-1 outline-none focus:ring-2 focus:ring-[#2E5470] focus:ring-offset-2",
           className,
         )}
       />
@@ -122,10 +134,11 @@ function EditableField({
         setDraft(value);
         setEditing(true);
       }}
+      onKeyDown={(e) => e.stopPropagation()}
       title={`Edit ${label}`}
       aria-label={`Edit ${label}`}
       className={cn(
-        "print:pointer-events-none rounded-md text-left outline-none hover:bg-[#F4F5F7] focus-visible:ring-2 focus-visible:ring-[#2E5470]/30",
+        "print:pointer-events-none rounded-md text-left outline-none hover:bg-[#F4F5F7] focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2",
         displayClassName,
       )}
     >
@@ -211,10 +224,15 @@ export function QuadrantChart({
     setTimeout(() => setCopyState("idle"), 2000);
   };
 
+  const maxMedian = Math.max(...segments.map((s) => s.median), 1);
+
+  const segmentLabel = (s: QuadrantSegment) =>
+    `${s.name}: low ${formatCurrency(s.low)}, average ${formatCurrency(s.avg)}, median ${formatCurrency(s.median)}`;
+
   return (
     <section
       className="rounded-xl border border-[#E7E9EE] bg-white p-6 print:border-0 print:p-0"
-      aria-label="Market position quadrant chart"
+      aria-label="Market position radial bar chart"
     >
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3 border-b border-[#E7E9EE] pb-4">
         <div>
@@ -239,7 +257,7 @@ export function QuadrantChart({
         <button
           type="button"
           onClick={handleCopySummary}
-          className="print:hidden rounded-lg border border-[#E7E9EE] px-3 py-1.5 text-xs font-medium text-[#4A4E57] transition-colors hover:border-[#2E5470] hover:text-[#2E5470]"
+          className="print:hidden rounded-lg border border-[#E7E9EE] px-3 py-1.5 text-xs font-medium text-[#4A4E57] outline-none transition-colors hover:border-[#2E5470] hover:text-[#2E5470] focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2"
         >
           {copyState === "copied"
             ? "Copied"
@@ -249,18 +267,145 @@ export function QuadrantChart({
         </button>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {/* Radial chart: hidden below the sm breakpoint in favour of a stacked list. */}
+      <svg
+        viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
+        className="mx-auto hidden w-full max-w-[420px] sm:block print:[print-color-adjust:exact]"
+        role="img"
+        aria-label={`Market position for ${targetAddress}: ${segments.map(segmentLabel).join("; ")}`}
+      >
+        {GRIDLINE_FRACTIONS.map((f) => (
+          <g key={f}>
+            <circle
+              cx={CENTER}
+              cy={CENTER}
+              r={HUB_RADIUS + f * (MAX_RADIUS - HUB_RADIUS)}
+              fill="none"
+              stroke="#E7E9EE"
+              strokeWidth={1}
+            />
+            <text
+              x={CENTER + 4}
+              y={CENTER - (HUB_RADIUS + f * (MAX_RADIUS - HUB_RADIUS)) - 2}
+              className="fill-[#8A8F97] text-[9px]"
+            >
+              {formatCurrency(Math.round((maxMedian * f) / 1000) * 1000)}
+            </text>
+          </g>
+        ))}
+        <circle cx={CENTER} cy={CENTER} r={HUB_RADIUS} fill="#F4F5F7" stroke="#E7E9EE" />
+        <text
+          x={CENTER}
+          y={CENTER}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          className="fill-[#4A4E57] text-[8px] font-medium"
+        >
+          Subject
+        </text>
+
+        {segments.map((segment, index) => {
+          const selected = selectedIndex === index;
+          const angle = angleFor(index);
+          const barLength = HUB_RADIUS + (segment.median / maxMedian) * (MAX_RADIUS - HUB_RADIUS);
+          const tip = pointAt(barLength, angle);
+          const labelAnchor = pointAt(MAX_RADIUS + 18, angle);
+          const labelWidth = 128;
+          const labelHeight = 78;
+
+          return (
+            <g
+              key={index}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selected}
+              aria-label={segmentLabel(segment)}
+              onClick={() => toggleSelected(index)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleSelected(index);
+                }
+              }}
+              className="cursor-pointer outline-none"
+            >
+              <line
+                x1={CENTER}
+                y1={CENTER}
+                x2={tip.x}
+                y2={tip.y}
+                stroke={selected ? "#2E5470" : "#5C7466"}
+                strokeWidth={selected ? 10 : 7}
+                strokeLinecap="round"
+                className="print:[print-color-adjust:exact]"
+              />
+              <circle
+                cx={tip.x}
+                cy={tip.y}
+                r={selected ? 7 : 5}
+                fill={selected ? "#2E5470" : "#5C7466"}
+              />
+              <foreignObject
+                x={labelAnchor.x - labelWidth / 2}
+                y={labelAnchor.y - (angle < 0 ? labelHeight : 0)}
+                width={labelWidth}
+                height={labelHeight}
+                className="overflow-visible"
+              >
+                <div
+                  className={cn(
+                    "flex flex-col items-center gap-0.5 rounded-lg border p-2 text-center",
+                    selected
+                      ? "border-[#2E5470] bg-[#E4EBF1]"
+                      : "border-[#E7E9EE] bg-[#FBFBFC]",
+                  )}
+                >
+                  <div className="flex items-center gap-1 text-[#2E5470]">
+                    {segment.icon ?? segmentIcon(segment.name)}
+                    <EditableField
+                      value={segment.name}
+                      onSave={(v) => updateSegment(index, "name", v)}
+                      label={`${segment.name} segment name`}
+                      className="text-xs font-semibold text-[#16181D]"
+                      displayClassName="text-xs font-semibold text-[#16181D] -mx-1 px-1"
+                    />
+                  </div>
+                  {selected && <Badge tone="accent">Most similar to yours</Badge>}
+                  <div className="flex gap-1.5 text-[10px] tabular-nums">
+                    {(["low", "avg", "median"] as const).map((field) => (
+                      <EditableField
+                        key={field}
+                        value={String(segment[field])}
+                        onSave={(v) => updateSegment(index, field, v)}
+                        label={`${segment.name} ${field} price`}
+                        format={(v) => formatCurrency(Number(v))}
+                        parse={(raw) => {
+                          const parsed = parseCurrencyInput(raw);
+                          return parsed === null ? null : String(parsed);
+                        }}
+                        className="w-16 text-[10px] font-medium text-[#16181D]"
+                        displayClassName="text-[10px] font-medium text-[#16181D]"
+                      />
+                    ))}
+                  </div>
+                </div>
+              </foreignObject>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Mobile fallback: stacked list, chart not shown below sm. */}
+      <div className="flex flex-col gap-3 sm:hidden" data-testid="quadrant-stacked-fallback">
         {segments.map((segment, index) => {
           const selected = selectedIndex === index;
           return (
-            // Not a <button>: it contains nested interactive edit fields, and
-            // interactive content cannot nest inside <button> per HTML spec.
             <div
               key={index}
               role="button"
               tabIndex={0}
               aria-pressed={selected}
-              aria-label={`${segment.name} — mark as most similar to yours`}
+              aria-label={segmentLabel(segment)}
               onClick={() => toggleSelected(index)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -269,10 +414,10 @@ export function QuadrantChart({
                 }
               }}
               className={cn(
-                "print:[print-color-adjust:exact] flex cursor-pointer flex-col gap-3 rounded-xl border p-4 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#2E5470]/30",
+                "flex cursor-pointer flex-col gap-2 rounded-xl border p-4 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#2E5470] focus-visible:ring-offset-2",
                 selected
                   ? "border-[#2E5470] bg-[#E4EBF1]"
-                  : "border-[#E7E9EE] bg-[#FBFBFC] hover:border-[#2E5470]/50",
+                  : "border-[#E7E9EE] bg-[#FBFBFC]",
               )}
             >
               <div className="flex items-center justify-between gap-2">
@@ -286,36 +431,29 @@ export function QuadrantChart({
                     displayClassName="text-sm font-semibold text-[#16181D] -mx-1 px-1"
                   />
                 </div>
-                {selected && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#2E5470] px-2.5 py-0.5 text-xs font-medium text-white">
-                    Most similar to yours
-                  </span>
-                )}
+                {selected && <Badge tone="accent">Most similar to yours</Badge>}
               </div>
-
-              <dl className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-3 gap-2 text-center">
                 {(["low", "avg", "median"] as const).map((field) => (
                   <div key={field}>
-                    <dt className="text-[10px] uppercase tracking-wide text-[#8A8F97]">
+                    <p className="text-[10px] uppercase tracking-wide text-[#8A8F97]">
                       {field === "avg" ? "Average" : field === "low" ? "Low" : "Median"}
-                    </dt>
-                    <dd className="tabular-nums">
-                      <EditableField
-                        value={String(segment[field])}
-                        onSave={(v) => updateSegment(index, field, v)}
-                        label={`${segment.name} ${field} price`}
-                        format={(v) => formatCurrency(Number(v))}
-                        parse={(raw) => {
-                          const parsed = parseCurrencyInput(raw);
-                          return parsed === null ? null : String(parsed);
-                        }}
-                        className="w-24 text-sm font-medium text-[#16181D]"
-                        displayClassName="text-sm font-medium text-[#16181D]"
-                      />
-                    </dd>
+                    </p>
+                    <EditableField
+                      value={String(segment[field])}
+                      onSave={(v) => updateSegment(index, field, v)}
+                      label={`${segment.name} ${field} price`}
+                      format={(v) => formatCurrency(Number(v))}
+                      parse={(raw) => {
+                        const parsed = parseCurrencyInput(raw);
+                        return parsed === null ? null : String(parsed);
+                      }}
+                      className="w-24 text-sm font-medium text-[#16181D]"
+                      displayClassName="text-sm font-medium text-[#16181D]"
+                    />
                   </div>
                 ))}
-              </dl>
+              </div>
             </div>
           );
         })}

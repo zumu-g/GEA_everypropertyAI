@@ -3,6 +3,8 @@
  * Called AFTER enrichment data arrives, providing growth-adjusted estimates.
  */
 
+import { formatCurrency as fmtCurrency } from "@/lib/format-currency";
+
 export interface PriceEstimateInput {
   propertyType?: string;
   bedrooms?: number;
@@ -303,13 +305,6 @@ function buildResult(
   };
 }
 
-function fmtCurrency(n: number): string {
-  return new Intl.NumberFormat('en-AU', {
-    style: 'currency',
-    currency: 'AUD',
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 function formatDateShort(dateStr: string): string {
   try {

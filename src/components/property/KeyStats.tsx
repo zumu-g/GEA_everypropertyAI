@@ -2,16 +2,9 @@
 
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import type { PropertyProfile } from "@/types/property";
+import { formatCurrency } from "@/lib/format-currency";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-AU", {
-    style: "currency",
-    currency: "AUD",
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-AU", {

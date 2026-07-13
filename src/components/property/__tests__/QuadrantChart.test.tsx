@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { QuadrantChart } from "../QuadrantChart";
+
+afterEach(cleanup);
 
 /** Type into a field then blur it, mirroring the component's blur-to-save contract. */
 function editAndBlur(input: HTMLElement, value: string) {
@@ -9,16 +11,24 @@ function editAndBlur(input: HTMLElement, value: string) {
   fireEvent.blur(input);
 }
 
-afterEach(cleanup);
+// jsdom has no layout engine: the SVG radial chart (sm:block/hidden below sm) and
+// the stacked-list mobile fallback (sm:hidden) both exist in the DOM simultaneously.
+// Interaction tests scope to the SVG tree (the first of each duplicate) unless
+// explicitly testing the fallback.
+function svgTree() {
+  const svg = document.querySelector("svg")!;
+  return within(svg as unknown as HTMLElement);
+}
 
 describe("QuadrantChart defaults", () => {
-  it("renders four quadrants with AUD-formatted low/avg/median when no props are passed", () => {
+  it("renders four segments with names, and low/avg/median formatted as AUD", () => {
     render(<QuadrantChart />);
-    // Default segments include a 4-bedroom entry priced at $835,000 median.
-    expect(screen.getAllByText("$835,000").length).toBeGreaterThan(0);
-    expect(screen.getByText("3 bedroom homes")).toBeInTheDocument();
-    expect(screen.getByText("Units / townhouses")).toBeInTheDocument();
-    expect(screen.getByText("5+ bedroom homes")).toBeInTheDocument();
+    const svg = svgTree();
+    expect(svg.getAllByText("$835,000").length).toBeGreaterThan(0);
+    expect(svg.getAllByText("$700,000").length).toBeGreaterThan(0);
+    expect(svg.getByText("3 bedroom homes")).toBeInTheDocument();
+    expect(svg.getByText("Units / townhouses")).toBeInTheDocument();
+    expect(svg.getByText("5+ bedroom homes")).toBeInTheDocument();
   });
 
   it("renders the target address and footer", () => {
@@ -28,57 +38,87 @@ describe("QuadrantChart defaults", () => {
   });
 
   it("renders suburb and data date when provided", () => {
-    // Footer also renders today's full date, so match the combined suburb/date
-    // line exactly rather than a loose date substring.
     render(<QuadrantChart suburb="Officer" dataDate="Data as at June 2026" />);
     expect(screen.getByText("Officer · Data as at June 2026")).toBeInTheDocument();
+  });
+
+  it("renders the mobile stacked-list fallback alongside the chart", () => {
+    render(<QuadrantChart />);
+    const fallback = screen.getByTestId("quadrant-stacked-fallback");
+    expect(within(fallback).getByText("Units / townhouses")).toBeInTheDocument();
+    expect(within(fallback).getByText("5+ bedroom homes")).toBeInTheDocument();
+  });
+});
+
+describe("QuadrantChart accessibility", () => {
+  it("each segment bar has an accessible name including its prices, not just pressed state", () => {
+    render(<QuadrantChart />);
+    const bar = svgTree().getByRole("button", {
+      name: /4 bedroom homes: low \$760,000, average \$850,000, median \$835,000/i,
+    });
+    expect(bar).toBeInTheDocument();
   });
 });
 
 describe("QuadrantChart selection", () => {
-  it("selecting a quadrant shows the badge; selecting another moves it (only one badge ever)", () => {
+  it("selecting a segment shows the badge; selecting another moves it (only one badge ever, per tree)", () => {
     render(<QuadrantChart />);
-    const tiles = screen.getAllByRole("button", { name: /mark as most similar to yours/i });
+    const svg = svgTree();
+    const bars = svg.getAllByRole("button", { name: /^Units \/ townhouses:|^3 bedroom homes:|^4 bedroom homes:|^5\+ bedroom homes:/ });
 
-    fireEvent.click(tiles[0]);
-    expect(screen.getAllByText("Most similar to yours")).toHaveLength(1);
-    expect(tiles[0]).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(bars[0]);
+    expect(svg.getAllByText("Most similar to yours")).toHaveLength(1);
+    expect(bars[0]).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(tiles[1]);
-    expect(screen.getAllByText("Most similar to yours")).toHaveLength(1);
-    expect(tiles[0]).toHaveAttribute("aria-pressed", "false");
-    expect(tiles[1]).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(bars[1]);
+    expect(svg.getAllByText("Most similar to yours")).toHaveLength(1);
+    expect(bars[0]).toHaveAttribute("aria-pressed", "false");
+    expect(bars[1]).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("clicking the selected quadrant again deselects it", () => {
+  it("clicking the selected segment again deselects it", () => {
     render(<QuadrantChart />);
-    const tiles = screen.getAllByRole("button", { name: /mark as most similar to yours/i });
-    fireEvent.click(tiles[0]);
-    fireEvent.click(tiles[0]);
-    expect(screen.queryByText("Most similar to yours")).not.toBeInTheDocument();
+    const svg = svgTree();
+    const bars = svg.getAllByRole("button", { name: /^Units \/ townhouses:|^3 bedroom homes:|^4 bedroom homes:|^5\+ bedroom homes:/ });
+    fireEvent.click(bars[0]);
+    fireEvent.click(bars[0]);
+    expect(svg.queryByText("Most similar to yours")).not.toBeInTheDocument();
+  });
+
+  it("keyboard activation (Enter/Space) on a segment bar toggles selection", () => {
+    render(<QuadrantChart />);
+    const svg = svgTree();
+    const bars = svg.getAllByRole("button", { name: /^Units \/ townhouses:|^3 bedroom homes:|^4 bedroom homes:|^5\+ bedroom homes:/ });
+    fireEvent.keyDown(bars[0], { key: "Enter" });
+    expect(bars[0]).toHaveAttribute("aria-pressed", "true");
+    fireEvent.keyDown(bars[0], { key: " " });
+    expect(bars[0]).toHaveAttribute("aria-pressed", "false");
   });
 
   it("fires onChange with full state on selection", () => {
     const onChange = vi.fn();
     render(<QuadrantChart onChange={onChange} />);
-    const tiles = screen.getAllByRole("button", { name: /mark as most similar to yours/i });
-    fireEvent.click(tiles[0]);
+    const bars = svgTree().getAllByRole("button", { name: /^Units \/ townhouses:|^3 bedroom homes:|^4 bedroom homes:|^5\+ bedroom homes:/ });
+    fireEvent.click(bars[0]);
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ selectedIndex: 0 }),
     );
   });
 });
 
-describe("QuadrantChart inline editing", () => {
-  it("editing a price: click, type, blur updates to formatted AUD and calls onChange", () => {
+describe("QuadrantChart inline editing (event bubbling regression)", () => {
+  it("editing a price: click, type, blur updates to formatted AUD, calls onChange, and does not toggle selection", () => {
     const onChange = vi.fn();
     render(<QuadrantChart onChange={onChange} />);
+    const svg = svgTree();
+    const bar = svg.getByRole("button", { name: /^4 bedroom homes:/ });
+    expect(bar).toHaveAttribute("aria-pressed", "false");
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit 4 bedroom homes median price" }));
-    const input = screen.getByRole("textbox", { name: "4 bedroom homes median price" });
+    fireEvent.click(svg.getByRole("button", { name: "Edit 4 bedroom homes median price" }));
+    const input = svg.getByRole("textbox", { name: "4 bedroom homes median price" });
     editAndBlur(input, "900000");
 
-    expect(screen.getByText("$900,000")).toBeInTheDocument();
+    expect(svg.getAllByText("$900,000").length).toBeGreaterThan(0);
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
         segments: expect.arrayContaining([
@@ -86,48 +126,95 @@ describe("QuadrantChart inline editing", () => {
         ]),
       }),
     );
+    // Regression guard (KTD1b): editing must never bubble into the parent bar's toggle.
+    expect(bar).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("pressing Enter inside an open edit input commits the edit and does not toggle the parent segment's selection", () => {
+    render(<QuadrantChart />);
+    const svg = svgTree();
+    const bar = svg.getByRole("button", { name: /^4 bedroom homes:/ });
+
+    fireEvent.click(svg.getByRole("button", { name: "Edit 4 bedroom homes median price" }));
+    const input = svg.getByRole("textbox", { name: "4 bedroom homes median price" });
+    fireEvent.change(input, { target: { value: "950000" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(bar).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("clicking inside an open edit input does not toggle the parent segment's selection", () => {
+    render(<QuadrantChart />);
+    const svg = svgTree();
+    const bar = svg.getByRole("button", { name: /^4 bedroom homes:/ });
+
+    fireEvent.click(svg.getByRole("button", { name: "Edit 4 bedroom homes median price" }));
+    const input = svg.getByRole("textbox", { name: "4 bedroom homes median price" });
+    fireEvent.click(input);
+
+    expect(bar).toHaveAttribute("aria-pressed", "false");
   });
 
   it("non-numeric junk on blur parses digits only, never renders $NaN", () => {
     render(<QuadrantChart />);
+    const svg = svgTree();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit 4 bedroom homes median price" }));
-    const input = screen.getByRole("textbox", { name: "4 bedroom homes median price" });
+    fireEvent.click(svg.getByRole("button", { name: "Edit 4 bedroom homes median price" }));
+    const input = svg.getByRole("textbox", { name: "4 bedroom homes median price" });
     editAndBlur(input, "abc");
 
-    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
-    // Reverts to the original value since "abc" has no digits.
-    expect(screen.getByText("$835,000")).toBeInTheDocument();
+    expect(svg.queryByText(/NaN/)).not.toBeInTheDocument();
+    expect(svg.getAllByText("$835,000").length).toBeGreaterThan(0);
   });
 
-  it("editing the address persists on blur", () => {
-    render(<QuadrantChart />);
+  it("editing the address persists on blur and fires onChange", () => {
+    const onChange = vi.fn();
+    render(<QuadrantChart onChange={onChange} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit target property address" }));
-    const input = screen.getByRole("textbox", { name: "target property address" });
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit target property address" })[0]);
+    const input = screen.getAllByRole("textbox", { name: "target property address" })[0];
     editAndBlur(input, "42 New Rd, Officer VIC 3809");
 
     expect(screen.getByText("42 New Rd, Officer VIC 3809")).toBeInTheDocument();
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ targetAddress: "42 New Rd, Officer VIC 3809" }),
+    );
   });
 
-  it("editing a segment name persists on blur", () => {
-    render(<QuadrantChart />);
+  it("editing a segment name persists on blur, fires onChange, and does not toggle selection", () => {
+    const onChange = vi.fn();
+    render(<QuadrantChart onChange={onChange} />);
+    const svg = svgTree();
+    const bar = svg.getByRole("button", { name: /^3 bedroom homes:/ });
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit 3 bedroom homes segment name" }));
-    const input = screen.getByRole("textbox", { name: "3 bedroom homes segment name" });
+    fireEvent.click(svg.getByRole("button", { name: "Edit 3 bedroom homes segment name" }));
+    const input = svg.getByRole("textbox", { name: "3 bedroom homes segment name" });
     editAndBlur(input, "3 bed house");
 
-    expect(screen.getByText("3 bed house")).toBeInTheDocument();
+    expect(svg.getAllByText("3 bed house").length).toBeGreaterThan(0);
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        segments: expect.arrayContaining([expect.objectContaining({ name: "3 bed house" })]),
+      }),
+    );
+    expect(bar).toHaveAttribute("aria-pressed", "false");
   });
 
   it("blurring an empty address reverts to the last valid value", () => {
     render(<QuadrantChart />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit target property address" }));
-    const input = screen.getByRole("textbox", { name: "target property address" });
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit target property address" })[0]);
+    const input = screen.getAllByRole("textbox", { name: "target property address" })[0];
     editAndBlur(input, "");
-
     expect(screen.getByText("9 Gloucester Ave, Berwick VIC 3806")).toBeInTheDocument();
+  });
+
+  it("blurring an empty segment name reverts to the last valid value", () => {
+    render(<QuadrantChart />);
+    const svg = svgTree();
+    fireEvent.click(svg.getByRole("button", { name: "Edit 3 bedroom homes segment name" }));
+    const input = svg.getByRole("textbox", { name: "3 bedroom homes segment name" });
+    editAndBlur(input, "   ");
+    expect(svg.getAllByText("3 bedroom homes").length).toBeGreaterThan(0);
   });
 });
 
