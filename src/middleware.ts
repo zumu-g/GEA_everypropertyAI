@@ -95,6 +95,7 @@ export const config = {
     '/api/property/:path*',
     '/api/comparable-sales',
     '/api/sold-sales',
+    '/api/market-segments',
     '/api/on-market-listings',
     '/api/rental-listings',
     '/api/vendor-report',

@@ -13,6 +13,10 @@ export interface QuadrantSegment {
   median: number;
   /** Optional icon override; falls back to a name-based heuristic. */
   icon?: React.ReactNode;
+  /** Defaults to true when omitted (the standalone /quadrant demo's hardcoded
+   * segments). When false, the tile shows an insufficient-data state instead
+   * of the low/avg/median figures. */
+  sufficientData?: boolean;
 }
 
 export interface QuadrantChartState {
@@ -234,7 +238,9 @@ export function QuadrantChart({
   const maxMedian = Math.max(...segments.map((s) => s.median), 1);
 
   const segmentLabel = (s: QuadrantSegment) =>
-    `${s.name}: low ${formatCurrency(s.low)}, average ${formatCurrency(s.avg)}, median ${formatCurrency(s.median)}`;
+    s.sufficientData === false
+      ? `${s.name}: not enough recent sales data`
+      : `${s.name}: low ${formatCurrency(s.low)}, average ${formatCurrency(s.avg)}, median ${formatCurrency(s.median)}`;
 
   return (
     <section
@@ -378,23 +384,27 @@ export function QuadrantChart({
                     />
                   </div>
                   {selected && <Badge tone="accent">Most similar to yours</Badge>}
-                  <div className="flex gap-1.5 text-[10px] tabular-nums">
-                    {(["low", "avg", "median"] as const).map((field) => (
-                      <EditableField
-                        key={field}
-                        value={String(segment[field])}
-                        onSave={(v) => updateSegment(index, field, v)}
-                        label={`${segment.name} ${field} price`}
-                        format={(v) => formatCurrency(Number(v))}
-                        parse={(raw) => {
-                          const parsed = parseCurrencyInput(raw);
-                          return parsed === null ? null : String(parsed);
-                        }}
-                        className="w-16 text-[10px] font-medium text-[#16181D]"
-                        displayClassName="text-[10px] font-medium text-[#16181D]"
-                      />
-                    ))}
-                  </div>
+                  {segment.sufficientData === false ? (
+                    <p className="text-[10px] italic text-[#8A8F97]">Not enough recent sales</p>
+                  ) : (
+                    <div className="flex gap-1.5 text-[10px] tabular-nums">
+                      {(["low", "avg", "median"] as const).map((field) => (
+                        <EditableField
+                          key={field}
+                          value={String(segment[field])}
+                          onSave={(v) => updateSegment(index, field, v)}
+                          label={`${segment.name} ${field} price`}
+                          format={(v) => formatCurrency(Number(v))}
+                          parse={(raw) => {
+                            const parsed = parseCurrencyInput(raw);
+                            return parsed === null ? null : String(parsed);
+                          }}
+                          className="w-16 text-[10px] font-medium text-[#16181D]"
+                          displayClassName="text-[10px] font-medium text-[#16181D]"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </foreignObject>
             </g>
@@ -440,27 +450,31 @@ export function QuadrantChart({
                 </div>
                 {selected && <Badge tone="accent">Most similar to yours</Badge>}
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                {(["low", "avg", "median"] as const).map((field) => (
-                  <div key={field}>
-                    <p className="text-[10px] uppercase tracking-wide text-[#8A8F97]">
-                      {field === "avg" ? "Average" : field === "low" ? "Low" : "Median"}
-                    </p>
-                    <EditableField
-                      value={String(segment[field])}
-                      onSave={(v) => updateSegment(index, field, v)}
-                      label={`${segment.name} ${field} price`}
-                      format={(v) => formatCurrency(Number(v))}
-                      parse={(raw) => {
-                        const parsed = parseCurrencyInput(raw);
-                        return parsed === null ? null : String(parsed);
-                      }}
-                      className="w-24 text-sm font-medium text-[#16181D]"
-                      displayClassName="text-sm font-medium text-[#16181D]"
-                    />
-                  </div>
-                ))}
-              </div>
+              {segment.sufficientData === false ? (
+                <p className="text-center text-xs italic text-[#8A8F97]">Not enough recent sales</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  {(["low", "avg", "median"] as const).map((field) => (
+                    <div key={field}>
+                      <p className="text-[10px] uppercase tracking-wide text-[#8A8F97]">
+                        {field === "avg" ? "Average" : field === "low" ? "Low" : "Median"}
+                      </p>
+                      <EditableField
+                        value={String(segment[field])}
+                        onSave={(v) => updateSegment(index, field, v)}
+                        label={`${segment.name} ${field} price`}
+                        format={(v) => formatCurrency(Number(v))}
+                        parse={(raw) => {
+                          const parsed = parseCurrencyInput(raw);
+                          return parsed === null ? null : String(parsed);
+                        }}
+                        className="w-24 text-sm font-medium text-[#16181D]"
+                        displayClassName="text-sm font-medium text-[#16181D]"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
