@@ -67,11 +67,13 @@ function ringArcPath(radius: number, sweepDeg: number): string {
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y}`;
 }
 
-/** Ring-tint scale: darkest (full accent) at the centre, lightening outward. */
+// Distinct on-brand tones (not an opacity ramp on one hue) so adjacent rings
+// and their legend dots stay visually separable at a glance.
+const RING_PALETTE = ["#1D3A50", "#2E5470", "#5B7A94", "#94ABBC", "#C3D0DA"];
+
 function ringTint(index: number, selected: boolean): string {
   if (selected) return "#2E5470";
-  const opacity = Math.max(1 - index * 0.16, 0.32);
-  return `rgba(46, 84, 112, ${opacity})`;
+  return RING_PALETTE[index % RING_PALETTE.length];
 }
 
 /** Digits-only parse; returns null when the input has no usable number. */
