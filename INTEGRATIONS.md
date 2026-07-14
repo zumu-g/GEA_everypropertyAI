@@ -6,9 +6,10 @@ consumer needs, and the outstanding deploy config.
 
 Public base URL (Railway): `https://geaeverypropertyai-production.up.railway.app`
 
-> **Consumer status (2026-07-08):** Live consumers are GEA_ST_CMA (`epai_cma_`), GEA_ST_Proposals,
-> GEA_CRM (`epai_crm_`), GEA_HR_recruitAI, GEA_Reports_WeeklyCampaignVendor (`epai_wcv_`), and
-> GEA_ST_SG_assistant (`epai_stsg_`, consumes the API via the MCP server — see the **MCP server** section below).
+> **Consumer status (2026-07-14):** Live consumers are GEA_ST_CMA (`epai_cma_`), GEA_ST_Proposals,
+> GEA_CRM (`epai_crm_`), GEA_HR_recruitAI, GEA_Reports_WeeklyCampaignVendor (`epai_wcv_`),
+> GEA_ST_SG_assistant (`epai_stsg_`, consumes the API via the MCP server — see the **MCP server** section below),
+> and GEA_Website (`epai_gsw_`, the public grantsea-website on Vercel — see **GEA_Website** below).
 > **MAP_findAI has been merged into GEA_CRM** — its market-appraisal/nurture capability (the CLI
 > `sold` / `comps` / `street` commands) is now owned by GEA_CRM and served by the existing `epai_crm_`
 > key. MAP_findAI is no longer a separate consumer; it was never separately keyed, so there is nothing
@@ -72,12 +73,52 @@ EVERYPROPERTY_API_TOKEN=<the epai_… key>     # sent as Authorization: Bearer
 - proposals → `GET /api/search?q=<partial>` for type-ahead, then `GET /api/proposal?address=<fullAddress>`
 - weeklycampaign_vendor (GEA_reports_weeklycampaign_vendor) → `GET /api/vendor-report?lat=<lat>&lng=<lng>` (or `?address=<addr>`) → 3 closest solds + 3 newest listings within 500m
 - SG_assistant (GEA_ST_SG_assistant, `epai_stsg_` key) → `GET /api/property-report?address=<fullAddress>` (POST `{address}` also accepted) → GEA-branded property-details report as raw **PDF bytes** (`application/pdf`, not a URL). Details only (attributes, estimate band, sales history, photos) — no comparables or commentary. 401 bad key, 404 unresolvable address; thin profiles return 200 with gaps noted in the footnote. Uncached address runs the full crawl (~2 min)
+- GEA_Website (`epai_gsw_` key, the public grantsea-website on Vercel) → `GET /api/sold-sales`, `GET /api/comparable-sales`, `GET /api/on-market-listings` — see **GEA_Website** below for full contract, coverage, and licensing/attribution requirements
+
+### GEA_Website (grantsea-website, Vercel — public suburb pages)
+
+Server-to-server only; the key never reaches the browser. Displays sold-sales, comparable-sales,
+and on-market-listings data on 20 VIC suburb pages (Beaconsfield, Beaconsfield Upper, Berwick,
+Bunyip, Clyde, Clyde North, Cranbourne, Cranbourne North, Endeavour Hills, Garfield, Hallam,
+Hampton Park, Harkaway, Koo Wee Rup, Narre Warren, Narre Warren East, Narre Warren South, Officer,
+Pakenham, Tynong) — all within the existing Casey/Cardinia ingest area. Recommended CDN cache: 6–24h.
+
+Endpoints (all middleware-gated, same allowlist as the rest of this doc):
+
+```
+GET /api/sold-sales?suburb=<suburb>&state=VIC&sinceDays=<n>&limit=<n>
+GET /api/comparable-sales?suburb=<suburb>&beds=<n>&baths=<n>&propertyType=<type>
+GET /api/on-market-listings?suburb=<suburb>&sinceDays=<n>&limit=<n>
+```
+
+Verified live 2026-07-14 (all camelCase, no mapping needed):
+
+- `/api/sold-sales` → `{suburb, state, count, results: [{rawAddress, suburb, postcode, salePrice, saleDate, settlementDate, landAreaSqm, buildingAreaSqm, propertyType, bedrooms, bathrooms, carSpaces, firstListedDate, daysOnMarket, latitude, longitude, agencyName, agentName, listingUrl, imageUrl, source}]}`
+- `/api/comparable-sales` → `{comparables: [{address, suburb, price, saleDate, beds, baths, landAreaSqm, similarityScore, imageUrl}]}`
+- `/api/on-market-listings` → `{suburb, state, count, results: [{rawAddress, suburb, postcode, displayPrice, priceLow, priceHigh, status, bedrooms, bathrooms, carSpaces, landAreaSqm, propertyType, latitude, longitude, agencyName, agentName, listingUrl, imageUrl, source, createdAt, lastSeenAt, listedDate}]}`
+- Thin-suburb check (Tynong, `sinceDays=365`) returned `count: 10` — coverage is solid across all 20 suburbs.
+- Unauthenticated request → `401`.
+
+**Licensing / attribution (delivered to website team 2026-07-14):**
+
+- **Sales data attribution:** Victorian Valuer-General sales data requires attribution. Display
+  **"Sales data: © State of Victoria (Valuer-General Victoria)"** on any page showing sold-sales
+  data sourced via this feed.
+- **`listingUrl`:** plain hyperlinks to the source listing (Domain/REA/Homely) are fine to show
+  publicly — standard practice, low risk.
+- **`imageUrl`:** portal-scraped listing photos are the copyright of the listing agency/photographer;
+  our feed's rights to redistribute them are not established. **Omit `imageUrl` on public grantsea
+  pages by default.** Exception: rows where `agencyName` indicates Grant's Estate Agents is the
+  listing agency (the agency owns/licenses its own campaign photography) — those may be shown. This
+  is a risk-based recommendation, not a formal legal opinion; get proper licensing advice before
+  displaying portal-sourced images more broadly.
 
 ### API keys (per-consumer, append-only)
 
 Each consumer app gets its **own** key so it can be rotated or revoked independently of the others.
 Convention: `epai_<consumer>_<random>` (e.g. `epai_cma_…` for GEA_ST_CMA, `epai_wcv_…` for the vendor
-report, `epai_crm_…` for the GEA CRM, `epai_stsg_…` for GEA_ST_SG_assistant). The random suffix is
+report, `epai_crm_…` for the GEA CRM, `epai_stsg_…` for GEA_ST_SG_assistant, `epai_gsw_…` for
+GEA_Website). The random suffix is
 CSPRNG entropy (≈32 hex chars).
 
 **The allowlist is `EVERYPROPERTY_API_KEYS`** — a comma-separated list on the everypropertyAI service.
