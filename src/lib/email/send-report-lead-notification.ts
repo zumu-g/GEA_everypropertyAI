@@ -1,10 +1,14 @@
 import { Resend } from 'resend';
 
 const NOTIFY_TO = 'stuart@grantsea.com.au';
-// Resend requires a verified sending domain; the onboarding sandbox address
-// works without one for early testing. Swap for a grantsea.com.au address
-// once that domain is verified in the Resend dashboard.
-const NOTIFY_FROM = process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev';
+// Resend requires a verified sending domain. The onboarding sandbox address
+// below works without one, but Resend restricts sandbox sends to ONLY the
+// account owner's own verified email — if NOTIFY_TO isn't that address, every
+// send will silently fail (Resend errors, caught below and logged, but never
+// surfaced to the user per KTD4). Set RESEND_FROM_EMAIL to a verified
+// grantsea.com.au address once that domain is set up in the Resend dashboard.
+const RESEND_SANDBOX_FROM = 'onboarding@resend.dev';
+const NOTIFY_FROM = process.env.RESEND_FROM_EMAIL ?? RESEND_SANDBOX_FROM;
 
 export interface ReportLeadNotification {
   name: string;
@@ -26,6 +30,14 @@ export async function sendReportLeadNotification(
   if (!apiKey) {
     console.warn('[send-report-lead-notification] RESEND_API_KEY not set — skipping notification email.');
     return;
+  }
+
+  if (NOTIFY_FROM === RESEND_SANDBOX_FROM) {
+    console.warn(
+      `[send-report-lead-notification] RESEND_FROM_EMAIL not set — sending from the Resend sandbox address, ` +
+      `which only delivers to the account owner's own verified email. If ${NOTIFY_TO} is not that address, ` +
+      `this send will fail. Set RESEND_FROM_EMAIL once a grantsea.com.au domain is verified in Resend.`
+    );
   }
 
   const timestamp = new Date().toLocaleString('en-AU', {

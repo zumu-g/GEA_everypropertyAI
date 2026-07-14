@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X, FileDown, Loader2 } from "lucide-react";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { isValidEmail, addressToReportSlug } from "@/lib/utils/report-download";
 
 interface DownloadReportModalProps {
   address: string;
@@ -43,7 +42,7 @@ export function DownloadReportModal({ address, onClose }: DownloadReportModalPro
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     const nextNameError = trimmedName ? null : "Please enter your name.";
-    const nextEmailError = EMAIL_RE.test(trimmedEmail) ? null : "Please enter a valid email address.";
+    const nextEmailError = isValidEmail(trimmedEmail) ? null : "Please enter a valid email address.";
     setNameError(nextNameError);
     setEmailError(nextEmailError);
     if (nextNameError || nextEmailError) return;
@@ -69,7 +68,7 @@ export function DownloadReportModal({ address, onClose }: DownloadReportModalPro
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${address.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "property"}-report.pdf`;
+      a.download = `${addressToReportSlug(address)}-report.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
