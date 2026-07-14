@@ -24,6 +24,7 @@ import {
   Flame,
   Droplets,
   Landmark,
+  FileDown,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -36,6 +37,7 @@ import { ComparableSales } from "./ComparableSales";
 import { QuadrantChartSection } from "./QuadrantChartSection";
 import { OnMarketNearby } from "./OnMarketNearby";
 import { TrackPropertyButton } from "./TrackPropertyButton";
+import { DownloadReportModal } from "./DownloadReportModal";
 
 // Chart components pull in recharts (~the heaviest dep on this page). They render
 // below the fold, so load them lazily on the client — this evicts recharts (and
@@ -244,6 +246,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   const [upgrading, setUpgrading] = useState(false);
   // Photo gallery lightbox state
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
 
   const prefersReducedMotion =
     typeof window !== "undefined"
@@ -826,6 +829,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 </span>
               ) : null;
             })()}
+            <button
+              onClick={() => setDownloadModalOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-[#E7E9EE] px-4 py-2.5 text-sm font-medium text-[#4A4E57] transition-colors hover:border-[#2E5470] hover:text-[#2E5470]"
+            >
+              <FileDown className="h-4 w-4" />
+              Download Report
+            </button>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-[#E7E9EE] bg-white px-4 py-2">
               {d.bedrooms != null && (
                 <EditableStat
@@ -1853,6 +1863,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           </m.div>
         )}
       </AnimatePresence>
+
+      {downloadModalOpen && (
+        <DownloadReportModal
+          address={displayAddress}
+          onClose={() => setDownloadModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
