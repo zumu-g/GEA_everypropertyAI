@@ -174,6 +174,19 @@ describe('backfillVicIndividualSalesHistory', () => {
     expect(result.totalInserted).toBe(0);
     expect(result.perFile).toEqual([]);
   });
+
+  it('caps the batch at MAX_BACKFILL_FILES, reporting the true total found but only processing the cap (edge case)', async () => {
+    const linkCount = 25;
+    const links = Array.from({ length: linkCount }, (_, i) => `<a href="/files/q${i}.csv">q${i}</a>`).join('');
+    const fetchSpy = vi.fn(async (url: string) =>
+      url.includes('property-sales-statistics') ? mockResponse(200, links) : mockResponse(200, CASEY_ROW)
+    );
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const result = await backfillVicIndividualSalesHistory();
+    expect(result.filesFound).toBe(linkCount);
+    expect(result.perFile).toHaveLength(20);
+  });
 });
 
 describe('runValuerGeneralIngestion (VIC cron wiring)', () => {

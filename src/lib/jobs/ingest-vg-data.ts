@@ -736,6 +736,13 @@ export async function ingestVicIndividualSales(): Promise<{ inserted: number; er
  * degrades to the same single-file result as ingestVicIndividualSales() and
  * says so explicitly rather than silently looking like a no-op.
  */
+// ponytail: sequential per-file loop with no overall deadline could run past a
+// serverless function's timeout mid-batch if the archive is large. Each file's
+// insert already commits before moving to the next (a kill mid-batch leaves
+// consistent partial progress, not corruption), and this cap bounds the worst
+// case to a rerunnable size — raise it if the real archive turns out bigger.
+const MAX_BACKFILL_FILES = 20;
+
 export async function backfillVicIndividualSalesHistory(): Promise<{
   filesFound: number;
   totalInserted: number;
@@ -748,8 +755,15 @@ export async function backfillVicIndividualSalesHistory(): Promise<{
     return { filesFound: 0, totalInserted: 0, perFile: [] };
   }
 
+  const toProcess = links.slice(0, MAX_BACKFILL_FILES);
+  if (links.length > MAX_BACKFILL_FILES) {
+    console.warn(
+      `[ingest-vg] VIC backfill: found ${links.length} files, processing the first ${MAX_BACKFILL_FILES} this run — rerun the backfill trigger to continue with the rest`
+    );
+  }
+
   const perFile: Array<{ url: string; inserted: number; error?: string }> = [];
-  for (const url of links) {
+  for (const url of toProcess) {
     // Isolated per-file: one bad file doesn't abort the rest of the batch.
     try {
       const result = await ingestVicSalesCsvUrl(url);
@@ -763,7 +777,7 @@ export async function backfillVicIndividualSalesHistory(): Promise<{
 
   const totalInserted = perFile.reduce((sum, f) => sum + f.inserted, 0);
   console.log(
-    `[ingest-vg] VIC backfill complete: ${links.length} file(s) found, ${totalInserted} total rows inserted`
+    `[ingest-vg] VIC backfill complete: ${links.length} file(s) found, ${toProcess.length} processed, ${totalInserted} total rows inserted`
   );
   return { filesFound: links.length, totalInserted, perFile };
 }
