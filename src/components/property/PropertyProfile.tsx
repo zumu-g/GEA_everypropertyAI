@@ -919,14 +919,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {/* ─── Estimated Price Range ─── */}
         {(enrichedEstimate || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
           <section>
-            {/* Subgrid keeps both cards aligned: headers share row 1 (sized to the
-                tallest, e.g. a wrapping title), cards share row 2 top-to-bottom. */}
-            <div className="grid items-stretch gap-6 sm:grid-cols-2 sm:grid-rows-[auto_1fr] sm:gap-y-0">
+            {/* items-stretch equalises both columns' overall height; each header
+                has a fixed min-height so a wrapping title never shifts where its
+                card starts, keeping the two cards aligned and the same size. */}
+            <div className="grid items-stretch gap-6 sm:grid-cols-2">
               {/* Price estimate card */}
-              <div className="flex h-full flex-col sm:grid sm:row-span-2 sm:grid-rows-subgrid">
+              <div className="flex h-full flex-col">
                 {enrichedEstimate ? (
                   <>
-                    <div className="mb-6 flex items-center gap-2">
+                    <div className="mb-6 flex min-h-[4rem] items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
                         <TrendingUp className="h-4 w-4 text-[#2E5470]" />
                       </div>
@@ -990,12 +991,14 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   </>
                 ) : (
                   <>
-                    <SectionTitle icon={TrendingUp} title={
-                      priceSource === 'listing-guide' ? 'Price Guide' :
-                      priceSource === 'listing-price' ? 'Listing Price' :
-                      priceSource === 'last-sale' ? 'Estimated Value' :
-                      'Estimated Price Range'
-                    } />
+                    <div className="min-h-[4rem]">
+                      <SectionTitle icon={TrendingUp} title={
+                        priceSource === 'listing-guide' ? 'Price Guide' :
+                        priceSource === 'listing-price' ? 'Listing Price' :
+                        priceSource === 'last-sale' ? 'Estimated Value' :
+                        'Estimated Price Range'
+                      } />
+                    </div>
                     <div className="flex flex-1 flex-col rounded-xl border border-[#E7E9EE] bg-white p-6 ">
                       {(priceLow != null && priceHigh != null) ? (
                         <div>
@@ -1051,8 +1054,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 // nearby rentals time-adjusted by 12-month suburb rent growth.
                 if (rentalEstimate) {
                   return (
-                    <div className="flex h-full flex-col sm:grid sm:row-span-2 sm:grid-rows-subgrid">
-                      <div className="mb-6 flex items-center gap-2">
+                    <div className="flex h-full flex-col">
+                      <div className="mb-6 flex min-h-[4rem] items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
                           <TrendingUp className="h-4 w-4 text-[#2E5470]" />
                         </div>
@@ -1124,8 +1127,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 const highRent = Math.round(midRent * 1.1);
 
                 return (
-                  <div className="flex h-full flex-col sm:grid sm:row-span-2 sm:grid-rows-subgrid">
-                    <div className="mb-6 flex items-center gap-2">
+                  <div className="flex h-full flex-col">
+                    <div className="mb-6 flex min-h-[4rem] items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
                         <TrendingUp className="h-4 w-4 text-[#2E5470]" />
                       </div>
