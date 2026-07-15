@@ -836,6 +836,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               <FileDown className="h-4 w-4" />
               Download Report
             </button>
+            {(d.bedrooms != null || d.bathrooms != null || d.carSpaces != null
+              || (d.buildingArea ?? d.buildingAreaSqm) != null || (d.landArea ?? d.landAreaSqm) != null) && (
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-[#E7E9EE] bg-white px-4 py-2">
               {d.bedrooms != null && (
                 <EditableStat
@@ -910,15 +912,18 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 />
               )}
             </div>
+            )}
           </div>
         </section>
 
         {/* ─── Estimated Price Range ─── */}
         {(enrichedEstimate || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
           <section>
-            <div className="grid items-stretch gap-6 sm:grid-cols-2">
+            {/* Subgrid keeps both cards aligned: headers share row 1 (sized to the
+                tallest, e.g. a wrapping title), cards share row 2 top-to-bottom. */}
+            <div className="grid items-stretch gap-6 sm:grid-cols-2 sm:grid-rows-[auto_1fr] sm:gap-y-0">
               {/* Price estimate card */}
-              <div className="flex h-full flex-col">
+              <div className="flex h-full flex-col sm:grid sm:row-span-2 sm:grid-rows-subgrid">
                 {enrichedEstimate ? (
                   <>
                     <div className="mb-6 flex items-center gap-2">
@@ -1046,7 +1051,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 // nearby rentals time-adjusted by 12-month suburb rent growth.
                 if (rentalEstimate) {
                   return (
-                    <div className="flex h-full flex-col">
+                    <div className="flex h-full flex-col sm:grid sm:row-span-2 sm:grid-rows-subgrid">
                       <div className="mb-6 flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
                           <TrendingUp className="h-4 w-4 text-[#2E5470]" />
@@ -1119,7 +1124,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 const highRent = Math.round(midRent * 1.1);
 
                 return (
-                  <div className="flex h-full flex-col">
+                  <div className="flex h-full flex-col sm:grid sm:row-span-2 sm:grid-rows-subgrid">
                     <div className="mb-6 flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FBFBFC]">
                         <TrendingUp className="h-4 w-4 text-[#2E5470]" />

@@ -16,6 +16,25 @@ const CORS_HEADERS = {
 // while keeping price-less ("Contact Agent") listings, which are legitimate.
 const MAX_PLAUSIBLE_PRICE = 50_000_000;
 
+// Rows dedup on (raw_address, source) in the DB, so the same property can appear
+// once per feed (Domain, REA Apify, Homely). Collapse to one row per address here,
+// keeping whichever source has seen it most recently.
+function dedupeByAddress(rows: PropertyListingRecord[]): PropertyListingRecord[] {
+  const byAddress = new Map<string, PropertyListingRecord>();
+  for (const r of rows) {
+    const key = r.raw_address.trim().toLowerCase();
+    const existing = byAddress.get(key);
+    if (!existing) {
+      byAddress.set(key, r);
+      continue;
+    }
+    const existingSeen = existing.last_seen_at ? new Date(existing.last_seen_at).getTime() : 0;
+    const candidateSeen = r.last_seen_at ? new Date(r.last_seen_at).getTime() : 0;
+    if (candidateSeen > existingSeen) byAddress.set(key, r);
+  }
+  return Array.from(byAddress.values());
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
@@ -106,7 +125,7 @@ export async function GET(request: NextRequest) {
       rows = await getListingsForSuburb(suburb, state, limit, { sinceDays });
     }
 
-    const results: OnMarketListingResult[] = rows
+    const results: OnMarketListingResult[] = dedupeByAddress(rows)
       // Lighter touch than sold-sales: only drop garbage price outliers; keep
       // price-less listings ("Contact Agent") since those are legitimate.
       .filter((r) => !(typeof r.price_low === 'number' && r.price_low > MAX_PLAUSIBLE_PRICE))

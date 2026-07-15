@@ -57,7 +57,7 @@ Property Details (top-level fields):
 - toilets: Total toilet count (integer) — shown as "Toilets" in Key Features
 - carSpaces: Number of car spaces/garages (integer)
 - garages: Number of garage spaces (integer, may differ from carSpaces)
-- landAreaSqm: Land area in square metres (number)
+- landAreaSqm: Land area in square metres (number). If the source shows hectares or acres (e.g. "3.64ha", "2.5 acres"), convert to square metres before returning it (1 ha = 10,000 m², 1 acre = 4,046.86 m²) — never return the bare hectare/acre figure.
 - buildingAreaSqm: Internal/building area in square metres (number)
 - yearBuilt: Year the property was built (integer)
 - features: Array of feature strings (e.g. ["air conditioning", "pool", "solar panels"])
@@ -126,7 +126,7 @@ Neighbouring Properties — neighbouringProperties array (from "Neighbouring pro
 - bedrooms: Number of bedrooms (integer)
 - bathrooms: Number of bathrooms (integer)
 - carSpaces: Number of car spaces (integer)
-- landAreaSqm: Land area in square metres (number)
+- landAreaSqm: Land area in square metres (number). If the source shows hectares or acres (e.g. "3.64ha", "2.5 acres"), convert to square metres before returning it (1 ha = 10,000 m², 1 acre = 4,046.86 m²) — never return the bare hectare/acre figure.
 
 Sale History — array of past sales (saleHistory), each with:
 - date: Sale date (YYYY-MM-DD)

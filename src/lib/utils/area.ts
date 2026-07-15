@@ -73,7 +73,14 @@ export function normaliseAreaSqm(value: unknown, unitHint?: unknown): number | n
   return Math.round(sqm * 10) / 10;
 }
 
+// ponytail: floor below which a "sqm" land value is implausible garbage (most
+// likely an unconverted hectare/acre figure from extraction) rather than a
+// real tiny lot — raise if a legitimate use case needs smaller values.
+const MIN_PLAUSIBLE_LAND_SQM = 10;
+
 /** Zero-as-missing guard for values already stored in m² (DB read path). */
 export function sqmOrNull(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+  return typeof value === 'number' && Number.isFinite(value) && value >= MIN_PLAUSIBLE_LAND_SQM
+    ? value
+    : null;
 }
