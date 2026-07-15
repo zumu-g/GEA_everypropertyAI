@@ -53,6 +53,35 @@ function setCachedResult(
 }
 
 /**
+ * Resolve as soon as one of `attempts` succeeds; if all fail, resolve with the
+ * last one to settle. Lets fallback backends race instead of running serially
+ * — a source doesn't have to pay for every fallback's timeout back-to-back.
+ */
+export function raceToFirstSuccess(
+  attempts: Promise<CrawlResult>[]
+): Promise<CrawlResult> {
+  return new Promise((resolve) => {
+    let remaining = attempts.length;
+    let last: CrawlResult;
+    attempts.forEach((attempt) => {
+      attempt
+        .catch((error): CrawlResult => ({
+          source: 'unknown',
+          url: '',
+          status: 'failed',
+          crawledAt: new Date(),
+          error: error instanceof Error ? error.message : 'Unexpected fallback error',
+        }))
+        .then((result) => {
+          last = result;
+          remaining--;
+          if (result.status === 'success' || remaining === 0) resolve(result.status === 'success' ? result : last);
+        });
+    });
+  });
+}
+
+/**
  * Crawl property data from all active sources in parallel.
  *
  * - Builds URLs for each registered source
@@ -199,19 +228,24 @@ export async function crawlProperty(
         result = await scrapeUrl(searchUrl, source.name, scrapeOptions);
       }
 
-      // Cross-backend fallback chain: try alternate backends in order until one
-      // succeeds. Skips backends that aren't available in this environment.
-      // In fast mode only the (short) stealth fallback is allowed — never Apify.
+      // Cross-backend fallback: try alternate backends in parallel (not one at a
+      // time) and take whichever succeeds first. Skips backends that aren't
+      // available in this environment. In fast mode only the (short) stealth
+      // fallback is allowed — never Apify. Serial fallback was the main driver
+      // of full-crawl latency: a source whose primary backend failed would pay
+      // for every fallback's timeout back-to-back before giving up.
       if (result.status !== 'success' && source.fallbackBackends?.length) {
-        for (const fb of source.fallbackBackends) {
-          if (fb === primary) continue;
-          if (fast && fb !== 'stealth') continue;
-          if (fb === 'apify' && !apifyActorId) continue;
-          if (fb === 'stealth' && !isStealthConfigured()) continue;
-          if (fb === 'web-unlocker' && !isWebUnlockerConfigured()) continue;
-          console.log(`[orchestrator] ${source.name} falling back to ${fb}`);
-          result = await dispatch(fb, url);
-          if (result.status === 'success') break;
+        const eligible = source.fallbackBackends.filter((fb) => {
+          if (fb === primary) return false;
+          if (fast && fb !== 'stealth') return false;
+          if (fb === 'apify' && !apifyActorId) return false;
+          if (fb === 'stealth' && !isStealthConfigured()) return false;
+          if (fb === 'web-unlocker' && !isWebUnlockerConfigured()) return false;
+          return true;
+        });
+        if (eligible.length > 0) {
+          console.log(`[orchestrator] ${source.name} falling back to ${eligible.join(', ')} (parallel)`);
+          result = await raceToFirstSuccess(eligible.map((fb) => dispatch(fb, url)));
         }
       }
 
