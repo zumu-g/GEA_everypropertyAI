@@ -46,13 +46,15 @@ export async function fetchNearbyChildcare(
     // nwr (node+way+relation) with `out center`: most centres are mapped as
     // building outlines (ways), and many are tagged kindergarten — nodes-only
     // childcare-only returned 0 results across much of Casey/Cardinia.
-    const query = `data=[out:json][timeout:10];nwr["amenity"~"^(childcare|kindergarten)$"](around:${radiusMetres},${lat},${lng});out center;`;
+    // URL-encoded: Overpass now 406s on raw brackets/quotes in the form body.
+    const query = `data=${encodeURIComponent(`[out:json][timeout:10];nwr["amenity"~"^(childcare|kindergarten)$"](around:${radiusMetres},${lat},${lng});out center;`)}`;
 
     const res = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
+      // No Accept: application/json and a real User-Agent — Overpass 406s otherwise.
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json',
+        'User-Agent': 'PropertyIQ/1.0',
       },
       body: query,
       signal: AbortSignal.timeout(10000),

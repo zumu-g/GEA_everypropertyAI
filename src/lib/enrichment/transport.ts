@@ -9,6 +9,80 @@ export interface NearbyTransport {
   distanceKm: number;
   lat: number;
   lng: number;
+  /** Route numbers serving the stop, e.g. "841;893". */
+  routes?: string;
+}
+
+interface OverpassBusElement {
+  id: number;
+  lat: number;
+  lon: number;
+  tags?: {
+    name?: string;
+    route_ref?: string;
+    [key: string]: string | undefined;
+  };
+}
+
+const busCache = new Map<string, { data: NearbyTransport[]; at: number }>();
+const BUS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/**
+ * Nearby bus stops via the Overpass API (same pattern as childcare.ts).
+ * Returns [] on any failure.
+ */
+export async function fetchNearbyBusStops(
+  lat: number,
+  lng: number,
+  radiusMetres: number = 1000
+): Promise<NearbyTransport[]> {
+  const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  const cached = busCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < BUS_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const query = `data=${encodeURIComponent(`[out:json][timeout:10];node["highway"="bus_stop"](around:${radiusMetres},${lat},${lng});out;`)}`;
+
+    const res = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      // No Accept: application/json and a real User-Agent — Overpass 406s otherwise.
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'PropertyIQ/1.0',
+      },
+      body: query,
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!res.ok) {
+      console.warn(`[transport] Overpass API returned ${res.status}`);
+      return [];
+    }
+
+    const json: { elements?: OverpassBusElement[] } = await res.json();
+    if (!Array.isArray(json.elements)) return [];
+
+    const stops: NearbyTransport[] = json.elements
+      .filter((el) => el.lat != null && el.lon != null)
+      .map((el) => ({
+        name: el.tags?.name ?? 'Bus stop',
+        type: 'bus' as const,
+        distanceKm: haversine(lat, lng, el.lat, el.lon),
+        lat: el.lat,
+        lng: el.lon,
+        ...(el.tags?.route_ref ? { routes: el.tags.route_ref } : {}),
+      }))
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, 3);
+
+    busCache.set(cacheKey, { data: stops, at: Date.now() });
+    return stops;
+  } catch (err) {
+    console.warn('[transport] Bus stop query failed:', err);
+    return [];
+  }
 }
 
 let lastRequestTime = 0;
@@ -35,6 +109,18 @@ export async function fetchNearbyTransport(
   lat: number,
   lng: number,
   radiusKm: number = 3
+): Promise<NearbyTransport[]> {
+  const [trains, buses] = await Promise.all([
+    fetchNearbyTrains(lat, lng, radiusKm),
+    fetchNearbyBusStops(lat, lng),
+  ]);
+  return [...trains, ...buses];
+}
+
+async function fetchNearbyTrains(
+  lat: number,
+  lng: number,
+  radiusKm: number
 ): Promise<NearbyTransport[]> {
   try {
     // Search for train stations near this location

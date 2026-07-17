@@ -9,6 +9,7 @@ import {
   MapPin,
   GraduationCap,
   Train,
+  Bus,
   Building2,
   TrendingUp,
   Layers,
@@ -78,6 +79,7 @@ interface EnrichmentData {
     name: string;
     type: string;
     distanceKm: number;
+    routes?: string;
   }>;
   suburbStats: {
     suburb: string;
@@ -1732,7 +1734,11 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   className="flex items-center gap-3 rounded-xl border border-[#E7E9EE] bg-white p-4 "
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E4EBF1]">
-                    <Train className="h-5 w-5 text-[#2E5470]" />
+                    {stop.type === "bus" ? (
+                      <Bus className="h-5 w-5 text-[#2E5470]" />
+                    ) : (
+                      <Train className="h-5 w-5 text-[#2E5470]" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-[#16181D]">
@@ -1741,6 +1747,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     <p className="text-xs text-[#6B7077]">
                       <span className="capitalize">{stop.type}</span> ·{" "}
                       {stop.distanceKm} km
+                      {stop.routes && (
+                        <> · Routes {stop.routes.split(";").join(", ")}</>
+                      )}
                     </p>
                   </div>
                 </div>
