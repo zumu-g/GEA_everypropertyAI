@@ -68,6 +68,11 @@ interface EnrichmentData {
     type: string;
     sector: string;
     distanceKm: number;
+    yearRange?: string;
+    students?: number;
+    website?: string;
+    zonedPrimary?: boolean;
+    zonedSecondary?: boolean;
   }>;
   transport: Array<{
     name: string;
@@ -1615,38 +1620,79 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           </section>
         )}
 
-        {/* ─── Nearby Schools ─── */}
-        {enrichment && enrichment.schools.length > 0 && (
-          <section>
-            <SectionTitle icon={GraduationCap} title="Nearby Schools" />
-            <div className="grid gap-3 sm:grid-cols-2">
-              {enrichment.schools.map((school, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-3 rounded-xl border border-[#E7E9EE] bg-white p-4 "
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E4F1EB]">
-                    <GraduationCap className="h-5 w-5 text-[#2F8F6B]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-[#16181D]">
-                      {school.name}
-                    </p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#6B7077]">
-                      <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium">
-                        {school.type}
-                      </span>
-                      <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium">
-                        {school.sector}
-                      </span>
-                      <span>{school.distanceKm} km</span>
+        {/* ─── Nearby Schools (primary / secondary, zoned per findmyschool) ─── */}
+        {enrichment && enrichment.schools.length > 0 && (() => {
+          const levels = [
+            {
+              title: 'Nearby primary schools',
+              zonedFlag: 'zonedPrimary' as const,
+              schools: enrichment.schools.filter(s => s.type === 'primary' || s.type === 'combined'),
+            },
+            {
+              title: 'Nearby secondary schools',
+              zonedFlag: 'zonedSecondary' as const,
+              schools: enrichment.schools.filter(s => s.type === 'secondary' || s.type === 'combined'),
+            },
+          ].filter(l => l.schools.length > 0);
+
+          return levels.map(level => {
+            const zoned = level.schools.find(s => s[level.zonedFlag]);
+            return (
+              <section key={level.title}>
+                <SectionTitle icon={GraduationCap} title={level.title} />
+                {zoned && (
+                  <p className="mb-3 -mt-2 text-sm text-[#4A4E57]">
+                    This property is in the <span className="font-semibold text-[#2E5470]">{zoned.name}</span> school zone.
+                  </p>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {level.schools.map((school, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-3 rounded-xl border p-4 ${
+                        school[level.zonedFlag]
+                          ? 'border-[#2E5470]/40 bg-[#E4EBF1]/40'
+                          : 'border-[#E7E9EE] bg-white'
+                      }`}
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E4F1EB]">
+                        <GraduationCap className="h-5 w-5 text-[#2F8F6B]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-[#16181D]">{school.name}</p>
+                          {school[level.zonedFlag] && (
+                            <span className="shrink-0 rounded-full bg-[#2E5470] px-2 py-0.5 text-[11px] font-medium text-white">
+                              Zoned
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#6B7077]">
+                          {school.yearRange && (
+                            <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium">{school.yearRange}</span>
+                          )}
+                          <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium capitalize">{school.sector}</span>
+                          {school.students != null && <span>{school.students} students</span>}
+                          <span>{school.distanceKm} km</span>
+                        </div>
+                        {school.website && (
+                          <a
+                            href={school.website.startsWith('http') ? school.website : `https://${school.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1.5 inline-block text-xs font-medium text-[#2E5470] underline-offset-2 hover:underline"
+                          >
+                            School website
+                          </a>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
+              </section>
+            );
+          });
+        })()}
 
         {/* ─── Nearby Childcare ─── */}
         {enrichment?.childcare && enrichment.childcare.length > 0 && (
