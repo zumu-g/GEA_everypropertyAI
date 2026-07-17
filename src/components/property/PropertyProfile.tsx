@@ -26,6 +26,7 @@ import {
   Droplets,
   Landmark,
   FileDown,
+  Home,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -923,6 +924,34 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             )}
           </div>
         </section>
+
+        {/* ─── Is this your home? banner ─── */}
+        {addressSlug && property.data && (
+          <section className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-[#E7E9EE] bg-white px-6 py-4 sm:px-8">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#EAF0F4] text-[#2E5470]">
+                <Home className="h-4 w-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-[#1B1E23]">Is this your home?</h2>
+                <p className="text-sm text-[#6B7077]">
+                  Track its estimated value and market position, and keep its details up to date.
+                </p>
+              </div>
+            </div>
+            <div className="ml-auto">
+              <TrackPropertyButton
+                variant="banner"
+                addressSlug={addressSlug}
+                fullAddress={
+                  (property.data.address as Record<string, unknown> | undefined)?.fullAddress as string
+                  ?? (property.data.fullAddress as string | undefined)
+                  ?? ''
+                }
+              />
+            </div>
+          </section>
+        )}
 
         {/* ─── Estimated Price Range ─── */}
         {(enrichedEstimate || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
