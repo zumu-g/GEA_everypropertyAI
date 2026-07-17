@@ -10,9 +10,11 @@ type TrackState = "loading" | "signed-out" | "not-tracking" | "tracking";
 interface TrackPropertyButtonProps {
   addressSlug: string;
   fullAddress: string;
+  /** "banner": when already tracking, show a link to /my-properties instead of the untrack button */
+  variant?: "default" | "banner";
 }
 
-export function TrackPropertyButton({ addressSlug, fullAddress }: TrackPropertyButtonProps) {
+export function TrackPropertyButton({ addressSlug, fullAddress, variant = "default" }: TrackPropertyButtonProps) {
   const [state, setState] = useState<TrackState>("loading");
   const [busy, setBusy] = useState(false);
 
@@ -112,6 +114,18 @@ export function TrackPropertyButton({ addressSlug, fullAddress }: TrackPropertyB
         <BookmarkPlus className="h-4 w-4" />
         Track this property
       </button>
+    );
+  }
+
+  if (variant === "banner") {
+    return (
+      <div className="flex items-center gap-2 text-sm font-medium text-[#2F8F6B]">
+        <CheckCircle className="h-4 w-4" />
+        You&rsquo;re tracking this property
+        <Link href="/my-properties" className="text-[#2E5470] underline underline-offset-2 hover:text-[#24435A]">
+          View in My Properties
+        </Link>
+      </div>
     );
   }
 
