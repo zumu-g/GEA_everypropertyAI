@@ -84,3 +84,20 @@ export function sqmOrNull(value: unknown): number | null {
     ? value
     : null;
 }
+
+// Above this, a m² figure stops being meaningful to a reader — show acres.
+const ACRE_DISPLAY_THRESHOLD_SQM = 4000;
+
+/**
+ * Human display for a land area stored in m²: acreage blocks (≥4,000 m²)
+ * render as acres (2 dp, trailing zeros trimmed), everything else as m².
+ * e.g. 650 → "650 m²", 25792 → "6.37 acres", 4047 → "1 acre".
+ */
+export function formatLandArea(sqm: number): string {
+  if (sqm >= ACRE_DISPLAY_THRESHOLD_SQM) {
+    const acres = sqm / SQM_PER_ACRE;
+    const rounded = String(Number(acres.toFixed(2)));
+    return `${rounded} ${rounded === '1' ? 'acre' : 'acres'}`;
+  }
+  return `${sqm} m²`;
+}

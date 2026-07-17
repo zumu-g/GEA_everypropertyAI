@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Database, Home } from "lucide-react";
 import { parseAddress } from "@/lib/utils/address";
+import { formatLandArea } from "@/lib/utils/area";
 
 export interface ComparableResult {
   address: string;
@@ -227,7 +228,7 @@ export function ComparableSales({
                   )}
                   {comp.landAreaSqm != null && (
                     <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
-                      {comp.landAreaSqm.toLocaleString("en-AU")}m²
+                      {formatLandArea(comp.landAreaSqm)}
                     </span>
                   )}
                 </div>

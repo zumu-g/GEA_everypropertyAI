@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normaliseAreaSqm, sqmOrNull } from '../area';
+import { normaliseAreaSqm, sqmOrNull, formatLandArea } from '../area';
 
 describe('normaliseAreaSqm', () => {
   it('passes plain numbers through as m²', () => {
@@ -59,5 +59,20 @@ describe('sqmOrNull', () => {
     expect(sqmOrNull(-1)).toBeNull();
     expect(sqmOrNull(null)).toBeNull();
     expect(sqmOrNull('700')).toBeNull();
+  });
+});
+
+describe('formatLandArea', () => {
+  it('renders m² below the 4,000 m² threshold', () => {
+    expect(formatLandArea(650)).toBe('650 m²');
+    expect(formatLandArea(3999)).toBe('3999 m²');
+  });
+  it('renders acres at or above 4,000 m²', () => {
+    expect(formatLandArea(25792)).toBe('6.37 acres');
+    expect(formatLandArea(4000)).toBe('0.99 acres');
+    expect(formatLandArea(40469)).toBe('10 acres');
+  });
+  it('uses singular for exactly one acre', () => {
+    expect(formatLandArea(4047)).toBe('1 acre');
   });
 });

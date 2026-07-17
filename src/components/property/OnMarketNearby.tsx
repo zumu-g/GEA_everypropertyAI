@@ -1,5 +1,6 @@
 "use client";
 
+import { formatLandArea } from "@/lib/utils/area";
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Home, Tag } from "lucide-react";
@@ -100,7 +101,7 @@ export function OnMarketNearby({ lat, lng, excludeAddress }: OnMarketNearbyProps
                     l.bedrooms != null ? `${l.bedrooms} bed` : null,
                     l.bathrooms != null ? `${l.bathrooms} bath` : null,
                     l.carSpaces != null ? `${l.carSpaces} car` : null,
-                    l.landAreaSqm != null ? `${l.landAreaSqm} m² land` : null,
+                    l.landAreaSqm != null ? `${formatLandArea(l.landAreaSqm)} land` : null,
                   ]
                     .filter(Boolean)
                     .join(" · ")}

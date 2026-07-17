@@ -34,6 +34,7 @@ import dynamic from "next/dynamic";
 import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
 import { titleCaseSuburb } from "@/lib/utils/address";
+import { formatLandArea } from "@/lib/utils/area";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
 import { ComparableSales } from "./ComparableSales";
 import { QuadrantChartSection } from "./QuadrantChartSection";
@@ -1219,7 +1220,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             d.carSpaces != null ? `${d.carSpaces} car space${d.carSpaces === 1 ? '' : 's'}` : null,
           ].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' and $1');
           const extras = [
-            (d.landArea ?? d.landAreaSqm) != null ? `on a ${d.landArea ?? d.landAreaSqm} m² block` : null,
+            (d.landArea ?? d.landAreaSqm) != null ? `on a ${formatLandArea(Number(d.landArea ?? d.landAreaSqm))} block` : null,
             (d.buildingArea ?? d.buildingAreaSqm) != null ? `approx. ${d.buildingArea ?? d.buildingAreaSqm} m² of internal living` : null,
             d.yearBuilt != null ? `built ${d.yearBuilt}` : null,
             addr.suburb ? `in ${addr.suburb}` : null,
@@ -1408,7 +1409,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 <StatCard label="Year Built" value={String(d.yearBuilt)} />
               )}
               {(d.landArea ?? d.landAreaSqm) != null && (
-                <StatCard label="Land Area" value={`${d.landArea ?? d.landAreaSqm} m²`} />
+                <StatCard label="Land Area" value={formatLandArea(Number(d.landArea ?? d.landAreaSqm))} />
               )}
             </div>
           </section>
@@ -1424,7 +1425,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           if (d.garages != null) featureRows.push({ label: 'Garage spaces', value: String(d.garages) });
           const openSpaces = (d.carSpaces != null && d.garages != null) ? Number(d.carSpaces) - Number(d.garages) : null;
           if (openSpaces != null && openSpaces > 0) featureRows.push({ label: 'Open car spaces', value: String(openSpaces) });
-          if ((d.landArea ?? d.landAreaSqm) != null) featureRows.push({ label: 'Land size', value: `${d.landArea ?? d.landAreaSqm}m²` });
+          if ((d.landArea ?? d.landAreaSqm) != null) featureRows.push({ label: 'Land size', value: formatLandArea(Number(d.landArea ?? d.landAreaSqm)) });
           if ((d.buildingArea ?? d.buildingAreaSqm) != null) featureRows.push({ label: 'Building area', value: `${d.buildingArea ?? d.buildingAreaSqm}m²` });
           if (d.yearBuilt != null) featureRows.push({ label: 'Year built', value: String(d.yearBuilt) });
           const connectivity = d.connectivity as Record<string, unknown> | undefined;
