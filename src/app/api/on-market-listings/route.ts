@@ -119,7 +119,11 @@ export async function GET(request: NextRequest) {
         .filter(withinWindow)
         .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number'
           && haversineKm(lat!, lng!, r.latitude, r.longitude) <= radius)
-        .slice(0, limit);
+        // Sort by distance BEFORE limiting — otherwise arbitrary DB order
+        // decides which listings survive the cut in dense areas.
+        .sort((a, b) =>
+          haversineKm(lat!, lng!, a.latitude as number, a.longitude as number) -
+          haversineKm(lat!, lng!, b.latitude as number, b.longitude as number));
     } else {
       // Suburb mode pushes the sinceDays window into the DB query (before the limit).
       rows = await getListingsForSuburb(suburb, state, limit, { sinceDays });
@@ -129,6 +133,9 @@ export async function GET(request: NextRequest) {
       // Lighter touch than sold-sales: only drop garbage price outliers; keep
       // price-less listings ("Contact Agent") since those are legitimate.
       .filter((r) => !(typeof r.price_low === 'number' && r.price_low > MAX_PLAUSIBLE_PRICE))
+      // Limit last — after distance sort, dedupe and price sanity — so the N
+      // closest distinct listings are returned, not the first N DB rows.
+      .slice(0, limit)
       .map((r) => ({
       rawAddress: r.raw_address,
       suburb: r.suburb ?? null,
