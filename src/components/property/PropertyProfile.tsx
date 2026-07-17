@@ -935,7 +935,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               <div>
                 <h2 className="text-sm font-semibold text-[#1B1E23]">Is this your home?</h2>
                 <p className="text-sm text-[#6B7077]">
-                  Track its estimated value and market position, and keep its details up to date.
+                  Track its value estimate and market position, and keep its details up to date.
                 </p>
               </div>
             </div>

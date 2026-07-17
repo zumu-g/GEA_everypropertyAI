@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { isEmailAllowed } from '@/lib/auth/allowlist';
+import { isAuthorizedApiKey } from '@/lib/auth/api-key';
 
 /**
  * API-key gate for the public data routes (CLI / server-to-server consumers like
@@ -28,7 +29,7 @@ function apiKeyGate(request: NextRequest): NextResponse | null {
   const auth = request.headers.get('authorization');
   const bearer = auth?.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : undefined;
   const provided = bearer ?? request.headers.get('x-api-key') ?? undefined;
-  if (provided && keys.includes(provided)) return null;
+  if (isAuthorizedApiKey(provided, keys)) return null;
 
   return NextResponse.json(
     { error: 'Unauthorized — missing or invalid API key' },
