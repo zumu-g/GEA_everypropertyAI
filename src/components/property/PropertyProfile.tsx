@@ -139,7 +139,7 @@ interface EnrichmentData {
     };
     source: string;
   } | null;
-  childcare?: Array<{ name: string; distanceKm: number; address?: string }>;
+  childcare?: Array<{ name: string; distanceKm: number; address?: string; nqsRating?: string }>;
 }
 
 interface PropertyProfileProps {
@@ -1712,12 +1712,19 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#6B7077]">
                       <span>{centre.distanceKm} km</span>
                       {centre.address && <span className="truncate">{centre.address}</span>}
+                      {centre.nqsRating && (
+                        <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium text-[#16181D]">
+                          {centre.nqsRating}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-xs text-[#8A8F97]">NQS ratings not available from map data source.</p>
+            {!enrichment.childcare.some((c) => c.nqsRating) && (
+              <p className="mt-2 text-xs text-[#8A8F97]">NQS ratings not available from map data source.</p>
+            )}
           </section>
         )}
 

@@ -1,13 +1,67 @@
 /**
- * Nearby childcare centres enrichment using the OpenStreetMap Overpass API.
- * Falls back gracefully if API is unavailable.
+ * Nearby childcare centres enrichment.
+ *
+ * Primary source: bundled open data (src/data/childcare-data.json, built by
+ * scripts/build-childcare-data.py) — ACECQA national registers with overall
+ * NQS quality ratings, geocoded at build time. Covers the Casey/Cardinia
+ * region.
+ *
+ * Fallback outside the bundled bbox: OpenStreetMap Overpass API (no ratings).
  */
+
+import childcareData from '@/data/childcare-data.json';
 
 export interface NearbyChildcare {
   name: string;
   distanceKm: number;
   address?: string;
+  /** Overall NQS rating from the ACECQA national registers, e.g. "Exceeding NQS". */
+  nqsRating?: string;
 }
+
+interface BundledCentre {
+  name: string;
+  address: string;
+  suburb: string;
+  type: string;
+  nqsRating?: string;
+  lat: number;
+  lng: number;
+  /** Geocoded to suburb centroid only — distance is indicative. */
+  approx?: boolean;
+}
+
+const DATA = childcareData as unknown as {
+  bbox: { min_lng: number; max_lng: number; min_lat: number; max_lat: number };
+  centres: BundledCentre[];
+};
+
+function inBundledBbox(lat: number, lng: number): boolean {
+  const b = DATA.bbox;
+  return lng >= b.min_lng && lng <= b.max_lng && lat >= b.min_lat && lat <= b.max_lat;
+}
+
+export async function fetchNearbyChildcare(
+  lat: number,
+  lng: number,
+  radiusMetres: number = 3000
+): Promise<NearbyChildcare[]> {
+  if (!inBundledBbox(lat, lng)) return fetchNearbyChildcareOSM(lat, lng, radiusMetres);
+
+  const radiusKm = radiusMetres / 1000;
+  return DATA.centres
+    .map((c) => ({
+      name: c.name,
+      distanceKm: haversine(lat, lng, c.lat, c.lng),
+      address: c.address,
+      nqsRating: c.nqsRating,
+    }))
+    .filter((c) => c.distanceKm <= radiusKm)
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, 8);
+}
+
+// ─── Overpass fallback (outside bundled region) ──────────────────────────────
 
 interface OverpassElement {
   id: number;
@@ -31,10 +85,10 @@ interface OverpassResponse {
 const cache = new Map<string, { data: NearbyChildcare[]; at: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-export async function fetchNearbyChildcare(
+async function fetchNearbyChildcareOSM(
   lat: number,
   lng: number,
-  radiusMetres: number = 2000
+  radiusMetres: number
 ): Promise<NearbyChildcare[]> {
   const cacheKey = `${lat.toFixed(3)},${lng.toFixed(3)}`;
   const cached = cache.get(cacheKey);
@@ -44,8 +98,7 @@ export async function fetchNearbyChildcare(
 
   try {
     // nwr (node+way+relation) with `out center`: most centres are mapped as
-    // building outlines (ways), and many are tagged kindergarten — nodes-only
-    // childcare-only returned 0 results across much of Casey/Cardinia.
+    // building outlines (ways), and many are tagged kindergarten.
     const query = `data=[out:json][timeout:10];nwr["amenity"~"^(childcare|kindergarten)$"](around:${radiusMetres},${lat},${lng});out center;`;
 
     const res = await fetch('https://overpass-api.de/api/interpreter', {
