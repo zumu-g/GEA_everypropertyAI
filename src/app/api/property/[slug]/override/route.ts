@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getOverrides, saveOverride, deleteOverride } from '@/lib/db/queries';
 
 const ALLOWED_FIELDS = new Set([
-  'bedrooms', 'bathrooms', 'carSpaces', 'landArea',
+  'bedrooms', 'bathrooms', 'carSpaces', 'landArea', 'buildingArea',
   'propertyType', 'yearBuilt', 'description',
 ]);
 

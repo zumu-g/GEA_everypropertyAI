@@ -143,7 +143,8 @@ interface PropertyProfileProps {
 
 interface EditableStatProps {
   field: string;
-  value: string;
+  /** null → attribute unknown; renders an "Add" affordance instead of a value */
+  value: string | null;
   label: string;
   suffix?: string;
   editingField: string | null;
@@ -195,14 +196,16 @@ export function EditableStat({
 
   return (
     <div className="group flex items-center gap-1.5">
-      <span
-        className="text-sm font-medium text-[#16181D] tabular-nums"
-      >
-        {value}{suffix}
-      </span>
+      {value != null ? (
+        <span className="text-sm font-medium text-[#16181D] tabular-nums">
+          {value}{suffix}
+        </span>
+      ) : (
+        <span className="text-sm font-medium text-[#9AA0A8]">—</span>
+      )}
       <span className="text-xs text-[#6B7077]">{label}</span>
       <button
-        onClick={() => onEdit(field, value)}
+        onClick={() => onEdit(field, value ?? '')}
         title={`Edit ${label}`}
         className="-m-1.5 ml-0 flex items-center justify-center rounded-lg p-2 text-[#6B7077] opacity-60 transition-opacity hover:text-[#2E5470] hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]/30"
         aria-label={`Edit ${label}`}
@@ -536,6 +539,11 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         data: { ...prev.data, [field]: isNaN(Number(value)) ? value : Number(value) }
       } : prev);
       setEditingField(null);
+      // Beds/baths/land/type feed the comparables estimate — refetch so the
+      // price range reflects the corrected attributes (profile is cached, fast).
+      if (['bedrooms', 'bathrooms', 'landArea', 'propertyType'].includes(field)) {
+        fetchProperty();
+      }
     } catch {
       // silently fail — user can retry
     } finally {
@@ -836,13 +844,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               <FileDown className="h-4 w-4" />
               Download Report
             </button>
-            {(d.bedrooms != null || d.bathrooms != null || d.carSpaces != null
-              || (d.buildingArea ?? d.buildingAreaSqm) != null || (d.landArea ?? d.landAreaSqm) != null) && (
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-[#E7E9EE] bg-white px-4 py-2">
-              {d.bedrooms != null && (
                 <EditableStat
                   field="bedrooms"
-                  value={String(d.bedrooms)}
+                  value={d.bedrooms != null ? String(d.bedrooms) : null}
                   label="Beds"
                   editingField={editingField}
                   editValue={editValue}
@@ -852,11 +857,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
-              {d.bathrooms != null && (
                 <EditableStat
                   field="bathrooms"
-                  value={String(d.bathrooms)}
+                  value={d.bathrooms != null ? String(d.bathrooms) : null}
                   label="Baths"
                   editingField={editingField}
                   editValue={editValue}
@@ -866,11 +869,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
-              {d.carSpaces != null && (
                 <EditableStat
                   field="carSpaces"
-                  value={String(d.carSpaces)}
+                  value={d.carSpaces != null ? String(d.carSpaces) : null}
                   label="Garage"
                   editingField={editingField}
                   editValue={editValue}
@@ -880,11 +881,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
-              {(d.buildingArea ?? d.buildingAreaSqm) != null && (
                 <EditableStat
                   field="buildingArea"
-                  value={String(d.buildingArea ?? d.buildingAreaSqm)}
+                  value={(d.buildingArea ?? d.buildingAreaSqm) != null ? String(d.buildingArea ?? d.buildingAreaSqm) : null}
                   label="Build"
                   suffix="m²"
                   editingField={editingField}
@@ -895,11 +894,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
-              {(d.landArea ?? d.landAreaSqm) != null && (
                 <EditableStat
                   field="landArea"
-                  value={String(d.landArea ?? d.landAreaSqm)}
+                  value={(d.landArea ?? d.landAreaSqm) != null ? String(d.landArea ?? d.landAreaSqm) : null}
                   label="Land"
                   suffix="m²"
                   editingField={editingField}
@@ -910,8 +907,12 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
             </div>
+            {(d.bedrooms == null || (d.landArea ?? d.landAreaSqm) == null) && (
+              <p className="w-full text-xs text-[#8A6425]">
+                Some property details are unknown, so the estimate below is less
+                accurate. Use the pencil icons above to add bedrooms and land size.
+              </p>
             )}
           </div>
         </section>

@@ -3,6 +3,7 @@ import {
   fetchAddressSuggestions,
   type AddressSuggestion,
 } from '@/lib/address-suggest';
+import { searchAddressUniverse, type AddressRecord } from '@/lib/db/queries';
 
 // Rough centroid lat/lng for each Australian state (for distance scoring)
 const STATE_CENTROIDS: Record<string, { lat: number; lng: number }> = {
@@ -35,7 +36,21 @@ export async function GET(request: NextRequest) {
 
   try {
     // Fetch all suggestions (no server-side state filter — we sort instead)
-    const all = await fetchAddressSuggestions(query);
+    let all: AddressSuggestion[] = [];
+    try {
+      all = await fetchAddressSuggestions(query);
+    } catch (error) {
+      console.error('[/api/address-suggest] REA suggest failed:', error);
+    }
+
+    // Fallback: local address universe (G-NAF + feeds) covers addresses the
+    // portal suggest API doesn't know (e.g. never listed for sale).
+    if (all.length === 0) {
+      const local = await searchAddressUniverse(query, 8);
+      return NextResponse.json({
+        suggestions: local.map(toSuggestionFromRecord),
+      });
+    }
 
     // Sort: user's state first, then by distance to user
     const hasLocation = !isNaN(userLat) && !isNaN(userLng);
@@ -70,6 +85,37 @@ export async function GET(request: NextRequest) {
     console.error('[/api/address-suggest] Error:', error);
     return NextResponse.json({ suggestions: [] });
   }
+}
+
+/** Map a local addresses-table record to the suggest response shape. */
+function toSuggestionFromRecord(r: AddressRecord): AddressSuggestion {
+  const streetAddress =
+    [r.street_number, r.street_name, r.street_type].filter(Boolean).join(' ') ||
+    r.raw_address.split(',')[0].trim();
+  const locality = [r.suburb, `${r.state} ${r.postcode ?? ''}`.trim()]
+    .filter(Boolean)
+    .join(', ');
+  const fullAddress = titleCaseAddress(
+    [streetAddress, locality].filter(Boolean).join(', ')
+  );
+  return {
+    display: fullAddress,
+    suburb: titleCaseAddress(r.suburb ?? ''),
+    state: r.state,
+    postcode: r.postcode ?? '',
+    streetAddress: titleCaseAddress(streetAddress),
+    fullAddress,
+    slug: r.address_slug,
+  };
+}
+
+/** G-NAF strings are uppercase; title-case the words but keep state codes. */
+function titleCaseAddress(s: string): string {
+  return s.replace(/[A-Za-z]+/g, (w) =>
+    /^(VIC|NSW|QLD|SA|WA|TAS|NT|ACT)$/i.test(w) && w === w.toUpperCase()
+      ? w
+      : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  );
 }
 
 /**
