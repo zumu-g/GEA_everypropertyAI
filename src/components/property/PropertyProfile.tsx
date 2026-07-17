@@ -68,6 +68,11 @@ interface EnrichmentData {
     type: string;
     sector: string;
     distanceKm: number;
+    yearRange?: string;
+    students?: number;
+    website?: string;
+    zonedPrimary?: boolean;
+    zonedSecondary?: boolean;
   }>;
   transport: Array<{
     name: string;
@@ -143,7 +148,8 @@ interface PropertyProfileProps {
 
 interface EditableStatProps {
   field: string;
-  value: string;
+  /** null → attribute unknown; renders an "Add" affordance instead of a value */
+  value: string | null;
   label: string;
   suffix?: string;
   editingField: string | null;
@@ -195,14 +201,16 @@ export function EditableStat({
 
   return (
     <div className="group flex items-center gap-1.5">
-      <span
-        className="text-sm font-medium text-[#16181D] tabular-nums"
-      >
-        {value}{suffix}
-      </span>
+      {value != null ? (
+        <span className="text-sm font-medium text-[#16181D] tabular-nums">
+          {value}{suffix}
+        </span>
+      ) : (
+        <span className="text-sm font-medium text-[#9AA0A8]">—</span>
+      )}
       <span className="text-xs text-[#6B7077]">{label}</span>
       <button
-        onClick={() => onEdit(field, value)}
+        onClick={() => onEdit(field, value ?? '')}
         title={`Edit ${label}`}
         className="-m-1.5 ml-0 flex items-center justify-center rounded-lg p-2 text-[#6B7077] opacity-60 transition-opacity hover:text-[#2E5470] hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E5470]/30"
         aria-label={`Edit ${label}`}
@@ -536,6 +544,11 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         data: { ...prev.data, [field]: isNaN(Number(value)) ? value : Number(value) }
       } : prev);
       setEditingField(null);
+      // Beds/baths/land/type feed the comparables estimate — refetch so the
+      // price range reflects the corrected attributes (profile is cached, fast).
+      if (['bedrooms', 'bathrooms', 'landArea', 'propertyType'].includes(field)) {
+        fetchProperty();
+      }
     } catch {
       // silently fail — user can retry
     } finally {
@@ -836,13 +849,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               <FileDown className="h-4 w-4" />
               Download Report
             </button>
-            {(d.bedrooms != null || d.bathrooms != null || d.carSpaces != null
-              || (d.buildingArea ?? d.buildingAreaSqm) != null || (d.landArea ?? d.landAreaSqm) != null) && (
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-[#E7E9EE] bg-white px-4 py-2">
-              {d.bedrooms != null && (
                 <EditableStat
                   field="bedrooms"
-                  value={String(d.bedrooms)}
+                  value={d.bedrooms != null ? String(d.bedrooms) : null}
                   label="Beds"
                   editingField={editingField}
                   editValue={editValue}
@@ -852,11 +862,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
-              {d.bathrooms != null && (
                 <EditableStat
                   field="bathrooms"
-                  value={String(d.bathrooms)}
+                  value={d.bathrooms != null ? String(d.bathrooms) : null}
                   label="Baths"
                   editingField={editingField}
                   editValue={editValue}
@@ -866,11 +874,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
-              {d.carSpaces != null && (
                 <EditableStat
                   field="carSpaces"
-                  value={String(d.carSpaces)}
+                  value={d.carSpaces != null ? String(d.carSpaces) : null}
                   label="Garage"
                   editingField={editingField}
                   editValue={editValue}
@@ -880,11 +886,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
-              {(d.buildingArea ?? d.buildingAreaSqm) != null && (
                 <EditableStat
                   field="buildingArea"
-                  value={String(d.buildingArea ?? d.buildingAreaSqm)}
+                  value={(d.buildingArea ?? d.buildingAreaSqm) != null ? String(d.buildingArea ?? d.buildingAreaSqm) : null}
                   label="Build"
                   suffix="m²"
                   editingField={editingField}
@@ -895,11 +899,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
-              {(d.landArea ?? d.landAreaSqm) != null && (
                 <EditableStat
                   field="landArea"
-                  value={String(d.landArea ?? d.landAreaSqm)}
+                  value={(d.landArea ?? d.landAreaSqm) != null ? String(d.landArea ?? d.landAreaSqm) : null}
                   label="Land"
                   suffix="m²"
                   editingField={editingField}
@@ -910,8 +912,12 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onCancel={() => setEditingField(null)}
                   onEditValueChange={setEditValue}
                 />
-              )}
             </div>
+            {(d.bedrooms == null || (d.landArea ?? d.landAreaSqm) == null) && (
+              <p className="w-full text-xs text-[#8A6425]">
+                Some property details are unknown, so the estimate below is less
+                accurate. Use the pencil icons above to add bedrooms and land size.
+              </p>
             )}
           </div>
         </section>
@@ -1614,38 +1620,79 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
           </section>
         )}
 
-        {/* ─── Nearby Schools ─── */}
-        {enrichment && enrichment.schools.length > 0 && (
-          <section>
-            <SectionTitle icon={GraduationCap} title="Nearby Schools" />
-            <div className="grid gap-3 sm:grid-cols-2">
-              {enrichment.schools.map((school, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-3 rounded-xl border border-[#E7E9EE] bg-white p-4 "
-                >
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E4F1EB]">
-                    <GraduationCap className="h-5 w-5 text-[#2F8F6B]" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-[#16181D]">
-                      {school.name}
-                    </p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#6B7077]">
-                      <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium">
-                        {school.type}
-                      </span>
-                      <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium">
-                        {school.sector}
-                      </span>
-                      <span>{school.distanceKm} km</span>
+        {/* ─── Nearby Schools (primary / secondary, zoned per findmyschool) ─── */}
+        {enrichment && enrichment.schools.length > 0 && (() => {
+          const levels = [
+            {
+              title: 'Nearby primary schools',
+              zonedFlag: 'zonedPrimary' as const,
+              schools: enrichment.schools.filter(s => s.type === 'primary' || s.type === 'combined'),
+            },
+            {
+              title: 'Nearby secondary schools',
+              zonedFlag: 'zonedSecondary' as const,
+              schools: enrichment.schools.filter(s => s.type === 'secondary' || s.type === 'combined'),
+            },
+          ].filter(l => l.schools.length > 0);
+
+          return levels.map(level => {
+            const zoned = level.schools.find(s => s[level.zonedFlag]);
+            return (
+              <section key={level.title}>
+                <SectionTitle icon={GraduationCap} title={level.title} />
+                {zoned && (
+                  <p className="mb-3 -mt-2 text-sm text-[#4A4E57]">
+                    This property is in the <span className="font-semibold text-[#2E5470]">{zoned.name}</span> school zone.
+                  </p>
+                )}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {level.schools.map((school, i) => (
+                    <div
+                      key={i}
+                      className={`flex items-start gap-3 rounded-xl border p-4 ${
+                        school[level.zonedFlag]
+                          ? 'border-[#2E5470]/40 bg-[#E4EBF1]/40'
+                          : 'border-[#E7E9EE] bg-white'
+                      }`}
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#E4F1EB]">
+                        <GraduationCap className="h-5 w-5 text-[#2F8F6B]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-sm font-semibold text-[#16181D]">{school.name}</p>
+                          {school[level.zonedFlag] && (
+                            <span className="shrink-0 rounded-full bg-[#2E5470] px-2 py-0.5 text-[11px] font-medium text-white">
+                              Zoned
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-[#6B7077]">
+                          {school.yearRange && (
+                            <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium">{school.yearRange}</span>
+                          )}
+                          <span className="rounded-full bg-[#F4F5F7] px-2 py-0.5 font-medium capitalize">{school.sector}</span>
+                          {school.students != null && <span>{school.students} students</span>}
+                          <span>{school.distanceKm} km</span>
+                        </div>
+                        {school.website && (
+                          <a
+                            href={school.website.startsWith('http') ? school.website : `https://${school.website}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1.5 inline-block text-xs font-medium text-[#2E5470] underline-offset-2 hover:underline"
+                          >
+                            School website
+                          </a>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
-        )}
+              </section>
+            );
+          });
+        })()}
 
         {/* ─── Nearby Childcare ─── */}
         {enrichment?.childcare && enrichment.childcare.length > 0 && (

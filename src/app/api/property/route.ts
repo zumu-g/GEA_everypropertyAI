@@ -26,7 +26,7 @@ function applyOverrides(
 ): PropertyProfile {
   if (Object.keys(overrides).length === 0) return profile;
 
-  const NUMERIC_FIELDS = new Set(['bedrooms', 'bathrooms', 'carSpaces', 'landArea', 'yearBuilt']);
+  const NUMERIC_FIELDS = new Set(['bedrooms', 'bathrooms', 'carSpaces', 'landArea', 'buildingArea', 'yearBuilt']);
 
   const patchedData = { ...profile.data };
   const patchedConfidences = { ...profile.fieldConfidences };

@@ -787,6 +787,61 @@ export async function insertAddresses(addresses: AddressRecord[]): Promise<void>
   }
 }
 
+/**
+ * Fallback address suggest: search the local address universe (G-NAF + feed
+ * ingest) when the live portal suggest API has no match for an address we
+ * hold (e.g. never listed on a portal).
+ */
+export async function searchAddressUniverse(
+  query: string,
+  limit = 8
+): Promise<AddressRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const tokens = query.trim().replace(/,/g, ' ').split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+  const pattern = `%${tokens.join('%')}%`;
+  const { data, error } = await supabase()
+    .from('addresses')
+    .select('*')
+    .ilike('raw_address', pattern)
+    .limit(limit);
+  if (error) {
+    console.error('[searchAddressUniverse]', error.message);
+    return [];
+  }
+  if (data && data.length > 0) return data;
+
+  // Second tier: addresses known from sales history (covers every property
+  // that has ever sold, even when the G-NAF universe hasn't been imported).
+  const { data: sales, error: salesError } = await supabase()
+    .from('property_sales')
+    .select('address_slug, raw_address, suburb, state, postcode, latitude, longitude')
+    .ilike('raw_address', pattern)
+    .order('sale_date', { ascending: false })
+    .limit(limit * 3);
+  if (salesError) {
+    console.error('[searchAddressUniverse:sales]', salesError.message);
+    return [];
+  }
+  const seen = new Map<string, AddressRecord>();
+  for (const r of sales ?? []) {
+    const key = (r.raw_address ?? '').trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.set(key, {
+      address_slug: r.address_slug ?? key.replace(/[^a-z0-9]+/g, '-'),
+      raw_address: r.raw_address,
+      suburb: r.suburb ?? undefined,
+      state: r.state ?? 'VIC',
+      postcode: r.postcode ?? undefined,
+      lat: r.latitude ?? undefined,
+      lng: r.longitude ?? undefined,
+      source: 'property_sales',
+    });
+    if (seen.size >= limit) break;
+  }
+  return [...seen.values()];
+}
+
 /** Distinct addresses for a suburb from the addresses table (paginated). */
 export async function getAddressesForSuburb(
   suburb: string,

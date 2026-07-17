@@ -101,6 +101,32 @@ function addComp(map: Map<string, ComparableSale>, c: ComparableSale, excludeAdd
   if (!existing || (c.saleDate > existing.saleDate)) map.set(key, c);
 }
 
+/**
+ * When the subject's bedrooms/land size are unknown, comparables can't be
+ * matched on them — the comp pool skews to the suburb's typical stock and the
+ * estimate can land well off. Lower confidence and say so, rather than
+ * presenting a confident number.
+ */
+function applyAttributeGapPenalty<T extends PriceEstimateResult>(
+  result: T,
+  subject: EstimateSubjectInput
+): T {
+  const missing: string[] = [];
+  if (subject.bedrooms == null) missing.push('bedroom count');
+  if (subject.landAreaSqm == null) missing.push('land size');
+  if (missing.length === 0) return result;
+
+  result.confidenceScore = Math.max(5, result.confidenceScore - missing.length * 15);
+  result.confidenceLevel =
+    result.confidenceScore >= 75 ? 'high' : result.confidenceScore >= 45 ? 'medium' : 'low';
+  result.methodology += ` Note: the property's ${missing.join(' and ')} ${
+    missing.length > 1 ? 'are' : 'is'
+  } unknown, so comparables could not be matched on ${
+    missing.length > 1 ? 'them' : 'it'
+  } — add property details to refine this estimate.`;
+  return result;
+}
+
 export async function getEstimate(
   subject: EstimateSubjectInput,
   now: Date = new Date(),
@@ -167,7 +193,7 @@ export async function getEstimate(
 
   if (compList.length >= MIN_COMPS) {
     const result = estimateFromComparables(comparableSubject, compList, marketData, now);
-    if (result) return result;
+    if (result) return applyAttributeGapPenalty(result, subject);
   }
 
   // ── Legacy fallback (suburb median + growth), with lowered confidence ─────────
@@ -189,7 +215,7 @@ export async function getEstimate(
     fallback.confidenceLevel =
       fallback.confidenceScore >= 75 ? 'high' : fallback.confidenceScore >= 45 ? 'medium' : 'low';
     fallback.methodology += ' (Insufficient comparable sales nearby; suburb-based estimate.)';
-    return fallback;
+    return applyAttributeGapPenalty(fallback, subject);
   }
 
   return null;
