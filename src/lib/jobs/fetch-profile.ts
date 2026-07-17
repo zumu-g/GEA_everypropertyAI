@@ -16,6 +16,7 @@ import { mergePropertyData } from '@/lib/extraction/merger';
 import { partitionByAddressMatch } from '@/lib/extraction/address-match';
 import { groundFields } from '@/lib/extraction/grounding';
 import { geocodeAddress } from '@/lib/enrichment/geocoding';
+import { fetchParcelLandArea } from '@/lib/enrichment/parcel';
 import { saveCachedProfile, getCachedProfile, getFeedSeedBySlug } from '@/lib/db/queries';
 import { mapFeedRowToProfileFields, applyFeedSeed } from '@/lib/jobs/feed-seed';
 import type { ExtractedPropertyData } from '@/types/property';
@@ -170,6 +171,21 @@ async function doFetchAndCacheProfile(
   // always {}. The caller-resolved StructuredAddress is the source of truth — overlay
   // it, and geocode for coordinates (Mapbox) since address-suggest returns none.
   await seedResolvedAddress(profile, address);
+
+  // Step 3c: land-size fallback from the Vicmap cadastre. Only when neither the
+  // crawl nor the feed produced a land area and we have coordinates (VIC only).
+  if (
+    profile.data.landArea === undefined &&
+    typeof profile.data.latitude === 'number' &&
+    typeof profile.data.longitude === 'number' &&
+    (address.state ?? '').toUpperCase() === 'VIC'
+  ) {
+    const parcelArea = await fetchParcelLandArea(profile.data.latitude, profile.data.longitude);
+    if (parcelArea != null) {
+      profile.data.landArea = parcelArea;
+      profile.fieldConfidences['landArea'] = { confidence: 55, contributedBy: ['vicmap-parcel'] };
+    }
+  }
 
   // A profile carrying feed-seeded attributes is NOT empty even when the crawl
   // failed — recompute its confidence (the merger left it at 0) so consumers
