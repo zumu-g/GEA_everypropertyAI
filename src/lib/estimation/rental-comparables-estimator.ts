@@ -183,7 +183,9 @@ export function estimateRentFromComparables(
     usePerBed ? (c.adjustedRent / Math.max(c.bedrooms ?? subject.bedrooms ?? 1, 1)) * (subject.bedrooms as number) : c.adjustedRent,
   );
 
-  const rentMid = weightedMedian(impliedRent, weights);
+  // Whole dollars: a weighted median of time-adjusted rents is fractional
+  // ($386.666…), which is meaningless for a weekly rent figure. Round up.
+  const rentMid = Math.ceil(weightedMedian(impliedRent, weights));
 
   // Step D — dispersion, effective count, band.
   const absDev = impliedRent.map((v) => Math.abs(v - rentMid));
