@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
-import { UserPlus, Shield, Trash2, CheckCircle, Lock } from "lucide-react";
+import { UserPlus, Shield, Trash2, CheckCircle, Lock, Building2 } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -113,12 +113,10 @@ export default function SettingsPage() {
       <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 px-safe pt-safe backdrop-blur-sm">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <Link href="/" className="group flex items-center gap-3" aria-label="everypropertyAI home">
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
+            <Building2
+              className="h-6 w-6 shrink-0 text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
               aria-hidden="true"
-            >
-              GEA
-            </span>
+            />
             <div className="leading-none">
               <span className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]">
                 everyproperty<span className="text-[#2E5470]">AI</span>

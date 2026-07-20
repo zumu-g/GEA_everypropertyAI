@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { MapPin, Home } from "lucide-react";
+import { MapPin, Home, Building2 } from "lucide-react";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -222,12 +222,10 @@ export default function MyPropertiesPage() {
             className="group flex items-center gap-3"
             aria-label="everypropertyAI home"
           >
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#16181D] text-xs font-medium tracking-wide text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
+            <Building2
+              className="h-6 w-6 shrink-0 text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
               aria-hidden="true"
-            >
-              GEA
-            </span>
+            />
             <div className="leading-none">
               <span
                 className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]"
