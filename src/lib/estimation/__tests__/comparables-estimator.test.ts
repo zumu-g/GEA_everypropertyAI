@@ -5,6 +5,8 @@ import {
   weightedMedian,
   monthsSince,
   typeBucket,
+  isVacantLandType,
+  similarityWeight,
   type ComparableSale,
   type ComparableSubject,
 } from '../comparables-estimator';
@@ -52,6 +54,47 @@ describe('helpers', () => {
     expect(typeBucket('Apartment')).toBe('unit');
     expect(typeBucket(null)).toBe('unknown');
     expect(typeBucket('warehouse-conversion')).toBe('house'); // contains "house"
+  });
+
+  it('typeBucket maps vacant-land variants to land', () => {
+    for (const t of ['Vacant land', 'VacantLand', 'residential land', 'residentialLand', 'New land', 'NewLand', 'land', 'Development Site']) {
+      expect(typeBucket(t)).toBe('land');
+    }
+  });
+
+  it('typeBucket resolves house-and-land PACKAGES as house, not land', () => {
+    expect(typeBucket('New House & Land')).toBe('house');
+    expect(typeBucket('NewHouseLand')).toBe('house');
+  });
+
+  it('typeBucket leaves rural/farm as unknown (not yet a distinct bucket)', () => {
+    // Pre-existing quirk: "AcreageSemiRural" contains "semi" (HOUSE_TYPES), so
+    // it buckets as house — unrelated to the land-detection change here.
+    expect(typeBucket('AcreageSemiRural')).toBe('house');
+    expect(typeBucket('Rural')).toBe('unknown');
+    expect(typeBucket('Farm')).toBe('unknown');
+  });
+
+  it('typeBucket(null | undefined | "") is unknown', () => {
+    expect(typeBucket(null)).toBe('unknown');
+    expect(typeBucket(undefined)).toBe('unknown');
+    expect(typeBucket('')).toBe('unknown');
+  });
+
+  it('isVacantLandType matches explicit land strings, excludes house-and-land packages', () => {
+    expect(isVacantLandType('Vacant land')).toBe(true);
+    expect(isVacantLandType('VacantLand')).toBe(true);
+    expect(isVacantLandType('residential land')).toBe(true);
+    expect(isVacantLandType('residentialLand')).toBe(true);
+    expect(isVacantLandType('New land')).toBe(true);
+    expect(isVacantLandType('NewLand')).toBe(true);
+    expect(isVacantLandType('land')).toBe(true);
+    expect(isVacantLandType('Development Site')).toBe(true);
+    expect(isVacantLandType('New House & Land')).toBe(false);
+    expect(isVacantLandType('NewHouseLand')).toBe(false);
+    expect(isVacantLandType('House')).toBe(false);
+    expect(isVacantLandType(undefined)).toBe(false);
+    expect(isVacantLandType(null)).toBe(false);
   });
 
   it('timeAdjust ~1.22x for 24 months at 10% p.a.', () => {
@@ -162,5 +205,29 @@ describe('estimateFromComparables', () => {
     expect(flagged?.flagged).toBe(true);
     expect(withDivergentPrior.confidenceBand).toBeGreaterThanOrEqual(base.confidenceBand);
     expect(withDivergentPrior.confidenceScore).toBeLessThan(base.confidenceScore);
+  });
+
+  it('land subject: land comps produce a "vacant-land sales" methodology note', () => {
+    const landSubject: ComparableSubject = { ...SUBJECT, propertyType: 'Vacant land', bedrooms: undefined, bathrooms: undefined, landAreaSqm: 700 };
+    const landComps = Array.from({ length: 5 }, (_, i) =>
+      comp(350_000, { type: 'Vacant land', beds: null, baths: null, land: 650 + i * 20, distanceKm: 0.6 }, i),
+    );
+    const r = estimateFromComparables(landSubject, landComps, MARKET, NOW);
+    expect(r).not.toBeNull();
+    expect(r!.methodology).toContain('comparable vacant-land sales');
+  });
+
+  it('land subject: land-area similarity dominates over a house subject at the same land ratio', () => {
+    const landSubject: ComparableSubject = { ...SUBJECT, propertyType: 'Vacant land', bedrooms: undefined, bathrooms: undefined, landAreaSqm: 600 };
+    const nearLandComp = comp(350_000, { type: 'Vacant land', beds: null, baths: null, land: 660 }, 1); // 10% bigger
+    const farLandComp = comp(350_000, { type: 'Vacant land', beds: null, baths: null, land: 1800 }, 2); // 3x bigger
+    const wNear = similarityWeight(landSubject, nearLandComp);
+    const wFar = similarityWeight(landSubject, farLandComp);
+    // Both compared against the equivalent house-subject weights at the same ratios.
+    const houseNear = similarityWeight(SUBJECT, { ...nearLandComp, propertyType: 'house' });
+    const houseFar = similarityWeight(SUBJECT, { ...farLandComp, propertyType: 'house' });
+    // Land weighting is steeper: the near/far spread for land should be wider
+    // (relatively) than for houses, since land-area is the dominant signal.
+    expect(wFar / wNear).toBeLessThan(houseFar / houseNear);
   });
 });

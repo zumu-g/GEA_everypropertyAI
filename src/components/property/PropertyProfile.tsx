@@ -36,6 +36,7 @@ import type { MergedPropertyProfile, StructuredAddress } from "@/types/property"
 import { titleCaseSuburb } from "@/lib/utils/address";
 import { formatLandArea } from "@/lib/utils/area";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
+import { isVacantLandType } from '@/lib/estimation/comparables-estimator';
 import { ComparableSales } from "./ComparableSales";
 import { QuadrantChartSection } from "./QuadrantChartSection";
 import { OnMarketNearby } from "./OnMarketNearby";
@@ -650,7 +651,8 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
   const photos = (d.photos as string[]) ?? [];
   const heroImage = photos[0] ?? null;
-  const propertyType = (d.propertyType as string) ?? "Property";
+  const isVacantLand = isVacantLandType(d.propertyType as string | undefined);
+  const propertyType = isVacantLand ? "Vacant land" : (d.propertyType as string) ?? "Property";
   const saleHistory =
     (d.saleHistory as Array<{
       price?: number;
@@ -917,7 +919,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onEditValueChange={setEditValue}
                 />
             </div>
-            {(d.bedrooms == null || (d.landArea ?? d.landAreaSqm) == null) && (
+            {!isVacantLand && (d.bedrooms == null || (d.landArea ?? d.landAreaSqm) == null) && (
               <p className="w-full text-xs text-[#8A6425]">
                 Some property details are unknown, so the estimate below is less
                 accurate. Use the pencil icons above to add bedrooms and land size.
@@ -1137,6 +1139,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     </div>
                   );
                 }
+
+                // No weekly-rent figure for a vacant block — there is nothing to lease.
+                if (isVacantLand) return null;
 
                 const now = Date.now();
                 const recentRental = rentalHistory

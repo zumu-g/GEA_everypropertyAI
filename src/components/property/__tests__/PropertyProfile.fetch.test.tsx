@@ -183,6 +183,83 @@ describe('PropertyProfile fetch graph (U2)', () => {
   });
 });
 
+describe('PropertyProfile vacant-land handling (U4)', () => {
+  it('shows the "Vacant land" label and renders no weekly-rent figure', async () => {
+    const log: FetchLog = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        log.push({ url });
+        if (url.startsWith('/api/property')) {
+          return {
+            ok: true,
+            json: async () => ({
+              profile: {
+                data: {
+                  latitude: -38.06,
+                  longitude: 145.45,
+                  propertyType: 'Vacant land',
+                  landArea: 700,
+                  saleHistory: [],
+                  rentalHistory: [],
+                },
+                fieldConfidences: {},
+                overallConfidence: 0.5,
+                sources: [],
+                mergedAt: new Date().toISOString(),
+              },
+              addressSlug: 'test-land-slug',
+            }),
+          } as Response;
+        }
+        if (url.startsWith('/api/enrich')) {
+          return {
+            ok: true,
+            json: async () => ({
+              marketData: {
+                houses: { medianPrice: 900000, annualGrowth: 5 },
+                units: { medianPrice: 600000, annualGrowth: 4 },
+              },
+              coordinates: { lat: -38.06, lng: 145.45 },
+              buyerDemand: { score: 50, level: 'medium', factors: [] },
+              planning: { zone: null, overlays: [], council: null, planningScheme: null, source: 'test' },
+              schools: [],
+              childcare: [],
+              transport: [],
+              suburbStats: { suburb: 'Bunyip' },
+            }),
+          } as Response;
+        }
+        if (url.startsWith('/api/estimate-rent')) {
+          // Service-side land guard returns null — the fetch itself still
+          // resolves ok, but with no result.
+          return { ok: true, json: async () => ({ result: null }) } as Response;
+        }
+        if (url.startsWith('/api/estimate')) {
+          return {
+            ok: true,
+            json: async () => ({
+              result: {
+                priceLow: 250000, priceMid: 300000, priceHigh: 350000,
+                confidenceLevel: 'low', priceSource: 'comparables',
+                methodology: 'Based on 3 comparable vacant-land sales.',
+              },
+            }),
+          } as Response;
+        }
+        return { ok: true, json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch,
+    );
+
+    render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+
+    await waitFor(() => screen.getByText(/Estimated Value/i));
+    expect(screen.getByText('Vacant land')).toBeInTheDocument();
+    expect(screen.queryByText(/\/pw/)).not.toBeInTheDocument();
+  });
+});
+
 describe('fetchEstimates fallback marketData (code-review fix)', () => {
   it('uses enrich\'s resolved marketData in the local fallback estimate when /api/estimate fails', async () => {
     const spy = vi.spyOn(priceEstimator, 'calculateEnrichedPriceEstimate');

@@ -215,6 +215,16 @@ export async function getEstimate(
     fallback.confidenceLevel =
       fallback.confidenceScore >= 75 ? 'high' : fallback.confidenceScore >= 45 ? 'medium' : 'low';
     fallback.methodology += ' (Insufficient comparable sales nearby; suburb-based estimate.)';
+    // KTD5: the suburb-median cascade is a dwelling-price fallback — for a
+    // vacant-land subject with too few land comps, a house/unit median is not
+    // representative of land value. Floor confidence to 'low' and say so,
+    // rather than presenting a confident dwelling-derived figure.
+    if (typeBucket(subject.propertyType) === 'land') {
+      fallback.confidenceScore = Math.min(fallback.confidenceScore, 20);
+      fallback.confidenceLevel = 'low';
+      fallback.methodology +=
+        ' Insufficient vacant-land sales nearby; suburb dwelling medians are not representative of land value.';
+    }
     return applyAttributeGapPenalty(fallback, subject);
   }
 

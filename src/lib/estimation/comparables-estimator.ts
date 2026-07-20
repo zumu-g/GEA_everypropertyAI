@@ -91,13 +91,29 @@ const WEIGHT_EPSILON = 1e-4;
 const UNIT_TYPES = ['apartment', 'unit', 'studio', 'flat'];
 const HOUSE_TYPES = ['house', 'townhouse', 'villa', 'duplex', 'terrace', 'semi'];
 
-type TypeBucket = 'unit' | 'house' | 'unknown';
+type TypeBucket = 'unit' | 'house' | 'land' | 'unknown';
+
+/**
+ * Explicit-string land detection only (never inferred from missing
+ * beds/baths/building area — VG sold records routinely lack attributes for
+ * real houses, so attribute-absence is not a safe land signal). Matches
+ * "vacant land", "residential land"/"residentialLand", "new land"/"NewLand",
+ * bare "land", and "development site". Excludes house-and-land PACKAGES
+ * ("New House & Land" / "NewHouseLand") — those are houses, not vacant blocks.
+ */
+export function isVacantLandType(propertyType?: string | null): boolean {
+  if (!propertyType) return false;
+  const t = propertyType.toLowerCase();
+  if (t.includes('house')) return false; // house-and-land package, not vacant land
+  return t.includes('vacant') || t.includes('land') || t.includes('development site');
+}
 
 export function typeBucket(propertyType?: string | null): TypeBucket {
   if (!propertyType) return 'unknown';
   const t = propertyType.toLowerCase();
   if (UNIT_TYPES.some((u) => t.includes(u))) return 'unit';
   if (HOUSE_TYPES.some((h) => t.includes(h))) return 'house';
+  if (isVacantLandType(propertyType)) return 'land';
   return 'unknown';
 }
 
@@ -152,11 +168,14 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
     wBaths = diff === 0 ? 1.0 : diff === 1 ? 0.9 : 0.75;
   }
 
-  // Land (houses only), symmetric in log-space.
+  // Land (houses and vacant land), symmetric in log-space. Land subjects have
+  // no beds/baths/building area to differentiate comps, so land-area
+  // similarity is weighted more steeply (KTD4) — it's the dominant signal.
   let wLand = 1.0;
   if (!isUnit && subject.landAreaSqm && comp.landAreaSqm && comp.landAreaSqm > 0) {
     const ratio = comp.landAreaSqm / subject.landAreaSqm;
-    wLand = Math.exp(-Math.abs(Math.log(ratio)) * 0.7);
+    const steepness = subjBucket === 'land' ? 2.0 : 0.7;
+    wLand = Math.exp(-Math.abs(Math.log(ratio)) * steepness);
   }
 
   // Recency.
@@ -201,7 +220,8 @@ export function estimateFromComparables(
   marketData: MarketDataInput | null,
   now: Date = new Date(),
 ): ComparablesEstimateResult | null {
-  const isUnit = typeBucket(subject.propertyType) === 'unit';
+  const subjBucket = typeBucket(subject.propertyType);
+  const isUnit = subjBucket === 'unit';
   const segment = isUnit ? marketData?.units : marketData?.houses;
   const annualGrowth = segment?.annualGrowth ?? 0;
   const monthlyGrowth = annualGrowth / 12 / 100;
@@ -290,8 +310,9 @@ export function estimateFromComparables(
       : '';
 
   const maxDistance = Math.max(0, ...cleaned.map((c) => c.distanceKm ?? 0));
+  const compNoun = subjBucket === 'land' ? 'comparable vacant-land sales' : 'comparable sales';
   const methodology =
-    `Based on ${cleaned.length} comparable sales` +
+    `Based on ${cleaned.length} ${compNoun}` +
     (maxDistance > 0 ? ` within ${maxDistance.toFixed(1)}km` : ' in the suburb') +
     (annualGrowth ? `, time-adjusted using ${annualGrowth.toFixed(1)}% p.a. suburb growth` : '') +
     `. Weighted-median estimate, ±${band}%.` +

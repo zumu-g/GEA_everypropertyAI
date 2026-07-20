@@ -95,6 +95,10 @@ export async function getRentalEstimate(
   subject: RentalEstimateSubjectInput,
   now: Date = new Date(),
 ): Promise<RentalEstimateResult | PriceEstimateResult | null> {
+  // A weekly-rent figure is meaningless for a vacant block — there is nothing
+  // to lease. No rent estimate for land subjects (KTD6).
+  if (typeBucket(subject.propertyType) === 'land') return null;
+
   const state = (subject.state ?? 'VIC').toUpperCase();
   const hasGeo =
     typeof subject.latitude === 'number' && Number.isFinite(subject.latitude) &&
