@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Database, MapPin, BarChart3, FileText } from "lucide-react";
+import { Database, MapPin, BarChart3, Building2 } from "lucide-react";
 import { AddressSearch } from "@/components/search/AddressSearch";
 import { AuthButton } from "@/components/auth/AuthButton";
 
@@ -27,9 +27,8 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 border-b border-[#E7E9EE] bg-[#FBFBFC]/90 backdrop-blur-sm pt-safe px-safe">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-3 group" aria-label="everypropertyAI home">
-            <FileText
+            <Building2
               className="h-6 w-6 shrink-0 text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
-              strokeWidth={2}
               aria-hidden="true"
             />
             <div className="leading-none">
