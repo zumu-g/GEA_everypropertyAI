@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchAddressSuggestions, type AddressSuggestion } from '@/lib/address-suggest';
-import { getCachedProfilesBySlugs, getSalesForSuburb, type PropertySaleRecord } from '@/lib/db/queries';
+import { getCachedProfilesBySlugs, getSalesForStreet, type PropertySaleRecord } from '@/lib/db/queries';
 import { toSlug } from '@/lib/utils/address';
 import type { StructuredAddress } from '@/types/property';
 import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
@@ -88,11 +88,12 @@ export async function GET(request: NextRequest) {
       return { suggestion: s, address, slug: toSlug(address) };
     });
 
-    // Batch-fetch stored data (cache by slug, VG sales by suburb)
+    // Batch-fetch stored data (cache by slug, VG sales scoped to this street —
+    // a suburb-wide newest-200 window starves busy suburbs of older street sales)
     const first = suggestions[0];
     const [cacheBySlug, vgSales] = await Promise.all([
       getCachedProfilesBySlugs(parsed.map((p) => p.slug)),
-      getSalesForSuburb(first.suburb, first.state, 3650),
+      getSalesForStreet(parsed[0].address.streetName, first.suburb, first.state, 3650),
     ]);
 
     const rows: StreetRow[] = parsed.map(({ suggestion, address, slug }) => {
@@ -130,12 +131,15 @@ export async function GET(request: NextRequest) {
         postcode: suggestion.postcode,
         slug,
         propertyHref: `/property?address=${encodeURIComponent(JSON.stringify(address))}`,
+        // Cache profile wins; the matched sale record fills the blanks — the
+        // sold feed carries beds/baths/cars/areas that property_cache mostly lacks.
         landAreaSqm:
           asNumber(data.landAreaSqm) ?? asNumber(data.landArea) ?? vg?.land_area_sqm ?? null,
-        buildingAreaSqm: asNumber(data.buildingAreaSqm) ?? asNumber(data.buildingArea),
-        bedrooms: asNumber(data.bedrooms),
-        bathrooms: asNumber(data.bathrooms),
-        garage: asNumber(data.garages) ?? asNumber(data.carSpaces),
+        buildingAreaSqm:
+          asNumber(data.buildingAreaSqm) ?? asNumber(data.buildingArea) ?? vg?.building_area_sqm ?? null,
+        bedrooms: asNumber(data.bedrooms) ?? vg?.bedrooms ?? null,
+        bathrooms: asNumber(data.bathrooms) ?? vg?.bathrooms ?? null,
+        garage: asNumber(data.garages) ?? asNumber(data.carSpaces) ?? vg?.car_spaces ?? null,
         lastSaleDate: sale.date,
         lastSalePrice: sale.price,
         lastListedDate:

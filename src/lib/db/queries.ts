@@ -1062,6 +1062,34 @@ export async function getSalesForSuburb(
   return data ?? [];
 }
 
+/**
+ * All sales on one street (matched by street name within raw_address), newest
+ * first. Unlike getSalesForSuburb's recent-200 window, this stays complete for
+ * a street regardless of suburb sales volume — a street's own sale count is
+ * small, so the generous limit is effectively "all of them".
+ */
+export async function getSalesForStreet(
+  streetName: string,
+  suburb: string,
+  state: string,
+  limitDays: number = 3650,
+  limit: number = 500
+): Promise<PropertySaleRecord[]> {
+  if (!isSupabaseConfigured() || !streetName.trim()) return [];
+  const since = new Date(Date.now() - limitDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const { data, error } = await supabase()
+    .from('property_sales')
+    .select('*')
+    .ilike('raw_address', `%${streetName.trim()}%`)
+    .ilike('suburb', normaliseSuburbAlias(suburb))
+    .eq('state', state.toUpperCase())
+    .gte('sale_date', since)
+    .order('sale_date', { ascending: false })
+    .limit(limit);
+  if (error) { console.error('[getSalesForStreet]', error.message); return []; }
+  return data ?? [];
+}
+
 // ─── On-market Listings & Rentals (Domain Apify feeds) ───────────────────────
 
 export interface PropertyListingRecord {
