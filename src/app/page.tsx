@@ -31,16 +31,9 @@ export default function HomePage() {
               className="h-6 w-6 shrink-0 text-[#2E5470] transition-opacity duration-150 group-hover:opacity-80"
               aria-hidden="true"
             />
-            <div className="leading-none">
-              <span
-                className="block text-[1.1rem] leading-tight tracking-tight text-[#16181D]"
-              >
-                everyproperty<span className="text-[#2E5470]">AI</span>
-              </span>
-              <span className="block text-[0.65rem] text-[#6B7077] tracking-wide uppercase">
-                by Grants Estate Agents
-              </span>
-            </div>
+            <span className="text-[1.1rem] font-semibold leading-tight tracking-tight text-[#16181D]">
+              everypropertyAI
+            </span>
           </Link>
 
           <nav aria-label="Site navigation" className="flex items-center gap-3">
