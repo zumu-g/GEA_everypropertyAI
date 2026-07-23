@@ -228,6 +228,88 @@ export function EditableStat({
   );
 }
 
+// Options for the property-type override. Values match the strings
+// isVacantLandType()/typeBucket() (comparables-estimator.ts) already recognise,
+// so picking "Vacant land" here correctly routes the CMA to land-only comps.
+const PROPERTY_TYPE_OPTIONS = [
+  'House', 'Townhouse', 'Apartment / Unit / Flat', 'Villa',
+  'Vacant land', 'Acreage / Semi-Rural', 'Rural',
+];
+
+interface EditableTypeBadgeProps {
+  value: string;
+  editingField: string | null;
+  editValue: string;
+  editSaving: boolean;
+  onEdit: (field: string, currentValue: string) => void;
+  onSave: (field: string, value: string) => void;
+  onCancel: () => void;
+  onEditValueChange: (v: string) => void;
+}
+
+/** Editable "Property type" badge — pill on the hero image, dropdown on edit.
+ * Lets a user flag a subject as vacant land so the estimate stops comping it
+ * against nearby houses (see estimate-service.ts typeBucket prefilter). */
+function EditableTypeBadge({
+  value, editingField, editValue, editSaving,
+  onEdit, onSave, onCancel, onEditValueChange,
+}: EditableTypeBadgeProps) {
+  const field = 'propertyType';
+  const isEditing = editingField === field;
+
+  if (isEditing) {
+    return (
+      <span className="mb-2 inline-flex items-center gap-1.5">
+        <select
+          value={editValue}
+          onChange={e => onEditValueChange(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') onCancel();
+          }}
+          autoFocus
+          className="rounded-full border border-white/40 bg-white/90 px-3 py-1 text-xs font-medium text-[#16181D] outline-none focus:ring-2 focus:ring-[#2E5470]/30"
+        >
+          {!PROPERTY_TYPE_OPTIONS.includes(editValue) && editValue && (
+            <option value={editValue}>{editValue}</option>
+          )}
+          {PROPERTY_TYPE_OPTIONS.map(opt => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => onSave(field, editValue)}
+          disabled={editSaving}
+          className="rounded-full bg-[#2E5470] px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-[#24435A] disabled:opacity-50"
+        >
+          {editSaving ? '…' : 'Save'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="rounded-full border border-white/40 px-2 py-1 text-xs text-white transition-colors hover:border-white"
+        >
+          ✕
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <span className="group mb-2 inline-flex items-center gap-1 rounded-full bg-white/20 pl-3 pr-1 py-1 text-xs font-medium text-white backdrop-blur-sm">
+      {value.charAt(0).toUpperCase() + value.slice(1)}
+      <button
+        onClick={() => onEdit(field, value)}
+        title="Edit property type"
+        aria-label="Edit property type"
+        className="flex items-center justify-center rounded-full p-1 opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+      >
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-3 w-3">
+          <path d="M11.5 2.5a1.414 1.414 0 0 1 2 2L5 13H2.5v-2.5L11.5 2.5Z" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </span>
+  );
+}
+
 /** Full "123 Smith St, Suburb VIC 3000" string from a StructuredAddress, used to
  * build both /api/enrich's and /api/estimate*'s query params. */
 function addressToFullString(structured: StructuredAddress): string {
@@ -753,9 +835,16 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-8">
-              <span className="mb-2 inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
-                {propertyType.charAt(0).toUpperCase() + propertyType.slice(1)}
-              </span>
+              <EditableTypeBadge
+                value={propertyType}
+                editingField={editingField}
+                editValue={editValue}
+                editSaving={editSaving}
+                onEdit={(f, v) => { setEditingField(f); setEditValue(v); }}
+                onSave={saveOverride}
+                onCancel={() => setEditingField(null)}
+                onEditValueChange={setEditValue}
+              />
               {d.listingStatus != null && (() => {
                 const status = String(d.listingStatus).toLowerCase();
                 const cfg =
