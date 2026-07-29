@@ -39,6 +39,8 @@ import { isOptimizerBlocked } from "@/lib/utils/image";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
 import { isVacantLandType } from '@/lib/estimation/comparables-estimator';
 import { ComparableSales } from "./ComparableSales";
+import { ComparableRentals } from "./ComparableRentals";
+import type { WeightedRentalComp } from "@/lib/estimation/rental-comparables-estimator";
 import { QuadrantChartSection } from "./QuadrantChartSection";
 import { OnMarketNearby } from "./OnMarketNearby";
 import { TrackPropertyButton } from "./TrackPropertyButton";
@@ -244,7 +246,11 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   const [property, setProperty] = useState<MergedPropertyProfile | null>(null);
   const [enrichment, setEnrichment] = useState<EnrichmentData | null>(null);
   const [enrichedEstimate, setEnrichedEstimate] = useState<PriceEstimateResult | null>(null);
-  const [rentalEstimate, setRentalEstimate] = useState<PriceEstimateResult | null>(null);
+  // Widened beyond PriceEstimateResult so the comparables path's
+  // comparablesUsed survives for the Comparable Rentals section.
+  const [rentalEstimate, setRentalEstimate] = useState<
+    (PriceEstimateResult & { comparablesUsed?: WeightedRentalComp[] }) | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -527,7 +533,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       const rentRes = await fetch(`/api/estimate-rent?${rentParams.toString()}`);
       const rentJson = rentRes.ok ? await rentRes.json() : null;
       if (requestId !== requestIdRef.current) return; // stale property, drop
-      setRentalEstimate((rentJson?.result as PriceEstimateResult | null) ?? null);
+      setRentalEstimate(
+        (rentJson?.result as (PriceEstimateResult & { comparablesUsed?: WeightedRentalComp[] }) | null) ?? null,
+      );
     } catch {
       if (requestId !== requestIdRef.current) return;
       setRentalEstimate(null);
@@ -1485,6 +1493,16 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               propertyType={(d.propertyType as string) ?? undefined}
               excludeSlug={(d.slug as string) ?? (d.id as string) ?? undefined}
             />
+          </section>
+        )}
+
+        {/* ─── Comparable Rentals ─── */}
+        {/* Hidden entirely (no skeleton) until the estimate-rent response
+            arrives with comps — fallback/land results carry none. */}
+        {(rentalEstimate?.comparablesUsed?.length ?? 0) > 0 && (
+          <section>
+            <SectionTitle icon={Scale} title="Comparable Rentals" />
+            <ComparableRentals comps={rentalEstimate!.comparablesUsed!} />
           </section>
         )}
 
