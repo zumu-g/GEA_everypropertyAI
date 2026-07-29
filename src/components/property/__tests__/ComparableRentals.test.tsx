@@ -57,6 +57,13 @@ describe('ComparableRentals', () => {
     expect(structured.state).toBe('VIC');
   });
 
+  it('appends and re-parses the suburb when rawAddress lacks it', () => {
+    render(<ComparableRentals comps={[comp({ rawAddress: '12 Smith St', suburb: 'Berwick' })]} />);
+    const href = screen.getByRole('link').getAttribute('href') ?? '';
+    const structured = JSON.parse(decodeURIComponent(href.replace('/property?address=', '')));
+    expect(structured.suburb.toLowerCase()).toBe('berwick');
+  });
+
   it('builds a sane href for a comp with no suburb (no ", undefined" parse)', () => {
     render(<ComparableRentals comps={[comp({ suburb: undefined })]} />);
     const href = screen.getByRole('link').getAttribute('href') ?? '';

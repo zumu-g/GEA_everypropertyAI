@@ -42,9 +42,13 @@ const PRICE_FMT = new Intl.NumberFormat("en-AU", {
  * rows carry only the numeric fields. */
 export function listingPrice(l: Pick<NearbyListing, "displayPrice" | "priceLow" | "priceHigh">): string | null {
   if (l.displayPrice) return l.displayPrice;
-  const lo = l.priceLow ?? l.priceHigh;
-  const hi = l.priceHigh ?? l.priceLow;
-  if (lo == null || hi == null || lo <= 0) return null;
+  // `|| null` treats 0 as missing — legacy rows can carry a real bound in one
+  // field and 0 in the other, and `??` alone would render "$0 - $X".
+  const low = l.priceLow || null;
+  const high = l.priceHigh || null;
+  const lo = low ?? high;
+  const hi = high ?? low;
+  if (lo == null || hi == null) return null;
   return lo === hi ? PRICE_FMT.format(lo) : `${PRICE_FMT.format(Math.min(lo, hi))} - ${PRICE_FMT.format(Math.max(lo, hi))}`;
 }
 

@@ -507,7 +507,7 @@ describe('Comparable Rentals section (U3)', () => {
     render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
 
     await waitFor(() => screen.getByText(/Estimated Value/i));
-    await waitFor(() => log.some((c) => c.url.startsWith('/api/estimate-rent')));
+    await waitFor(() => expect(log.some((c) => c.url.startsWith('/api/estimate-rent'))).toBe(true));
     expect(screen.queryByText('Comparable Rentals')).toBeNull();
   });
 });

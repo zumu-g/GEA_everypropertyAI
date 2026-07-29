@@ -21,6 +21,11 @@ describe('listingPrice', () => {
     );
   });
 
+  it('treats a zero bound as missing, not as $0', () => {
+    expect(listingPrice({ displayPrice: null, priceLow: 500000, priceHigh: 0 })).toBe('$500,000');
+    expect(listingPrice({ displayPrice: null, priceLow: 0, priceHigh: 720000 })).toBe('$720,000');
+  });
+
   it('returns null when no price data exists', () => {
     expect(listingPrice({ displayPrice: null, priceLow: null, priceHigh: null })).toBeNull();
     expect(listingPrice({ displayPrice: null, priceLow: 0, priceHigh: 0 })).toBeNull();
