@@ -80,6 +80,7 @@ function toComparable(r: PropertyRentalRecord, distanceKm: number | null): Renta
     latitude: r.latitude ?? null,
     longitude: r.longitude ?? null,
     distanceKm,
+    imageUrl: r.image_url ?? null,
     source: r.source,
   };
 }

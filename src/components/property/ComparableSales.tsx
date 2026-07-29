@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Database, Home } from "lucide-react";
 import { parseAddress } from "@/lib/utils/address";
 import { formatLandArea } from "@/lib/utils/area";
+import { isOptimizerBlocked } from "@/lib/utils/image";
 
 export interface ComparableResult {
   address: string;
@@ -190,6 +191,7 @@ export function ComparableSales({
                 fill
                 sizes="(min-width: 640px) 50vw, 100vw"
                 className="object-cover"
+                unoptimized={isOptimizerBlocked(comp.imageUrl)}
               />
             </div>
           ) : (

@@ -67,8 +67,11 @@ const ENRICH_COORDS = { lat: -37.0, lng: 144.0 }; // deliberately different from
 
 type FetchLog = { url: string; resolvedAt?: number }[];
 
-function mockFetch(log: FetchLog, opts: { enrichOk?: boolean; propertyOk?: boolean } = {}) {
-  const { enrichOk = true, propertyOk = true } = opts;
+function mockFetch(
+  log: FetchLog,
+  opts: { enrichOk?: boolean; propertyOk?: boolean; rentComps?: unknown[] } = {},
+) {
+  const { enrichOk = true, propertyOk = true, rentComps } = opts;
   let tick = 0;
 
   vi.stubGlobal(
@@ -105,7 +108,7 @@ function mockFetch(log: FetchLog, opts: { enrichOk?: boolean; propertyOk?: boole
       }
       if (url.startsWith('/api/estimate-rent')) {
         entry.resolvedAt = ++tick;
-        return { ok: true, json: async () => ({ result: { priceLow: 400, priceMid: 450, priceHigh: 500, confidenceLevel: 'high', priceSource: 'rent-comparables', methodology: 'x' } }) } as Response;
+        return { ok: true, json: async () => ({ result: { priceLow: 400, priceMid: 450, priceHigh: 500, confidenceLevel: 'high', priceSource: 'rent-comparables', methodology: 'x', ...(rentComps ? { comparablesUsed: rentComps } : {}) } }) } as Response;
       }
       if (url.startsWith('/api/estimate')) {
         entry.resolvedAt = ++tick;
@@ -465,5 +468,46 @@ describe('PropertyProfile fast-partial upgrade', () => {
     await waitFor(() => screen.getByText(/Back to Search/i));
     expect(screen.queryByText(/still gathering data/i)).toBeNull();
     expect(bodies.every((b) => !b.cachedOnly)).toBe(true);
+  });
+});
+
+describe('Comparable Rentals section (U3)', () => {
+  const RENT_COMPS = [
+    {
+      rawAddress: '5 Lease St, Berwick VIC 3806',
+      suburb: 'Berwick',
+      weeklyRent: 620,
+      asOf: '2026-05-01',
+      bedrooms: 3,
+      bathrooms: 2,
+      landAreaSqm: 450,
+      adjustedRent: 630,
+      monthsAgo: 2,
+      weight: 0.8,
+    },
+  ];
+
+  it('renders the section after Comparable Sales when estimate-rent returns comps', async () => {
+    const log: FetchLog = [];
+    mockFetch(log, { rentComps: RENT_COMPS });
+    render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+
+    await waitFor(() => screen.getByText('Comparable Rentals'));
+    expect(screen.getByText('5 Lease St, Berwick VIC 3806')).toBeTruthy();
+    expect(screen.getByText('$620/wk')).toBeTruthy();
+    const headings = screen.getAllByRole('heading').map((h) => h.textContent);
+    expect(headings.indexOf('Comparable Rentals')).toBeGreaterThan(
+      headings.indexOf('Comparable Sales'),
+    );
+  });
+
+  it('renders no section when the rent result carries no comps (fallback path)', async () => {
+    const log: FetchLog = [];
+    mockFetch(log); // default estimate-rent result has no comparablesUsed
+    render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+
+    await waitFor(() => screen.getByText(/Estimated Value/i));
+    await waitFor(() => expect(log.some((c) => c.url.startsWith('/api/estimate-rent'))).toBe(true));
+    expect(screen.queryByText('Comparable Rentals')).toBeNull();
   });
 });

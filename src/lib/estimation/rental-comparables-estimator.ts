@@ -37,6 +37,8 @@ export interface RentalComparable {
   latitude?: number | null;
   longitude?: number | null;
   distanceKm?: number | null;
+  /** Listing photo — display passthrough only, ignored by weighting. */
+  imageUrl?: string | null;
   source?: string;
 }
 
