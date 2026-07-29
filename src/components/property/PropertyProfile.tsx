@@ -35,6 +35,7 @@ import { Skeleton } from "../ui/Skeleton";
 import type { MergedPropertyProfile, StructuredAddress } from "@/types/property";
 import { titleCaseSuburb } from "@/lib/utils/address";
 import { formatLandArea } from "@/lib/utils/area";
+import { isOptimizerBlocked } from "@/lib/utils/image";
 import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/estimation/price-estimator';
 import { isVacantLandType } from '@/lib/estimation/comparables-estimator';
 import { ComparableSales } from "./ComparableSales";
@@ -747,6 +748,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 priority
                 sizes="(min-width: 1024px) 1024px, 100vw"
                 className="object-cover"
+                unoptimized={isOptimizerBlocked(heroImage)}
               />
             ) : (
               <div className="h-full w-full bg-gradient-to-br from-[#2E5470] to-[#16181D]" />
@@ -822,6 +824,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                     fill
                     sizes="64px"
                     className="object-cover"
+                    unoptimized={isOptimizerBlocked(url)}
                   />
                 </button>
               ))}

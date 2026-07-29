@@ -1,6 +1,7 @@
 "use client";
 
 import { formatLandArea } from "@/lib/utils/area";
+import { isOptimizerBlocked } from "@/lib/utils/image";
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Home, Tag } from "lucide-react";
@@ -9,6 +10,8 @@ interface NearbyListing {
   rawAddress: string;
   suburb: string | null;
   displayPrice: string | null;
+  priceLow: number | null;
+  priceHigh: number | null;
   bedrooms: number | null;
   bathrooms: number | null;
   carSpaces: number | null;
@@ -28,6 +31,23 @@ export interface OnMarketNearbyProps {
  * property, with photos. Separate from Comparable Sales (which are solds).
  * Hides itself entirely when nothing is on market nearby.
  */
+const PRICE_FMT = new Intl.NumberFormat("en-AU", {
+  style: "currency",
+  currency: "AUD",
+  maximumFractionDigits: 0,
+});
+
+/** Display price for a listing: the feed's display string when present, else a
+ * range (or single figure) formatted from price_low/price_high — gea-legacy
+ * rows carry only the numeric fields. */
+export function listingPrice(l: Pick<NearbyListing, "displayPrice" | "priceLow" | "priceHigh">): string | null {
+  if (l.displayPrice) return l.displayPrice;
+  const lo = l.priceLow ?? l.priceHigh;
+  const hi = l.priceHigh ?? l.priceLow;
+  if (lo == null || hi == null || lo <= 0) return null;
+  return lo === hi ? PRICE_FMT.format(lo) : `${PRICE_FMT.format(Math.min(lo, hi))} - ${PRICE_FMT.format(Math.max(lo, hi))}`;
+}
+
 export function OnMarketNearby({ lat, lng, excludeAddress }: OnMarketNearbyProps) {
   const [listings, setListings] = useState<NearbyListing[] | null>(null);
 
@@ -82,6 +102,7 @@ export function OnMarketNearby({ lat, lng, excludeAddress }: OnMarketNearbyProps
                     fill
                     sizes="(min-width: 1024px) 340px, (min-width: 640px) 50vw, 100vw"
                     className="object-cover"
+                    unoptimized={isOptimizerBlocked(l.imageUrl)}
                   />
                 </div>
               ) : (
@@ -93,8 +114,8 @@ export function OnMarketNearby({ lat, lng, excludeAddress }: OnMarketNearbyProps
               )}
               <div className="flex flex-1 flex-col gap-1 p-4">
                 <p className="text-sm font-semibold text-[#16181D]">{l.rawAddress}</p>
-                {l.displayPrice && (
-                  <p className="text-sm font-medium text-[#2E5470] tabular-nums">{l.displayPrice}</p>
+                {listingPrice(l) && (
+                  <p className="text-sm font-medium text-[#2E5470] tabular-nums">{listingPrice(l)}</p>
                 )}
                 <p className="mt-auto pt-1 text-xs text-[#6B7077]">
                   {[
