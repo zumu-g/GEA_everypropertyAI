@@ -72,3 +72,46 @@ describe('getRentalEstimate — vacant land', () => {
     expect(result).not.toBeNull();
   });
 });
+
+describe('getRentalEstimate — comp imageUrl passthrough', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const rows = (imageUrl?: string) =>
+    Array.from({ length: 5 }, (_, i) => ({
+      raw_address: `${i} Test St, Bunyip VIC 3815`,
+      suburb: 'Bunyip',
+      weekly_rent: 400 + i * 10,
+      created_at: '2026-05-01',
+      bedrooms: 3,
+      bathrooms: 2,
+      property_type: 'house',
+      latitude: -38.065,
+      longitude: 145.45,
+      ...(imageUrl ? { image_url: imageUrl } : {}),
+    })) as never;
+
+  const subject: RentalEstimateSubjectInput = {
+    latitude: -38.065,
+    longitude: 145.45,
+    suburb: 'Bunyip',
+    state: 'VIC',
+    propertyType: 'House',
+    bedrooms: 3,
+  };
+
+  it('carries image_url through to comparablesUsed', async () => {
+    vi.mocked(getRowsNearby).mockResolvedValue(rows('https://cdn.example/img.jpg'));
+    const result = await getRentalEstimate(subject, NOW);
+    expect(result && 'comparablesUsed' in result).toBe(true);
+    const comps = (result as { comparablesUsed: Array<{ imageUrl?: string | null }> }).comparablesUsed;
+    expect(comps.length).toBeGreaterThan(0);
+    expect(comps.every((c) => c.imageUrl === 'https://cdn.example/img.jpg')).toBe(true);
+  });
+
+  it('records without image_url yield null imageUrl and estimate unchanged', async () => {
+    vi.mocked(getRowsNearby).mockResolvedValue(rows());
+    const result = await getRentalEstimate(subject, NOW);
+    const comps = (result as { comparablesUsed: Array<{ imageUrl?: string | null }> }).comparablesUsed;
+    expect(comps.every((c) => c.imageUrl == null)).toBe(true);
+  });
+});
