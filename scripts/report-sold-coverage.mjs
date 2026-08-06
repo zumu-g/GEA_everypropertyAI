@@ -125,8 +125,8 @@ function deriveDaysOnMarket(saleDate, firstListedDate) {
 async function fetchAllSales() {
   // When migration 008 is absent, omit the two columns that don't exist yet.
   const selectCols = migration008Missing
-    ? 'address_slug, suburb, land_area_sqm, bedrooms, bathrooms, car_spaces, sale_date'
-    : 'address_slug, suburb, land_area_sqm, building_area_sqm, bedrooms, bathrooms, car_spaces, listed_date, sale_date';
+    ? 'address_slug, raw_address, source, suburb, land_area_sqm, bedrooms, bathrooms, car_spaces, sale_date'
+    : 'address_slug, raw_address, source, suburb, land_area_sqm, building_area_sqm, bedrooms, bathrooms, car_spaces, listed_date, sale_date';
   const rows = [];
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
@@ -284,6 +284,29 @@ async function main() {
   console.log('  suburb                      rows  covered      %');
   for (const r of suburbRows) {
     console.log(`  ${r.suburb.padEnd(26)} ${String(r.rows).padStart(5)} ${String(r.covered).padStart(8)} ${pct(r.covered, r.rows).padStart(7)}`);
+  }
+
+  // ── Multi-sale history coverage (backfill before/after metric) ──
+  // Keyed on normalized raw_address: distinct sale dates per address.
+  const addrDates = new Map(); // normalized address → Set of sale_date
+  const sourceCounts = new Map(); // source → rows
+  for (const s of rows) {
+    sourceCounts.set(s.source ?? '(null)', (sourceCounts.get(s.source ?? '(null)') ?? 0) + 1);
+    const addr = (s.raw_address ?? '').trim().toLowerCase();
+    if (!addr) continue;
+    const set = addrDates.get(addr) ?? new Set();
+    if (s.sale_date) set.add(s.sale_date.slice(0, 10));
+    addrDates.set(addr, set);
+  }
+  const distinctAddresses = addrDates.size;
+  const multiSale = [...addrDates.values()].filter((set) => set.size >= 2).length;
+
+  console.log('\nMulti-sale history coverage:');
+  console.log(`  distinct addresses:            ${distinctAddresses}`);
+  console.log(`  addresses with >=2 sale dates: ${multiSale} (${pct(multiSale, distinctAddresses)})`);
+  console.log('  rows per source:');
+  for (const [src, n] of [...sourceCounts.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`    ${src.padEnd(24)} ${String(n).padStart(6)}`);
   }
 
   // ── Sanity check ──
