@@ -85,19 +85,24 @@ export function mapSaleHistoryToRecords(
 }
 
 /**
- * Persist a profile's saleHistory into property_sales. Gated on trustworthy
- * address grounding: the resolved-address seed (seedResolvedAddress) stamps
- * fieldConfidences.address at confidence 100 — we require ≥80 plus a slug and
- * displayAddress. Never throws; a failure must not affect the profile fetch.
+ * Persist a profile's saleHistory into property_sales. Gated on the saleHistory
+ * field's OWN merge provenance (fieldConfidences.saleHistory): confidence ≥ 50
+ * with at least one contributing source, i.e. the history was really extracted
+ * from a crawled source, not seeded. (The address field can't gate anything —
+ * seedResolvedAddress stamps it at confidence 100 for every profile.) A slug
+ * and displayAddress are still required. Never throws; a failure must not
+ * affect the profile fetch.
  */
 export async function persistSaleHistory(
   profile: MergedPropertyProfile,
   slug: string
 ): Promise<void> {
   try {
-    const addrConfidence = profile.fieldConfidences['address']?.confidence ?? 0;
-    if (!slug || addrConfidence < 80) {
-      console.warn(`[persist-sale-history] Skipping "${slug}" — address grounding untrusted (confidence ${addrConfidence})`);
+    const sh = profile.fieldConfidences['saleHistory'];
+    if (!slug || !sh || sh.confidence < 50 || (sh.contributedBy?.length ?? 0) === 0) {
+      console.warn(
+        `[persist-sale-history] Skipping "${slug}" — saleHistory provenance untrusted (confidence ${sh?.confidence ?? 0}, sources ${sh?.contributedBy?.length ?? 0})`
+      );
       return;
     }
     const rows = mapSaleHistoryToRecords(profile, slug);

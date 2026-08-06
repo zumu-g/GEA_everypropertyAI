@@ -107,3 +107,108 @@ describe('getEstimate — vacant-land bucket', () => {
     expect(result!.methodology).toContain('not representative of land value');
   });
 });
+
+describe('getEstimate — land-similar comp guarantee (U1)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Small-block subject (299m² ~ the 28 Serene Way investigation): the local
+  // pool skews to larger (700m²) blocks, so the ladder must keep widening
+  // past radius=1 even once it already has enough *recent* comps.
+  const SMALL_BLOCK_SUBJECT: EstimateSubjectInput = {
+    latitude: LAT,
+    longitude: LNG,
+    suburb: 'Bunyip',
+    state: 'VIC',
+    propertyType: 'House',
+    landAreaSqm: 300,
+  };
+
+  function houseRow(landAreaSqm: number, i: number, distKm: number) {
+    // Offset ~0.001 deg lat ≈ 0.111km — pick i so the mocked haversineKm
+    // distance lands just inside the target radius band.
+    const offsetDeg = distKm / 111;
+    return saleRow(
+      { property_type: 'House', bedrooms: null, bathrooms: null, land_area_sqm: landAreaSqm, latitude: LAT + offsetDeg },
+      i,
+    );
+  }
+
+  it('recent comps satisfied at 1km but land-similar comps are not → ladder widens to 2km then stops', async () => {
+    vi.mocked(getRowsNearby).mockImplementation(async (_table, _lat, _lng, radius) => {
+      if (radius === 1) {
+        // 8 recent, typical-size (700m²) comps — satisfies recentEnough but
+        // none are land-similar to a 300m² subject (ratio 2.33, outside [0.6,1.6]).
+        return Array.from({ length: 8 }, (_, i) => houseRow(700, i, 0.8)) as never;
+      }
+      if (radius === 2) {
+        // 3 more comps, land-similar (300m², ratio 1.0), just inside 2km.
+        return Array.from({ length: 3 }, (_, i) => houseRow(300, 10 + i, 1.5)) as never;
+      }
+      return [] as never;
+    });
+
+    const result = await getEstimate(SMALL_BLOCK_SUBJECT, NOW);
+    expect(result).not.toBeNull();
+    // Ladder should have widened to radius=2 and stopped there (not radius=5).
+    expect(getRowsNearby).toHaveBeenCalledTimes(2);
+    expect('compCount' in result! ? result.compCount : undefined).toBe(11);
+  });
+
+  it('subject landAreaSqm unknown → ladder behavior unchanged (stops purely on recentEnough)', async () => {
+    const noLandSubject: EstimateSubjectInput = { ...SMALL_BLOCK_SUBJECT, landAreaSqm: undefined };
+    vi.mocked(getRowsNearby).mockResolvedValue(
+      Array.from({ length: 8 }, (_, i) => houseRow(700, i, 0.8)) as never,
+    );
+
+    const result = await getEstimate(noLandSubject, NOW);
+    expect(result).not.toBeNull();
+    expect(getRowsNearby).toHaveBeenCalledTimes(1);
+  });
+
+  it('land-similar comps genuinely absent within 5km → ladder exhausts, estimate still returns with sparsity note', async () => {
+    vi.mocked(getRowsNearby).mockImplementation(async (_table, _lat, _lng, radius) => {
+      // Always typical-size (700m²) comps, never land-similar to the 300m² subject,
+      // at every radius in the ladder.
+      const dist = radius === 1 ? 0.8 : radius === 2 ? 1.5 : 4;
+      return Array.from({ length: 8 }, (_, i) => houseRow(700, i, dist)) as never;
+    });
+
+    const result = await getEstimate(SMALL_BLOCK_SUBJECT, NOW);
+    expect(result).not.toBeNull();
+    expect(getRowsNearby).toHaveBeenCalledTimes(3); // ladder exhausted (1, 2, 5km)
+    expect(result!.methodology).toContain('few sales of similarly-sized blocks');
+  });
+
+  it('land-similar comps already present at 1km → no extra widening beyond radius=1', async () => {
+    vi.mocked(getRowsNearby).mockResolvedValue([
+      ...Array.from({ length: 5 }, (_, i) => houseRow(700, i, 0.8)),
+      ...Array.from({ length: 3 }, (_, i) => houseRow(300, 10 + i, 0.9)),
+    ] as never);
+
+    const result = await getEstimate(SMALL_BLOCK_SUBJECT, NOW);
+    expect(result).not.toBeNull();
+    expect(getRowsNearby).toHaveBeenCalledTimes(1);
+    expect(result!.methodology).not.toContain('similarly-sized blocks');
+  });
+});
+
+describe('getEstimate — cross-source address dedup (#8)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('same address in different source formats counts as one comp', async () => {
+    const house = (overrides: Record<string, unknown>, i: number) =>
+      saleRow({ property_type: 'House', bedrooms: 3, bathrooms: 2, sale_price: 800_000, ...overrides }, i);
+    vi.mocked(getRowsNearby).mockResolvedValue([
+      house({ raw_address: '12 Smith St, Berwick VIC 3806', sale_date: '2026-05-01', source: 'vic-vg' }, 1),
+      house({ raw_address: '12 SMITH STREET BERWICK', sale_date: '2026-04-01', source: 'rea-history-apify' }, 1),
+      house({ raw_address: '14 Smith St, Berwick VIC 3806' }, 2),
+      house({ raw_address: '16 Smith St, Berwick VIC 3806' }, 3),
+      house({ raw_address: '18 Smith St, Berwick VIC 3806' }, 4),
+    ] as never);
+
+    const result = await getEstimate(HOUSE_SUBJECT, NOW);
+    expect(result).not.toBeNull();
+    // 5 rows, but the two "12 Smith" formats are the same property → 4 comps.
+    expect('compCount' in result! ? result.compCount : undefined).toBe(4);
+  });
+});

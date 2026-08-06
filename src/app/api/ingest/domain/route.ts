@@ -3,6 +3,7 @@ import { parseAddress } from '@/lib/utils/address';
 import { isServiceAreaSuburb } from '@/lib/utils/service-area';
 import {
   mapItem,
+  applyBedBathMatches,
   CATEGORY_TABLE,
   type IngestCategory,
 } from '@/lib/ingest/domain-mapper';
@@ -14,6 +15,7 @@ import {
   writeFeedHealth,
   insertAddresses,
   expireNotSeen,
+  findBedBathMatches,
   type PropertySaleRecord,
   type PropertyListingRecord,
   type PropertyRentalRecord,
@@ -198,8 +200,25 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Upsert (dedup via the table's UNIQUE key).
-  if (sales.length) await insertPropertySales(sales);
+  // Best-effort bed/bath enrichment for sold rows the feed didn't supply beds
+  // for (see findBedBathMatches — Domain's sold feed never returns them). A
+  // lookup miss never blocks ingest; feed-derived values always win.
+  const bedlessSales = sales.filter((s) => s.bedrooms == null || s.bathrooms == null || s.car_spaces == null);
+  if (bedlessSales.length) {
+    const matches = await findBedBathMatches(bedlessSales.map((s) => ({ rawAddress: s.raw_address, suburb: s.suburb })));
+    applyBedBathMatches(bedlessSales, matches);
+  }
+
+  // Upsert (dedup via the table's UNIQUE key). insertPropertySales now throws
+  // on failed chunks — keep this route's prior fail-soft behaviour (partial
+  // ingest still reports ok; the error is already logged per-chunk).
+  if (sales.length) {
+    try {
+      await insertPropertySales(sales);
+    } catch (err) {
+      console.error('[ingest-domain] property_sales upsert partially failed:', err);
+    }
+  }
   if (listings.length) await insertPropertyListings(listings);
   if (rentals.length) await insertPropertyRentals(rentals);
 

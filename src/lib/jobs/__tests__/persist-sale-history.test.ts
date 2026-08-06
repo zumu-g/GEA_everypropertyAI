@@ -12,7 +12,12 @@ const SLUG = '12-smith-st-berwick-vic-3806';
 
 function makeProfile(
   saleHistory: unknown[],
-  opts?: { addressConfidence?: number; omitAddress?: boolean }
+  opts?: {
+    omitAddress?: boolean;
+    saleHistoryConfidence?: number;
+    saleHistoryContributedBy?: string[];
+    omitSaleHistoryConfidence?: boolean;
+  }
 ): MergedPropertyProfile {
   return {
     data: {
@@ -31,9 +36,19 @@ function makeProfile(
           }),
       saleHistory,
     },
-    fieldConfidences: opts?.omitAddress
-      ? {}
-      : { address: { confidence: opts?.addressConfidence ?? 100, contributedBy: ['resolved-address'] } },
+    fieldConfidences: {
+      ...(opts?.omitAddress
+        ? {}
+        : { address: { confidence: 100, contributedBy: ['resolved-address'] } }),
+      ...(opts?.omitSaleHistoryConfidence
+        ? {}
+        : {
+            saleHistory: {
+              confidence: opts?.saleHistoryConfidence ?? 60,
+              contributedBy: opts?.saleHistoryContributedBy ?? ['domain'],
+            },
+          }),
+    },
     overallConfidence: 70,
     sources: [{ name: 'domain', extractedAt: new Date(), hasErrors: false }],
     mergedAt: new Date(),
@@ -113,25 +128,41 @@ describe('persistSaleHistory', () => {
     expect(insertPropertySales).not.toHaveBeenCalled();
   });
 
-  it('persists nothing when address confidence is low', async () => {
+  it('persists nothing when saleHistory has no provenance entry (seeded-only profile)', async () => {
     await persistSaleHistory(
-      makeProfile([{ date: '2019-03-12', price: 650000 }], { addressConfidence: 40 }),
+      makeProfile([{ date: '2019-03-12', price: 650000 }], { omitSaleHistoryConfidence: true }),
       SLUG
     );
     expect(insertPropertySales).not.toHaveBeenCalled();
   });
 
-  it('persists at confidence exactly 80 (gate boundary)', async () => {
+  it('persists nothing when saleHistory confidence is low', async () => {
     await persistSaleHistory(
-      makeProfile([{ date: '2019-03-12', price: 650000 }], { addressConfidence: 80 }),
+      makeProfile([{ date: '2019-03-12', price: 650000 }], { saleHistoryConfidence: 40 }),
+      SLUG
+    );
+    expect(insertPropertySales).not.toHaveBeenCalled();
+  });
+
+  it('persists at saleHistory confidence exactly 50 (gate boundary)', async () => {
+    await persistSaleHistory(
+      makeProfile([{ date: '2019-03-12', price: 650000 }], { saleHistoryConfidence: 50 }),
       SLUG
     );
     expect(insertPropertySales).toHaveBeenCalledTimes(1);
   });
 
-  it('persists nothing at confidence 79 (below gate)', async () => {
+  it('persists nothing at saleHistory confidence 49 (below gate)', async () => {
     await persistSaleHistory(
-      makeProfile([{ date: '2019-03-12', price: 650000 }], { addressConfidence: 79 }),
+      makeProfile([{ date: '2019-03-12', price: 650000 }], { saleHistoryConfidence: 49 }),
+      SLUG
+    );
+    expect(insertPropertySales).not.toHaveBeenCalled();
+  });
+
+  it('persists nothing when saleHistory has empty contributedBy (no real source)', async () => {
+    await persistSaleHistory(
+      makeProfile([{ date: '2019-03-12', price: 650000 }], { saleHistoryContributedBy: [] }),
       SLUG
     );
     expect(insertPropertySales).not.toHaveBeenCalled();

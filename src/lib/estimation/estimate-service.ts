@@ -13,6 +13,7 @@ import {
   type PropertySaleRecord,
 } from '@/lib/db/queries';
 import { fetchSuburbMarketData } from '@/lib/enrichment/market-data';
+import { parseAddress, toSlug } from '@/lib/utils/address';
 import {
   calculateEnrichedPriceEstimate,
   type PriceEstimateInput,
@@ -93,10 +94,26 @@ function toComparable(r: PropertySaleRecord, distanceKm: number | null): Compara
   };
 }
 
-/** Keep the most-recent sale per address. */
+/**
+ * Normalised dedup key for a comparable's address — different sources format
+ * the same address differently ("12 Smith St, Berwick VIC 3806" vs
+ * "12 SMITH STREET BERWICK"), so key on the parsed-address slug (mirrors
+ * src/app/api/comparable-sales/route.ts), falling back to the lowercased raw
+ * string when parsing yields nothing. State/postcode are dropped from the key —
+ * sources inconsistently include them ("… Berwick VIC 3806" vs "… BERWICK")
+ * and the comp pool is already geographically constrained, so street+suburb
+ * identifies the property.
+ */
+function compKey(rawAddress: string): string {
+  const parsed = parseAddress(rawAddress);
+  const slug = toSlug({ ...parsed, state: '', postcode: '' });
+  return slug || rawAddress.trim().toLowerCase();
+}
+
+/** Keep the most-recent sale per address (slug-normalised across sources). */
 function addComp(map: Map<string, ComparableSale>, c: ComparableSale, excludeAddress?: string) {
-  const key = c.rawAddress.trim().toLowerCase();
-  if (excludeAddress && key === excludeAddress.trim().toLowerCase()) return;
+  const key = compKey(c.rawAddress);
+  if (excludeAddress && key === compKey(excludeAddress)) return;
   const existing = map.get(key);
   if (!existing || (c.saleDate > existing.saleDate)) map.set(key, c);
 }

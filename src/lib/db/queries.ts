@@ -931,12 +931,23 @@ export interface PropertySaleRecord {
 export async function insertPropertySales(sales: PropertySaleRecord[]): Promise<void> {
   if (!isSupabaseConfigured() || sales.length === 0) return;
   const CHUNK = 500;
+  let failedChunks = 0;
+  let failedRows = 0;
   for (let i = 0; i < sales.length; i += CHUNK) {
     const chunk = sales.slice(i, i + CHUNK);
     const { error } = await supabase()
       .from('property_sales')
       .upsert(chunk, { onConflict: 'raw_address,sale_date,sale_price,source', ignoreDuplicates: true });
-    if (error) console.error('[insertPropertySales] chunk error:', error.message);
+    if (error) {
+      console.error('[insertPropertySales] chunk error:', error.message);
+      failedChunks++;
+      failedRows += chunk.length;
+    }
+  }
+  if (failedChunks > 0) {
+    throw new Error(
+      `[insertPropertySales] ${failedChunks} chunk(s) failed (${failedRows} row(s) not persisted)`
+    );
   }
 }
 
