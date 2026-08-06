@@ -19,6 +19,7 @@ import { geocodeAddress } from '@/lib/enrichment/geocoding';
 import { fetchParcelLandArea } from '@/lib/enrichment/parcel';
 import { saveCachedProfile, getCachedProfile, getFeedSeedBySlug } from '@/lib/db/queries';
 import { mapFeedRowToProfileFields, applyFeedSeed } from '@/lib/jobs/feed-seed';
+import { persistSaleHistory } from '@/lib/jobs/persist-sale-history';
 import type { ExtractedPropertyData } from '@/types/property';
 
 // When 'firecrawl', use Firecrawl's native /extract (structured JSON) instead of
@@ -206,6 +207,11 @@ async function doFetchAndCacheProfile(
   saveCachedProfile(slug, profile).catch((e) =>
     console.warn('[fetch-profile] Supabase cache save failed:', e)
   );
+
+  // Step 4b: best-effort write-back of the profile's saleHistory into
+  // property_sales (source='profile-crawl') so on-demand crawls permanently
+  // top up sale history. Fire-and-forget — never delays or fails the fetch.
+  persistSaleHistory(profile, slug).catch(() => {});
 
   return { profile, slug, empty: false };
 }
