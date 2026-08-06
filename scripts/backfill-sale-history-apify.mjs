@@ -19,7 +19,8 @@
 // Env (from .env.local or process.env): NEXT_PUBLIC_SUPABASE_URL,
 //   SUPABASE_SERVICE_ROLE_KEY, APIFY_API_TOKEN.
 // ============================================================
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, renameSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -154,25 +155,57 @@ export function buildActorInput(addresses) {
 const titleCase = (s) => s ? String(s).trim().split(/\s+/).map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():'').join(' ') : null;
 const smallint = (v) => { const n = Number(v); return Number.isInteger(n) ? n : null; };
 
-/** Numeric price > 0, from a number or "$650,000"-style string; else null. */
+// Plausibility band for AU residential sale prices.
+const PRICE_MIN = 10_000;
+const PRICE_MAX = 20_000_000;
+const inBand = (n) => Number.isFinite(n) && n >= PRICE_MIN && n <= PRICE_MAX;
+
+/**
+ * Plausible sale price from a number or a "$650,000" / "$650k" / "$1.2m"
+ * string. The ENTIRE string (after stripping $ , and whitespace) must be a
+ * plain number or number+k/m suffix — ranges like "$400k-$450k" → null.
+ * Rejects anything outside [10_000, 20_000_000].
+ */
 function parsePrice(v) {
-  if (typeof v === 'number') return Number.isFinite(v) && v > 0 ? v : null;
-  if (typeof v === 'string') {
-    const m = v.replace(/,/g, '').match(/\d+(?:\.\d+)?/);
-    const n = m ? Number(m[0]) : NaN;
-    return Number.isFinite(n) && n > 0 ? n : null;
+  if (typeof v === 'number') return inBand(v) ? v : null;
+  if (typeof v !== 'string') return null;
+  const s = v.replace(/[$,\s]/g, '');
+  let n = NaN;
+  if (/^\d+(\.\d+)?$/.test(s)) n = Number(s);
+  else {
+    const m = s.match(/^(\d+(?:\.\d+)?)([km])$/i);
+    if (m) n = Number(m[1]) * (m[2].toLowerCase() === 'k' ? 1_000 : 1_000_000);
   }
+  return inBand(n) ? n : null;
+}
+
+const MONTHS = { jan:1, feb:2, mar:3, apr:4, may:5, jun:6, jul:7, aug:8, sep:9, oct:10, nov:11, dec:12 };
+const isoDate = (y, mo, d) => {
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+};
+
+/**
+ * Explicit-format date → 'YYYY-MM-DD', else null (mirrors parseFullSaleDate
+ * in src/lib/jobs/persist-sale-history.ts). Accepts ISO prefix, "D Mon YYYY",
+ * DD/MM/YYYY (AU day-first). Bare years and free-form strings → null.
+ */
+function parseSaleDate(v) {
+  if (typeof v !== 'string' || !v.trim()) return null;
+  const t = v.trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); // ISO
+  if (m) return isoDate(+m[1], +m[2], +m[3]);
+  m = t.match(/^(\d{1,2})\s+([A-Za-z]{3,})\.?,?\s+(\d{4})$/); // 4 May 2019
+  if (m) {
+    const mo = MONTHS[m[2].slice(0, 3).toLowerCase()];
+    return mo ? isoDate(+m[3], mo, +m[1]) : null;
+  }
+  m = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/); // DD/MM/YYYY (AU)
+  if (m) return isoDate(+m[3], +m[2], +m[1]);
   return null;
 }
 
-/** Any parseable date → 'YYYY-MM-DD', else null. */
-function parseSaleDate(v) {
-  if (typeof v !== 'string' || !v.trim()) return null;
-  const iso = v.match(/^(\d{4}-\d{2}-\d{2})/);
-  if (iso) return iso[1];
-  const t = Date.parse(v);
-  return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null;
-}
+export { parsePrice, parseSaleDate };
 
 const SALE_RE = /\bsold\b|\bsale\b/i;
 const NON_SALE_RE = /lease|rent|withdraw|listed|listing|auction\s*schedule/i;
@@ -193,6 +226,12 @@ export function mapItem(item) {
   const raw_address = (typeof addr === 'string' ? addr : addr.display ?? addr.full ?? addr.text ?? item.fullAddress) || null;
   const suburb = titleCase(typeof addr === 'object' ? addr.suburb ?? item.suburb : item.suburb);
   if (!raw_address || !inArea(suburb)) return [];
+  // Guard against actor address/suburb mismatch: if the raw address string
+  // itself parses to a suburb, that suburb must also be in-area.
+  try {
+    const parsedSuburb = parseAddress(raw_address).suburb;
+    if (parsedSuburb && !inArea(parsedSuburb)) return [];
+  } catch { /* unparseable → keep declared-suburb behaviour */ }
   const address_slug = slugForRawAddress(raw_address);
   if (!address_slug) return [];
   const postcode = (typeof addr === 'object' ? addr.postcode ?? item.postcode : item.postcode) ?? null;
@@ -229,15 +268,19 @@ export function mapItem(item) {
 
 // ─── Cursor state ────────────────────────────────────────────────────────────
 export function loadState(file = STATE_FILE) {
+  if (!existsSync(file)) return null;
   try {
     return JSON.parse(readFileSync(file, 'utf8'));
-  } catch {
+  } catch (e) {
+    console.warn(`State file ${file} exists but is unreadable/corrupt (${e.message}) — treating as fresh start.`);
     return null;
   }
 }
 
 export function saveState(file = STATE_FILE, state) {
-  writeFileSync(file, JSON.stringify(state, null, 2));
+  const tmp = `${file}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state, null, 2));
+  renameSync(tmp, file); // atomic: never leaves a half-written state file
 }
 
 export function resetState(file = STATE_FILE) {
@@ -256,18 +299,42 @@ async function startRun(input) {
   return (await res.json()).data;
 }
 
+const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+
+/** Retry a transiently-failing async fn: 3 attempts, 2s backoff. */
+async function withRetry(fn, label) {
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 3) { console.warn(`  ${label} attempt ${attempt} failed (${e.message}) — retrying in 2s`); await sleep(2000); }
+    }
+  }
+  throw lastErr;
+}
+
 async function getRun(runId) {
-  const res = await fetch(`${APIFY_BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`, { signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`Apify run poll failed (${res.status})`);
-  return (await res.json()).data;
+  return withRetry(async () => {
+    const res = await fetch(`${APIFY_BASE}/actor-runs/${runId}?token=${APIFY_TOKEN}`, { signal: AbortSignal.timeout(30_000) });
+    if (!res.ok) throw new Error(`Apify run poll failed (${res.status})`);
+    return (await res.json()).data;
+  }, 'run poll');
 }
 
 async function waitForRun(run) {
   let r = run;
   const deadline = Date.now() + 30 * 60_000; // 30-min cap per batch
   while (r.status === 'RUNNING' || r.status === 'READY') {
-    if (Date.now() > deadline) throw new Error('Apify run exceeded 30-min wait');
-    await new Promise(res => setTimeout(res, 5000));
+    if (Date.now() > deadline) {
+      // Best-effort abort so the actor stops billing before we bail.
+      try {
+        await fetch(`${APIFY_BASE}/actor-runs/${r.id}/abort?token=${APIFY_TOKEN}`, { method: 'POST', signal: AbortSignal.timeout(30_000) });
+      } catch (e) { console.warn(`  abort of run ${r.id} failed: ${e.message}`); }
+      throw new Error('Apify run exceeded 30-min wait');
+    }
+    await sleep(5000);
     r = await getRun(r.id);
   }
   return r;
@@ -276,9 +343,11 @@ async function waitForRun(run) {
 async function pageDataset(datasetId) {
   const items = [];
   for (let offset = 0; ; offset += 1000) {
-    const res = await fetch(`${APIFY_BASE}/datasets/${datasetId}/items?token=${APIFY_TOKEN}&clean=true&offset=${offset}&limit=1000`, { signal: AbortSignal.timeout(60_000) });
-    if (!res.ok) throw new Error(`Apify dataset fetch failed (${res.status})`);
-    const chunk = await res.json();
+    const chunk = await withRetry(async () => {
+      const res = await fetch(`${APIFY_BASE}/datasets/${datasetId}/items?token=${APIFY_TOKEN}&clean=true&offset=${offset}&limit=1000`, { signal: AbortSignal.timeout(60_000) });
+      if (!res.ok) throw new Error(`Apify dataset fetch failed (${res.status})`);
+      return res.json();
+    }, 'dataset fetch');
     if (!Array.isArray(chunk) || chunk.length === 0) break;
     items.push(...chunk);
     if (chunk.length < 1000) break;
@@ -291,8 +360,11 @@ async function fetchDistinctAddresses() {
   // Paged reads over both tables; dedupe on raw_address in-process.
   const by = new Map();
   for (const table of ['property_sales', 'property_listings']) {
+    // Exclude this script's own output so the address universe stays frozen
+    // across resumes (otherwise every run would invalidate the cursor digest).
+    const sourceFilter = table === 'property_sales' ? `&source=neq.${SOURCE}` : '';
     for (let offset = 0; ; offset += 1000) {
-      const url = `${SUPABASE_URL}/rest/v1/${table}?select=raw_address,suburb,postcode&order=raw_address&offset=${offset}&limit=1000`;
+      const url = `${SUPABASE_URL}/rest/v1/${table}?select=raw_address,suburb,postcode${sourceFilter}&order=raw_address&offset=${offset}&limit=1000`;
       const res = await fetch(url, { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } });
       if (!res.ok) throw new Error(`Fetch ${table} failed (${res.status}): ${(await res.text()).slice(0,200)}`);
       const rows = await res.json();
@@ -319,21 +391,31 @@ function dedupe(rows) {
 async function insertSales(rows) {
   const deduped = dedupe(rows);
   let ok = 0;
+  const failed = [];
   for (let i = 0; i < deduped.length; i += 500) {
     const chunk = deduped.slice(i, i + 500);
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/property_sales?on_conflict=${CONFLICT}`, {
-      method: 'POST',
-      headers: {
-        apikey: SERVICE_KEY,
-        Authorization: `Bearer ${SERVICE_KEY}`,
-        'Content-Type': 'application/json',
-        Prefer: 'resolution=ignore-duplicates,missing=default,return=minimal',
-      },
-      body: JSON.stringify(chunk),
-    });
-    if (!res.ok) console.error(`  insert chunk error ${res.status}: ${(await res.text()).slice(0,200)}`);
-    else ok += chunk.length;
+    let inserted = false;
+    for (let attempt = 1; attempt <= 3 && !inserted; attempt++) {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/property_sales?on_conflict=${CONFLICT}`, {
+        method: 'POST',
+        headers: {
+          apikey: SERVICE_KEY,
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'resolution=ignore-duplicates,missing=default,return=minimal',
+        },
+        body: JSON.stringify(chunk),
+      }).catch((e) => ({ ok: false, status: 'fetch', text: async () => e.message }));
+      if (res.ok) { ok += chunk.length; inserted = true; }
+      else {
+        console.error(`  insert chunk error ${res.status} (attempt ${attempt}/3): ${(await res.text()).slice(0,200)}`);
+        if (attempt < 3) await sleep(2000);
+      }
+    }
+    if (!inserted) failed.push(i);
   }
+  // Throw so main() stops BEFORE saveState advances the cursor past lost rows.
+  if (failed.length) throw new Error(`insertSales: ${failed.length} chunk(s) failed after 3 attempts (offsets ${failed.join(', ')})`);
   return ok;
 }
 
@@ -360,10 +442,17 @@ async function main() {
   const batches = [];
   for (let i = 0; i < addresses.length; i += BATCH_SIZE) batches.push(addresses.slice(i, i + BATCH_SIZE));
 
+  // Frozen-universe snapshot: digest of the sorted address list. The
+  // enumeration excludes this script's own output (source filter above), so
+  // the digest only changes when the upstream universe genuinely changes.
+  const addressDigest = createHash('sha256')
+    .update(addresses.map(a => a.raw_address).join('\n'))
+    .digest('hex');
+
   const prev = loadState(STATE_FILE);
   let startBatch = 0;
   const totals = { inserted: 0, skippedEvents: 0, resolvedAddresses: 0, submittedAddresses: 0 };
-  if (prev && prev.addressCount === addresses.length) {
+  if (prev && prev.addressDigest === addressDigest) {
     startBatch = prev.nextBatch ?? 0;
     Object.assign(totals, prev.totals ?? {});
     console.log(`Resuming from batch ${startBatch}/${batches.length}.`);
@@ -400,7 +489,7 @@ async function main() {
     totals.skippedEvents += Math.max(0, items.length - itemsWithRows);
 
     if (!dryRun) {
-      saveState(STATE_FILE, { nextBatch: b + 1, addressCount: addresses.length, totals, updatedAt: new Date().toISOString() });
+      saveState(STATE_FILE, { nextBatch: b + 1, addressDigest, addressCount: addresses.length, totals, updatedAt: new Date().toISOString() });
     }
   }
 

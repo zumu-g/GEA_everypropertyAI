@@ -121,6 +121,22 @@ describe('persistSaleHistory', () => {
     expect(insertPropertySales).not.toHaveBeenCalled();
   });
 
+  it('persists at confidence exactly 80 (gate boundary)', async () => {
+    await persistSaleHistory(
+      makeProfile([{ date: '2019-03-12', price: 650000 }], { addressConfidence: 80 }),
+      SLUG
+    );
+    expect(insertPropertySales).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists nothing at confidence 79 (below gate)', async () => {
+    await persistSaleHistory(
+      makeProfile([{ date: '2019-03-12', price: 650000 }], { addressConfidence: 79 }),
+      SLUG
+    );
+    expect(insertPropertySales).not.toHaveBeenCalled();
+  });
+
   it('persists nothing when slug is empty', async () => {
     await persistSaleHistory(makeProfile([{ date: '2019-03-12', price: 650000 }]), '');
     expect(insertPropertySales).not.toHaveBeenCalled();

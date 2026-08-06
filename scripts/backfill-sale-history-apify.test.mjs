@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -9,6 +9,8 @@ import {
   loadState,
   saveState,
   resetState,
+  parsePrice,
+  parseSaleDate,
 } from './backfill-sale-history-apify.mjs';
 
 const ITEM = {
@@ -44,6 +46,27 @@ describe('slugForRawAddress', () => {
       .toBe('12-bailey-street-berwick-vic-3806');
     expect(slugForRawAddress('2/31 Florence Ave, Berwick VIC 3806'))
       .toBe('2-31-florence-avenue-berwick-vic-3806');
+  });
+});
+
+describe('parseSaleDate', () => {
+  it('parses explicit formats only', () => {
+    expect(parseSaleDate('12/03/2019')).toBe('2019-03-12'); // AU day-first
+    expect(parseSaleDate('4 May 2019')).toBe('2019-05-04');
+    expect(parseSaleDate('2019-05-04')).toBe('2019-05-04');
+    expect(parseSaleDate('2010')).toBe(null); // bare year rejected
+    expect(parseSaleDate('unknown')).toBe(null);
+  });
+});
+
+describe('parsePrice', () => {
+  it('accepts whole strings, k/m suffixes, and the plausibility band', () => {
+    expect(parsePrice('$650k')).toBe(650000);
+    expect(parsePrice('$1.2m')).toBe(1200000);
+    expect(parsePrice('$420,000')).toBe(420000);
+    expect(parsePrice('$400,000 - $450,000')).toBe(null); // range rejected
+    expect(parsePrice('650')).toBe(null); // below band
+    expect(parsePrice(25_000_000)).toBe(null); // above band
   });
 });
 
@@ -117,6 +140,14 @@ describe('mapItem', () => {
     expect(rows).toEqual([]);
   });
 
+  it('drops rows whose raw address parses to an out-of-area suburb despite in-area declared suburb', () => {
+    const rows = mapItem({
+      ...ITEM,
+      address: { display: '12 Bailey Street, Frankston VIC 3199', suburb: 'Berwick', state: 'VIC', postcode: '3199' },
+    });
+    expect(rows).toEqual([]);
+  });
+
   it('handles malformed/empty items without crashing', () => {
     expect(mapItem(null)).toEqual([]);
     expect(mapItem({})).toEqual([]);
@@ -135,5 +166,14 @@ describe('cursor state', () => {
     expect(loadState(file)).toEqual(state);
     resetState(file);
     expect(loadState(file)).toBe(null);
+  });
+
+  it('warns and returns null on a corrupt state file', () => {
+    const corrupt = join(mkdtempSync(join(tmpdir(), 'bfstate-')), 'state.json');
+    writeFileSync(corrupt, '{not json!!');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(loadState(corrupt)).toBe(null);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

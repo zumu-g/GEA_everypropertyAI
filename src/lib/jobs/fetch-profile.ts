@@ -210,8 +210,10 @@ async function doFetchAndCacheProfile(
 
   // Step 4b: best-effort write-back of the profile's saleHistory into
   // property_sales (source='profile-crawl') so on-demand crawls permanently
-  // top up sale history. Fire-and-forget — never delays or fails the fetch.
-  persistSaleHistory(profile, slug).catch(() => {});
+  // top up sale history. Awaited (persistSaleHistory never throws) — a
+  // fire-and-forget promise can be frozen by Vercel at response end and the
+  // insert would silently never run; the write is one fast upsert.
+  await persistSaleHistory(profile, slug).catch(() => {});
 
   return { profile, slug, empty: false };
 }
