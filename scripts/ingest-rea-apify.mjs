@@ -97,14 +97,20 @@ function slugToSearchInput(slug) {
 }
 
 // One actor item (Title-Case keys) → a property_listings row, or null to skip.
-function mapOnMarket(x) {
+export function mapOnMarket(x) {
   const street = x['Street'];
   const suburb = titleCase(x['Suburb']);
   if (!street || !suburb) return null;
   const postcode = x['Postcode'] != null ? String(x['Postcode']) : null;
   const raw_address = `${street}, ${suburb} ${(x['State']||'VIC').toUpperCase()} ${postcode||''}`.trim();
   const { low, high } = priceRange(x['Price']);
-  const photos = Array.isArray(x['Photos']) ? x['Photos'] : null;
+  // The actor returns Photos as a single URL string (verified live 2026-08-07);
+  // accept an array too in case the shape changes back.
+  const photos = Array.isArray(x['Photos'])
+    ? x['Photos']
+    : typeof x['Photos'] === 'string' && x['Photos']
+      ? [x['Photos']]
+      : null;
   return {
     raw_address,
     suburb,
