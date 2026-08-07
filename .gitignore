@@ -8,3 +8,6 @@ next-env.d.ts
 
 .DS_Store
 **/.DS_Store
+
+# resumable cursor for scripts/backfill-sale-history-apify.mjs
+scripts/.backfill-sale-history-state.json

@@ -4,6 +4,7 @@ import {
   enrichSoldRows,
   selectFirstListedDate,
   deriveDaysOnMarket,
+  dedupeSalesAcrossSources,
 } from '../enrich';
 import type { PropertySaleRecord } from '@/lib/db/queries';
 import type { MergedPropertyProfile } from '@/types/property';
@@ -161,5 +162,78 @@ describe('enrichSoldRows', () => {
     expect(out[0].buildingAreaSqm).toBe(150);
     expect(out[0].firstListedDate).toBe('2026-04-01');
     expect(out[0].daysOnMarket).toBe(30);
+  });
+});
+
+describe('dedupeSalesAcrossSources', () => {
+  const vgRow = (over: Partial<PropertySaleRecord> = {}): PropertySaleRecord => ({
+    ...baseRow,
+    source: 'vic-vg',
+    ...over,
+  });
+  const reaRow = (over: Partial<PropertySaleRecord> = {}): PropertySaleRecord => ({
+    ...baseRow,
+    source: 'rea-history-apify',
+    ...over,
+  });
+
+  it('same slug, dates 30 days apart, prices within 10% → 1 row, vic-vg wins', () => {
+    const out = dedupeSalesAcrossSources([
+      reaRow({ sale_date: '2026-05-31', sale_price: 820_000 }),
+      vgRow({ sale_date: '2026-05-01', sale_price: 800_000 }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].source).toBe('vic-vg');
+  });
+
+  it('dates 120 days apart → 2 rows (genuine distinct sales)', () => {
+    const out = dedupeSalesAcrossSources([
+      vgRow({ sale_date: '2026-05-01' }),
+      reaRow({ sale_date: '2026-01-01' }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('prices differing 40% → 2 rows', () => {
+    const out = dedupeSalesAcrossSources([
+      vgRow({ sale_date: '2026-05-01', sale_price: 800_000 }),
+      reaRow({ sale_date: '2026-05-10', sale_price: 480_000 }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('either price null → treated as the same sale', () => {
+    const out = dedupeSalesAcrossSources([
+      reaRow({ sale_date: '2026-05-10', sale_price: undefined }),
+      vgRow({ sale_date: '2026-05-01', sale_price: 800_000 }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].source).toBe('vic-vg');
+  });
+
+  it('different slugs are untouched', () => {
+    const out = dedupeSalesAcrossSources([
+      vgRow(),
+      reaRow({ address_slug: '7-other-court-berwick-vic-3806', raw_address: '7 Other Court, Berwick VIC 3806' }),
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('falls back to normalised raw_address when slug is missing', () => {
+    const out = dedupeSalesAcrossSources([
+      vgRow({ address_slug: undefined, raw_address: '42 Smith Street, Berwick VIC 3806' }),
+      reaRow({ address_slug: undefined, raw_address: '42 SMITH STREET  BERWICK VIC 3806'.replace('  ', ' ') }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].source).toBe('vic-vg');
+  });
+
+  it('source ties broken by richness (beds/baths/listing_url)', () => {
+    const out = dedupeSalesAcrossSources([
+      reaRow({ sale_date: '2026-05-01' }),
+      reaRow({ sale_date: '2026-05-02', bedrooms: 4, bathrooms: 2, listing_url: 'https://x' }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].bedrooms).toBe(4);
   });
 });

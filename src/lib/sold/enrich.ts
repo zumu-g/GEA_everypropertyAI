@@ -151,13 +151,111 @@ export function toEnrichedSoldResult(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Cross-source dedupe: one real sale can exist as vic-vg + rea-history-apify +
+// profile-crawl rows with dates differing by days and prices slightly. Group
+// rows for the same property whose sale_dates are within 90 days and prices
+// within 10% (or either price null), and keep one row per group by source
+// precedence.
+// ---------------------------------------------------------------------------
+
+const DEDUPE_WINDOW_DAYS = 90;
+const DEDUPE_PRICE_TOLERANCE = 0.1;
+
+/** Lower = more authoritative. Unknown sources rank last. */
+function sourcePrecedence(source: string): number {
+  switch (source) {
+    case 'vic-vg': return 0;
+    case 'domain-apify':
+    case 'domain-web-unlocker': return 1;
+    case 'rea-history-apify': return 2;
+    case 'view-apify':
+    case 'homely': return 3;
+    case 'profile-crawl': return 4;
+    default: return 5;
+  }
+}
+
+/** Non-null count of the fields that make a row more useful to consumers. */
+function rowRichness(r: PropertySaleRecord): number {
+  return (r.bedrooms != null ? 1 : 0) + (r.bathrooms != null ? 1 : 0) + (r.listing_url ? 1 : 0);
+}
+
+function sameSale(a: PropertySaleRecord, b: PropertySaleRecord): boolean {
+  const aMs = dayMs(a.sale_date);
+  const bMs = dayMs(b.sale_date);
+  if (aMs === null || bMs === null) return false;
+  if (Math.abs(aMs - bMs) > DEDUPE_WINDOW_DAYS * 86_400_000) return false;
+  const ap = a.sale_price;
+  const bp = b.sale_price;
+  if (typeof ap === 'number' && typeof bp === 'number') {
+    return Math.abs(ap - bp) <= DEDUPE_PRICE_TOLERANCE * Math.max(ap, bp);
+  }
+  return true; // either price null → treat as the same sale
+}
+
+/** True when `a` should represent the group over `b`. */
+function betterRow(a: PropertySaleRecord, b: PropertySaleRecord): boolean {
+  const pa = sourcePrecedence(a.source);
+  const pb = sourcePrecedence(b.source);
+  if (pa !== pb) return pa < pb;
+  const ra = rowRichness(a);
+  const rb = rowRichness(b);
+  if (ra !== rb) return ra > rb;
+  return (a.sale_date ?? '') > (b.sale_date ?? '');
+}
+
+/**
+ * Collapse near-duplicate rows of the same sale across sources. Rows are
+ * grouped by address_slug (fallback: normalised raw_address); within an
+ * address, rows whose sale_dates are within 90 days and prices within 10%
+ * (or either price null) are one sale — kept row chosen by source precedence
+ * (vic-vg > domain > rea-history-apify > view/homely > profile-crawl), ties
+ * broken by richness (beds/baths/listing_url) then newest sale_date.
+ * Preserves the input's relative row order. Pure — exported for tests.
+ */
+export function dedupeSalesAcrossSources(
+  rows: readonly PropertySaleRecord[]
+): PropertySaleRecord[] {
+  // address key → clusters of rows considered the same sale
+  const byAddress = new Map<string, PropertySaleRecord[][]>();
+  const keep = new Map<PropertySaleRecord[], PropertySaleRecord>();
+  const order: PropertySaleRecord[][] = [];
+
+  for (const row of rows) {
+    const key =
+      row.address_slug || row.raw_address.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    let clusters = byAddress.get(key);
+    if (!clusters) {
+      clusters = [];
+      byAddress.set(key, clusters);
+    }
+    const cluster = clusters.find((c) => c.some((r) => sameSale(r, row)));
+    if (cluster) {
+      cluster.push(row);
+      const current = keep.get(cluster)!;
+      if (betterRow(row, current)) keep.set(cluster, row);
+    } else {
+      const fresh = [row];
+      clusters.push(fresh);
+      keep.set(fresh, row);
+      order.push(fresh);
+    }
+  }
+
+  return order.map((c) => keep.get(c)!);
+}
+
 /**
  * Fetch-and-merge wrapper for routes: exactly two batched lookups for the
- * whole page of rows (profiles + listing dates), then the pure merge.
+ * whole page of rows (profiles + listing dates), then the pure merge. Rows are
+ * first deduped across sources (see dedupeSalesAcrossSources) so both
+ * /api/sold-sales and /api/vendor-report return one row per real sale.
  */
 export async function enrichSoldRowsFromDb(
-  rows: readonly PropertySaleRecord[]
+  inputRows: readonly PropertySaleRecord[]
 ): Promise<EnrichedSoldResult[]> {
+  const rows = dedupeSalesAcrossSources(inputRows);
   const slugs = [...new Set(rows.map((s) => s.address_slug).filter((v): v is string => !!v))];
   const [profiles, listedDates] = await Promise.all([
     getCachedProfilesBySlugs(slugs),

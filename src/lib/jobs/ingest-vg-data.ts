@@ -644,7 +644,14 @@ export async function ingestVicSalesCsvUrl(
   }
 
   if (records.length > 0) {
-    await insertPropertySales(records);
+    // insertPropertySales throws on failed chunks — surface as this function's
+    // error-result shape (callers branch on `error`, they don't catch throws).
+    try {
+      await insertPropertySales(records);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { parsed: lines.length - 1, inserted: 0, skipped, error: message };
+    }
   }
 
   return {
