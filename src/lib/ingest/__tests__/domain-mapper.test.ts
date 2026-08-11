@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseListedDate, mapItem } from '../domain-mapper';
+import { parseListedDate, mapItem, applyBedBathMatches } from '../domain-mapper';
+import type { PropertySaleRecord, BedBathMatch } from '@/lib/db/queries';
 
 const baseItem = {
   url: 'https://www.domain.com.au/123-smith-st-berwick-vic-3806',
@@ -149,5 +150,62 @@ describe('mapItem area normalisation + building area (008)', () => {
       car_spaces: 1,
       land_area_sqm: 650,
     });
+  });
+});
+
+describe('applyBedBathMatches', () => {
+  function saleRecord(overrides: Partial<PropertySaleRecord> = {}): PropertySaleRecord {
+    return {
+      raw_address: '1 Test St, Berwick VIC 3806',
+      suburb: 'Berwick',
+      state: 'VIC',
+      source: 'domain-apify',
+      ...overrides,
+    };
+  }
+
+  it('fills null bedrooms/bathrooms/car_spaces from a match', () => {
+    const sales = [saleRecord({ bedrooms: undefined, bathrooms: undefined, car_spaces: undefined })];
+    const matches = new Map<string, BedBathMatch>([
+      ['1 test st, berwick vic 3806', { bedrooms: 4, bathrooms: 2, car_spaces: 2 }],
+    ]);
+    applyBedBathMatches(sales, matches);
+    expect(sales[0]).toMatchObject({ bedrooms: 4, bathrooms: 2, car_spaces: 2 });
+  });
+
+  it('never overwrites a feed-derived value already present', () => {
+    const sales = [saleRecord({ bedrooms: 3, bathrooms: undefined, car_spaces: undefined })];
+    const matches = new Map<string, BedBathMatch>([
+      ['1 test st, berwick vic 3806', { bedrooms: 5, bathrooms: 2, car_spaces: 2 }], // bedrooms differs from feed
+    ]);
+    applyBedBathMatches(sales, matches);
+    expect(sales[0].bedrooms).toBe(3); // feed value wins, not overwritten by the match
+    expect(sales[0].bathrooms).toBe(2); // still filled from match
+    expect(sales[0].car_spaces).toBe(2);
+  });
+
+  it('no match found → row left unchanged, no error', () => {
+    const sales = [saleRecord({ bedrooms: undefined })];
+    applyBedBathMatches(sales, new Map());
+    expect(sales[0].bedrooms).toBeUndefined();
+  });
+
+  it('address matching is case/whitespace-insensitive', () => {
+    const sales = [saleRecord({ raw_address: '  1 TEST st, Berwick VIC 3806  ', bedrooms: undefined })];
+    const matches = new Map<string, BedBathMatch>([
+      ['1 test st, berwick vic 3806', { bedrooms: 4 }],
+    ]);
+    applyBedBathMatches(sales, matches);
+    expect(sales[0].bedrooms).toBe(4);
+  });
+
+  it('row already fully populated → match lookup is skipped entirely (no-op)', () => {
+    const sales = [saleRecord({ bedrooms: 3, bathrooms: 2, car_spaces: 1 })];
+    // A match map that WOULD change values if consulted — proves the early skip.
+    const matches = new Map<string, BedBathMatch>([
+      ['1 test st, berwick vic 3806', { bedrooms: 9, bathrooms: 9, car_spaces: 9 }],
+    ]);
+    applyBedBathMatches(sales, matches);
+    expect(sales[0]).toMatchObject({ bedrooms: 3, bathrooms: 2, car_spaces: 1 });
   });
 });

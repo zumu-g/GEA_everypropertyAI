@@ -12,6 +12,7 @@ import type {
   PropertySaleRecord,
   PropertyListingRecord,
   PropertyRentalRecord,
+  BedBathMatch,
 } from '@/lib/db/queries';
 
 export type IngestCategory = 'sold' | 'on-market' | 'rent';
@@ -261,4 +262,28 @@ export function mapItem(category: IngestCategory, it: DomainItem):
     bathrooms: baths,
     car_spaces: cars,
   } as PropertyRentalRecord;
+}
+
+/**
+ * Pure merge step for the bed/bath backfill (U3/U4 — see
+ * docs/plans/2026-08-03-001-fix-small-block-estimate-skew-plan.md): given
+ * mapped sold rows and the matches resolved by findBedBathMatches
+ * (src/lib/db/queries.ts), fills only the null bedrooms/bathrooms/car_spaces
+ * fields — feed-derived values always win, a missing match is a no-op.
+ * Mutates and returns the same array (matches the mapItem call sites' style
+ * of building a rows array before upsert).
+ */
+export function applyBedBathMatches(
+  sales: PropertySaleRecord[],
+  matches: Map<string, BedBathMatch>,
+): PropertySaleRecord[] {
+  for (const s of sales) {
+    if (s.bedrooms != null && s.bathrooms != null && s.car_spaces != null) continue;
+    const m = matches.get(s.raw_address.trim().toLowerCase());
+    if (!m) continue;
+    if (s.bedrooms == null && m.bedrooms != null) s.bedrooms = m.bedrooms;
+    if (s.bathrooms == null && m.bathrooms != null) s.bathrooms = m.bathrooms;
+    if (s.car_spaces == null && m.car_spaces != null) s.car_spaces = m.car_spaces;
+  }
+  return sales;
 }
