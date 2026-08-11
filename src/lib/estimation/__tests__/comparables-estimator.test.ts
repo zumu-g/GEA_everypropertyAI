@@ -6,6 +6,7 @@ import {
   monthsSince,
   typeBucket,
   isVacantLandType,
+  isLandSimilar,
   similarityWeight,
   type ComparableSale,
   type ComparableSubject,
@@ -118,6 +119,24 @@ describe('helpers', () => {
     expect(monthsSince(dateMonthsAgo(12), NOW)).toBe(12);
     expect(monthsSince('2099-01-01', NOW)).toBe(0);
   });
+
+  it('isLandSimilar: within [0.6x, 1.6x] of subject land is similar, outside is not', () => {
+    expect(isLandSimilar(300, 300)).toBe(true); // exact match
+    expect(isLandSimilar(300, 180)).toBe(true); // 0.6x lower bound
+    expect(isLandSimilar(300, 480)).toBe(true); // 1.6x upper bound
+    expect(isLandSimilar(300, 179)).toBe(false); // just below lower bound
+    expect(isLandSimilar(300, 481)).toBe(false); // just above upper bound
+    expect(isLandSimilar(300, 700)).toBe(false); // typical-block comp, not similar to a small subject
+  });
+
+  it('isLandSimilar treats missing/zero/negative land on either side as not similar', () => {
+    expect(isLandSimilar(null, 300)).toBe(false);
+    expect(isLandSimilar(300, null)).toBe(false);
+    expect(isLandSimilar(undefined, undefined)).toBe(false);
+    expect(isLandSimilar(0, 300)).toBe(false);
+    expect(isLandSimilar(300, 0)).toBe(false);
+    expect(isLandSimilar(-100, 300)).toBe(false);
+  });
 });
 
 describe('estimateFromComparables', () => {
@@ -229,5 +248,79 @@ describe('estimateFromComparables', () => {
     // Land weighting is steeper: the near/far spread for land should be wider
     // (relatively) than for houses, since land-area is the dominant signal.
     expect(wFar / wNear).toBeLessThan(houseFar / houseNear);
+  });
+
+  it('opts.landSimilarSparse=true appends the sparsity note and lowers confidence', () => {
+    const comps = Array.from({ length: 6 }, (_, i) => comp(800_000, { distanceKm: 0.4, monthsAgo: 3 }, i));
+    const base = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!;
+    const sparse = estimateFromComparables(SUBJECT, comps, MARKET, NOW, { landSimilarSparse: true })!;
+    expect(sparse.methodology).toContain('few sales of similarly-sized blocks');
+    expect(sparse.methodology).toContain('~600m²'); // SUBJECT.landAreaSqm
+    expect(sparse.confidenceScore).toBeLessThan(base.confidenceScore);
+  });
+
+  it('opts.landSimilarSparse=false (default) does not add the note', () => {
+    const comps = Array.from({ length: 6 }, (_, i) => comp(800_000, { distanceKm: 0.4, monthsAgo: 3 }, i));
+    const r = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!;
+    expect(r.methodology).not.toContain('similarly-sized blocks');
+  });
+
+  // similarityWeight returns the full multiplicative product (distance × type
+  // × beds × baths × land × recency), so isolating wLand's steepness requires
+  // a near/far RATIO (which cancels every other factor, held constant across
+  // the pair) rather than comparing an absolute weight to a hand-derived
+  // wLand-only formula — mirrors the existing "land-area similarity
+  // dominates" test's approach above.
+  it('house subject with bedrooms known: land-decay steepness unchanged from baseline (0.7)', () => {
+    const nearComp = comp(900_000, { type: 'house', land: 600 }, 1); // exact match to SUBJECT's 600m²
+    const farComp = comp(900_000, { type: 'house', land: 1200 }, 2); // 2x
+    const ratio = similarityWeight(SUBJECT, farComp) / similarityWeight(SUBJECT, nearComp); // SUBJECT.bedrooms = 3
+    const expectedRatio = Math.exp(-Math.abs(Math.log(1200 / 600)) * 0.7);
+    expect(ratio).toBeCloseTo(expectedRatio, 6);
+  });
+
+  it('house subject with bedrooms unknown: land decay is steeper than the bedrooms-known baseline', () => {
+    const bedsUnknownSubject: ComparableSubject = { ...SUBJECT, bedrooms: undefined };
+    const nearComp = comp(900_000, { type: 'house', land: 600 }, 1);
+    const farComp = comp(900_000, { type: 'house', land: 1200 }, 2); // same 2x ratio
+    const ratioKnown = similarityWeight(SUBJECT, farComp) / similarityWeight(SUBJECT, nearComp);
+    const ratioUnknown = similarityWeight(bedsUnknownSubject, farComp) / similarityWeight(bedsUnknownSubject, nearComp);
+    expect(ratioUnknown).toBeLessThan(ratioKnown); // steeper decay → far comp discounted harder
+    const expectedRatio = Math.exp(-Math.abs(Math.log(1200 / 600)) * 1.5);
+    expect(ratioUnknown).toBeCloseTo(expectedRatio, 6);
+  });
+
+  it('comp with unknown land size gets an uncertainty penalty (0.6), not a free pass at 1.0', () => {
+    // Same treatment as wDistance's null-distance case — discovered during the
+    // 28 Serene Way investigation: undiscounted unknown-land comps were
+    // dominating the weighted median even after the steeper decay above.
+    const landUnknownComp = comp(900_000, { type: 'house', land: null }, 1);
+    const exactMatchComp = comp(900_000, { type: 'house', land: 600 }, 2); // exact match to SUBJECT's 600m²
+    const wUnknown = similarityWeight(SUBJECT, landUnknownComp);
+    const wExact = similarityWeight(SUBJECT, exactMatchComp);
+    // wExact's land factor is 1.0 (exact match); wUnknown's is 0.6 — everything
+    // else about the two comps is identical, so the ratio isolates the penalty.
+    expect(wUnknown / wExact).toBeCloseTo(0.6, 6);
+  });
+
+  it('subject land unknown: comp land ignored entirely (no penalty either way)', () => {
+    const subjectNoLand: ComparableSubject = { ...SUBJECT, landAreaSqm: undefined };
+    const landUnknownComp = comp(900_000, { type: 'house', land: null }, 1);
+    const landKnownComp = comp(900_000, { type: 'house', land: 1200 }, 2);
+    // With no subject land to compare against, wLand stays 1.0 for both —
+    // there's nothing to penalise a comp for not matching.
+    expect(similarityWeight(subjectNoLand, landUnknownComp)).toBeCloseTo(
+      similarityWeight(subjectNoLand, landKnownComp),
+      6,
+    );
+  });
+
+  it('land-bucket subject with bedrooms unknown: steepness stays at 2.0, unaffected by the house-branch change', () => {
+    const landSubject: ComparableSubject = { ...SUBJECT, propertyType: 'Vacant land', bedrooms: undefined, bathrooms: undefined, landAreaSqm: 600 };
+    const nearComp = comp(350_000, { type: 'Vacant land', beds: null, baths: null, land: 600 }, 1);
+    const farComp = comp(350_000, { type: 'Vacant land', beds: null, baths: null, land: 1200 }, 2);
+    const ratio = similarityWeight(landSubject, farComp) / similarityWeight(landSubject, nearComp);
+    const expectedRatio = Math.exp(-Math.abs(Math.log(1200 / 600)) * 2.0);
+    expect(ratio).toBeCloseTo(expectedRatio, 6);
   });
 });

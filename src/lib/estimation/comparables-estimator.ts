@@ -81,10 +81,19 @@ export const MAX_PLAUSIBLE_SALE_PRICE = 50_000_000;
 export const MIN_PLAUSIBLE_SALE_PRICE = 50_000;
 export const MIN_COMPS = 3;
 export const IDEAL_COMPS = 8;
+/** Minimum land-similar comps the radius ladder must find (when the subject's
+ * land size is known) before it's allowed to stop widening — see
+ * isLandSimilar and estimate-service.ts's radius/time ladder. */
+export const MIN_LAND_SIMILAR_COMPS = 3;
 
 const GROWTH_CLAMP_LO = 0.33;
 const GROWTH_CLAMP_HI = 3.0;
 const WEIGHT_EPSILON = 1e-4;
+/** Ratio band matching similarityWeight's land decay inflection zone (see
+ * wLand below) — a comp within this band is "close enough in size to
+ * matter" for the comp-gathering land-similar-comp guarantee. */
+const LAND_SIMILAR_RATIO_LO = 0.6;
+const LAND_SIMILAR_RATIO_HI = 1.6;
 
 // ── Property-type bucketing ───────────────────────────────────────────────────
 
@@ -115,6 +124,23 @@ export function typeBucket(propertyType?: string | null): TypeBucket {
   if (HOUSE_TYPES.some((h) => t.includes(h))) return 'house';
   if (isVacantLandType(propertyType)) return 'land';
   return 'unknown';
+}
+
+/**
+ * Whether a comp's land size is "similar enough to matter" to a subject of
+ * known land size — used by estimate-service.ts's radius/time ladder to
+ * guarantee the comp pool isn't structurally skewed toward the area's
+ * typical (often larger) block size for a below-typical subject. The ratio
+ * band mirrors similarityWeight's land decay inflection zone so "similar" is
+ * defined consistently between comp-gathering and comp-weighting.
+ */
+export function isLandSimilar(
+  subjectLand: number | null | undefined,
+  compLand: number | null | undefined,
+): boolean {
+  if (!subjectLand || subjectLand <= 0 || !compLand || compLand <= 0) return false;
+  const ratio = compLand / subjectLand;
+  return ratio >= LAND_SIMILAR_RATIO_LO && ratio <= LAND_SIMILAR_RATIO_HI;
 }
 
 // ── Date / growth helpers (mirror price-estimator.ts) ─────────────────────────
@@ -171,11 +197,29 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
   // Land (houses and vacant land), symmetric in log-space. Land subjects have
   // no beds/baths/building area to differentiate comps, so land-area
   // similarity is weighted more steeply (KTD4) — it's the dominant signal.
+  // House subjects normally lean on bed-diff weighting to discriminate size,
+  // but when the subject's bedrooms are unknown (common — see comparables
+  // pool investigation) that signal is unavailable, so land becomes the only
+  // size discriminator and gets a steeper decay too.
+  //
+  // When we DO want to compare on land (subject's size is known) but the comp's
+  // land size is unknown, that's an uncertainty penalty, not a free pass — same
+  // treatment as wDistance's null-distance case just above, not the "missing
+  // attribute defaults to 1.0" rule this function's docstring describes for
+  // wBeds/wBaths. Discovered during the 28 Serene Way investigation: comps
+  // with unknown land size were dominating the weighted median (full 1.0
+  // weight, undiscounted) even after the land-similar-comp guarantee (U1) and
+  // the steeper decay above (U2) — see
+  // docs/plans/2026-08-03-001-fix-small-block-estimate-skew-plan.md.
   let wLand = 1.0;
-  if (!isUnit && subject.landAreaSqm && comp.landAreaSqm && comp.landAreaSqm > 0) {
-    const ratio = comp.landAreaSqm / subject.landAreaSqm;
-    const steepness = subjBucket === 'land' ? 2.0 : 0.7;
-    wLand = Math.exp(-Math.abs(Math.log(ratio)) * steepness);
+  if (!isUnit && subject.landAreaSqm) {
+    if (comp.landAreaSqm && comp.landAreaSqm > 0) {
+      const ratio = comp.landAreaSqm / subject.landAreaSqm;
+      const steepness = subjBucket === 'land' ? 2.0 : subject.bedrooms == null ? 1.5 : 0.7;
+      wLand = Math.exp(-Math.abs(Math.log(ratio)) * steepness);
+    } else {
+      wLand = 0.6;
+    }
   }
 
   // Recency.
@@ -214,11 +258,21 @@ function clamp(n: number, lo: number, hi: number): number {
 
 // ── Main entry point ───────────────────────────────────────────────────────────
 
+export interface EstimateFromComparablesOptions {
+  /** True when comp-gathering's radius ladder exhausted all radii while still
+   * short of MIN_LAND_SIMILAR_COMPS land-similar comps (subject.landAreaSqm
+   * known but the local pool skews to larger blocks) — flags the estimate as
+   * potentially skewed toward the area's typical size rather than the
+   * subject's actual size. Set by estimate-service.ts's comp-gathering. */
+  landSimilarSparse?: boolean;
+}
+
 export function estimateFromComparables(
   subject: ComparableSubject,
   comps: ComparableSale[],
   marketData: MarketDataInput | null,
   now: Date = new Date(),
+  opts: EstimateFromComparablesOptions = {},
 ): ComparablesEstimateResult | null {
   const subjBucket = typeBucket(subject.propertyType);
   const isUnit = subjBucket === 'unit';
@@ -298,6 +352,18 @@ export function estimateFromComparables(
   pushCheck('Listing guide', listingMid, 0.15);
   pushCheck('Suburb median', suburbMedian, 0.25);
 
+  // Land-similar-comp sparsity note (R5) — the pool met MIN_COMPS/IDEAL_COMPS
+  // but comp-gathering couldn't find enough land-similar comps even after
+  // widening the full radius ladder, so the estimate may still skew toward
+  // the area's typical (often larger) block size.
+  let landSparseNote = '';
+  if (opts.landSimilarSparse) {
+    const landDesc = subject.landAreaSqm ? `~${Math.round(subject.landAreaSqm)}m²` : 'its size';
+    landSparseNote =
+      ` Note: few sales of similarly-sized blocks (${landDesc}) were found nearby even after widening the search radius; this estimate may skew toward the area's typical (larger) block size.`;
+    confidence = Math.max(confidence - 10, 5);
+  }
+
   const priceLow = Math.round(priceMid * (1 - band / 100));
   const priceHigh = Math.round(priceMid * (1 + band / 100));
 
@@ -316,7 +382,8 @@ export function estimateFromComparables(
     (maxDistance > 0 ? ` within ${maxDistance.toFixed(1)}km` : ' in the suburb') +
     (annualGrowth ? `, time-adjusted using ${annualGrowth.toFixed(1)}% p.a. suburb growth` : '') +
     `. Weighted-median estimate, ±${band}%.` +
-    checkNote;
+    checkNote +
+    landSparseNote;
 
   return {
     priceLow,
