@@ -40,6 +40,7 @@ import { calculateEnrichedPriceEstimate, type PriceEstimateResult } from '@/lib/
 import { isVacantLandType } from '@/lib/estimation/comparables-estimator';
 import { ComparableSales } from "./ComparableSales";
 import { ComparableRentals } from "./ComparableRentals";
+import { OnMarketRentalsNearby } from "./OnMarketRentalsNearby";
 import type { WeightedRentalComp } from "@/lib/estimation/rental-comparables-estimator";
 import { QuadrantChartSection } from "./QuadrantChartSection";
 import { OnMarketNearby } from "./OnMarketNearby";
@@ -1522,6 +1523,15 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {/* ─── On the Market Nearby ─── */}
         {typeof d.latitude === 'number' && typeof d.longitude === 'number' && (
           <OnMarketNearby
+            lat={d.latitude as number}
+            lng={d.longitude as number}
+            excludeAddress={displayAddress}
+          />
+        )}
+
+        {/* ─── On the Market Rentals ─── */}
+        {typeof d.latitude === 'number' && typeof d.longitude === 'number' && (
+          <OnMarketRentalsNearby
             lat={d.latitude as number}
             lng={d.longitude as number}
             excludeAddress={displayAddress}
