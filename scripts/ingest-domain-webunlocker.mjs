@@ -52,8 +52,8 @@ export const SUBURB_SLUGS = [
   'pakenham-vic-3810', 'pakenham-upper-vic-3810', 'officer-vic-3809', 'officer-south-vic-3809',
   'beaconsfield-vic-3807', 'beaconsfield-upper-vic-3808', 'guys-hill-vic-3807', 'dewhurst-vic-3808',
   'emerald-vic-3782', 'cockatoo-vic-3781', 'gembrook-vic-3783', 'koo-wee-rup-vic-3981', 'dalmore-vic-3981',
-  'nar-nar-goon-vic-3812', 'maryknoll-vic-3812', 'bunyip-vic-3815', 'garfield-vic-3814', 'garfield-north-vic-3814',
-  'tynong-vic-3813', 'tynong-north-vic-3813',
+  'nar-nar-goon-vic-3812', 'maryknoll-vic-3812', 'bunyip-vic-3815', 'bunyip-north-vic-3815', 'garfield-vic-3814', 'garfield-north-vic-3814',
+  'tynong-vic-3813', 'tynong-north-vic-3813', 'tonimbuk-vic-3815',
   'cardinia-vic-3978', 'lang-lang-vic-3984',
 ];
 
