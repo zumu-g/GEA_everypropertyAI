@@ -26,6 +26,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { findBedBathMatches, normaliseAddressKey } from './lib/bed-bath-lookup.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -349,6 +350,29 @@ async function ingestDataset(cat, datasetId) {
       rows.push(row);
     }
     const deduped = dedupeByConflict(rows, cat.conflict);
+
+    // Best-effort bed/bath enrichment for sold rows the feed didn't supply
+    // beds for (Domain's sold feed never returns them — see
+    // scripts/lib/bed-bath-lookup.mjs). A lookup miss never blocks ingest;
+    // feed-derived values always win.
+    if (cat.table === 'property_sales') {
+      const bedless = deduped.filter((r) => r.bedrooms == null || r.bathrooms == null || r.car_spaces == null);
+      if (bedless.length) {
+        const matches = await findBedBathMatches(
+          SUPABASE_URL,
+          SERVICE_KEY,
+          bedless.map((r) => ({ rawAddress: r.raw_address, suburb: r.suburb })),
+        );
+        for (const r of bedless) {
+          const m = matches.get(normaliseAddressKey(r.raw_address));
+          if (!m) continue;
+          if (r.bedrooms == null && m.bedrooms != null) r.bedrooms = m.bedrooms;
+          if (r.bathrooms == null && m.bathrooms != null) r.bathrooms = m.bathrooms;
+          if (r.car_spaces == null && m.car_spaces != null) r.car_spaces = m.car_spaces;
+        }
+      }
+    }
+
     if (deduped.length) {
       for (let i = 0; i < deduped.length; i += 500) {
         await upsert(cat.table, cat.conflict, deduped.slice(i, i + 500));

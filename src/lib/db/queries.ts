@@ -951,6 +951,76 @@ export async function insertPropertySales(sales: PropertySaleRecord[]): Promise<
   }
 }
 
+// ─── Bed/bath backfill lookup (sold rows → listings/rentals) ──────────────────
+//
+// Domain's sold-listings Apify actor never returns bedrooms/bathrooms for sold
+// items (confirmed 2026-08-03 comparables-estimate investigation — raw_data
+// carries nothing to re-parse either), so most property_sales rows have null
+// beds/baths. A matching property_listings or property_rentals row for the
+// same address often does carry them. Used by the one-off backfill
+// (scripts/backfill-sale-beds-from-listings.mjs, its own plain-JS duplicate —
+// scripts are .mjs and cannot import TS, same convention as area.ts's
+// backfill-sold-areas-dates.mjs) and by the live ingest route
+// (src/app/api/ingest/domain/route.ts) so the gap doesn't regrow.
+
+export interface BedBathMatch {
+  bedrooms?: number;
+  bathrooms?: number;
+  car_spaces?: number;
+}
+
+const normaliseAddressKey = (raw: string): string => raw.trim().toLowerCase();
+
+/**
+ * Batch-resolve bed/bath matches for sold rows missing them, scoped to the
+ * relevant suburbs. property_listings is preferred over property_rentals;
+ * within a table, the most-recently-seen row wins on a normalised-address
+ * collision (e.g. a relisted property). Returns a Map keyed by
+ * `rawAddress.trim().toLowerCase()` — callers look up with the same
+ * normalisation applied to their own rawAddress.
+ */
+export async function findBedBathMatches(
+  targets: Array<{ rawAddress: string; suburb?: string }>,
+): Promise<Map<string, BedBathMatch>> {
+  const result = new Map<string, BedBathMatch & { lastSeenAt?: string }>();
+  if (!isSupabaseConfigured() || targets.length === 0) return result;
+
+  const suburbs = [...new Set(targets.map((t) => t.suburb).filter((s): s is string => !!s))];
+  if (suburbs.length === 0) return result;
+
+  const targetKeys = new Set(targets.map((t) => normaliseAddressKey(t.rawAddress)));
+  const resolvedFrom = new Map<string, 'property_listings' | 'property_rentals'>();
+
+  for (const table of ['property_listings', 'property_rentals'] as const) {
+    const { data, error } = await supabase()
+      .from(table)
+      .select('raw_address, bedrooms, bathrooms, car_spaces, last_seen_at')
+      .in('suburb', suburbs)
+      .not('bedrooms', 'is', null);
+    if (error) {
+      console.error(`[findBedBathMatches] ${table} query error:`, error.message);
+      continue;
+    }
+    for (const row of data ?? []) {
+      const key = normaliseAddressKey(row.raw_address);
+      if (!targetKeys.has(key)) continue;
+      const currentSource = resolvedFrom.get(key);
+      if (currentSource && currentSource !== table) continue; // higher-priority table already matched
+      const existing = result.get(key);
+      if (existing && (row.last_seen_at ?? '') <= (existing.lastSeenAt ?? '')) continue; // not newer within this table
+      result.set(key, {
+        bedrooms: row.bedrooms ?? undefined,
+        bathrooms: row.bathrooms ?? undefined,
+        car_spaces: row.car_spaces ?? undefined,
+        lastSeenAt: row.last_seen_at ?? undefined,
+      });
+      resolvedFrom.set(key, table);
+    }
+  }
+
+  return result;
+}
+
 /**
  * Tally property_sales rows by suburb, restricted to an optional postcode set,
  * returning suburbs ordered by sale count (descending). Drives the

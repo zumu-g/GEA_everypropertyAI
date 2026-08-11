@@ -23,8 +23,10 @@ import {
 import {
   estimateFromComparables,
   typeBucket,
+  isLandSimilar,
   MIN_COMPS,
   IDEAL_COMPS,
+  MIN_LAND_SIMILAR_COMPS,
   MIN_PLAUSIBLE_SALE_PRICE,
   MAX_PLAUSIBLE_SALE_PRICE,
   type ComparableSale,
@@ -178,9 +180,18 @@ export async function getEstimate(
         if (!passesPrefilter(subject, r)) continue;
         addComp(comps, toComparable(r, dist), subject.excludeAddress);
       }
-      // Stop widening once we have enough recent (<=24mo) comps.
-      const recentEnough = [...comps.values()].filter((c) => withinMonths(c.saleDate, 24, now)).length;
-      if (recentEnough >= IDEAL_COMPS) break;
+      // Stop widening once we have enough recent (<=24mo) comps AND, when the
+      // subject's land size is known, enough land-similar comps too — a pool
+      // that's merely recent can still be structurally skewed toward the
+      // area's typical (often larger) block size for a below-typical subject.
+      const recentEnough =
+        [...comps.values()].filter((c) => withinMonths(c.saleDate, 24, now)).length >= IDEAL_COMPS;
+      const landSimilarEnough =
+        subject.landAreaSqm == null
+          ? true
+          : [...comps.values()].filter((c) => isLandSimilar(subject.landAreaSqm, c.landAreaSqm)).length >=
+            MIN_LAND_SIMILAR_COMPS;
+      if (recentEnough && landSimilarEnough) break;
     }
   }
 
@@ -194,6 +205,14 @@ export async function getEstimate(
       addComp(comps, toComparable(r, null), subject.excludeAddress);
     }
   }
+
+  // Land-similar-comp sparsity, computed once against the final pool (whether
+  // the ladder broke early or exhausted all radii still short) — passed to
+  // estimateFromComparables so it can flag the estimate (R5).
+  const landSimilarSparse =
+    subject.landAreaSqm != null &&
+    [...comps.values()].filter((c) => isLandSimilar(subject.landAreaSqm, c.landAreaSqm)).length <
+      MIN_LAND_SIMILAR_COMPS;
 
   const compList = [...comps.values()];
   const comparableSubject: ComparableSubject = {
@@ -209,7 +228,7 @@ export async function getEstimate(
   };
 
   if (compList.length >= MIN_COMPS) {
-    const result = estimateFromComparables(comparableSubject, compList, marketData, now);
+    const result = estimateFromComparables(comparableSubject, compList, marketData, now, { landSimilarSparse });
     if (result) return applyAttributeGapPenalty(result, subject);
   }
 
