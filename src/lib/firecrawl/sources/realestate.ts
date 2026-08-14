@@ -73,12 +73,10 @@ export const realestateSource: SourceConfig = {
     formats: ['markdown'],
   },
   enabled: true,
-  // Routed through Apify actor for reliable Kasada/Cloudflare bypass.
-  // NOTE: the old 'realestate-com-au-properties-pages-scraper' slug 404s; the
-  // live actor is 'real-estate-au-scraper-pro' (actId 6oje2FBiCMSQ3nW82,
-  // ~$0.9/1K, 100% success in our runs). Accepts property page URLs via startUrls.
-  options: { apifyActorId: 'azzouzana/real-estate-au-scraper-pro' },
-  // When Apify is unconfigured/fails and Firecrawl hits the bot wall (429),
-  // fall back to the stealth-browser service. Skipped if stealth is unconfigured.
-  fallbackBackends: ['stealth'],
+  // Apify route removed 2026-08-14: azzouzana/real-estate-au-scraper-pro only
+  // accepts buy/rent/sold SEARCH URLs and rejects /property/{slug} pages, so
+  // every enrichment run was a paid no-op (thousands of wasted runs → monthly
+  // cap hit). Stealth carries this source; re-add an actor only if it's
+  // verified against property-page URLs.
+  fetchBackend: 'stealth',
 };

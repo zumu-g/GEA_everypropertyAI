@@ -120,7 +120,15 @@ export async function scrapeWithApify(
     const allErrors = items.every(
       (it) => it && typeof it === 'object' && (it as { error?: unknown }).error === true
     );
-    if (allErrors) {
+    // Others "succeed" with a bare rejection message instead of listing data
+    // (azzouzana rejects /property/{slug} URLs with "We only support scraping
+    // 'buy', 'rent', 'sold' search URLs.."). Same treatment: fail the crawl.
+    const allRejections = items.every((it) => {
+      if (!it || typeof it !== 'object') return false;
+      const { message, ...rest } = it as { message?: unknown };
+      return typeof message === 'string' && Object.keys(rest).length === 0;
+    });
+    if (allErrors || allRejections) {
       const msg = (items[0] as { message?: unknown }).message;
       return {
         source,
