@@ -44,17 +44,12 @@ export const viewSource: SourceConfig = {
     timeout: 30000,
     formats: ['markdown'],
   },
-  // Apify actor handles DataDome bypass — re-enabled
   enabled: true,
   trustRank: 2,
   refreshIntervalHours: 24,
-  // The view.com.au actor defaults to location/search mode; it must be told to
-  // run in "url mode" so it scrapes the specific property URL we pass.
-  options: {
-    apifyActorId: 'abotapi/view-com-au-scraper',
-    apifyInput: { mode: 'url' },
-  },
-  // Fall back to Firecrawl then the stealth-browser service when Apify is
-  // unavailable/fails. Skipped if stealth is unconfigured.
-  fallbackBackends: ['stealth'],
+  // Apify route removed 2026-08-14: per-property enrichment runs burned the
+  // Apify monthly cap (800 runs on abotapi/view-com-au-scraper). Policy is now
+  // ONE Apify run per data source per day (the morning feed crons); daytime
+  // enrichment must never touch Apify. Stealth handles DataDome here.
+  fetchBackend: 'stealth',
 };
