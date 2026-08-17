@@ -201,6 +201,14 @@ async function fetchPage(url, maxAttempts = 6) {
       if (res.ok) {
         const html = await res.text();
         if (html && html.length > 1000 && looksLikeData(html)) return html;
+        // Bright Data reports account problems as HTTP 200 + empty body +
+        // x-brd-err headers (e.g. client_10020 "Account is suspended"). Surface
+        // the real reason and stop retrying — it won't clear within this run.
+        const brdErr = res.headers.get('x-brd-err-msg') || res.headers.get('x-brd-error');
+        if (brdErr) {
+          lastErr = `Bright Data: ${brdErr} (${res.headers.get('x-brd-err-code') ?? 'no code'})`;
+          break;
+        }
         lastErr = looksLikeData(html)
           ? `empty/short body (${html.length}b)`
           : `no __NEXT_DATA__ (challenge/interstitial, ${html.length}b)`;
@@ -324,7 +332,10 @@ async function main() {
   const summary = `category=${category} status=${status} items=${upserted} index_ok=${indexOk}/${slugs.length} detail_ok=${detailOk} detail_fail=${detailFail} blocked=${blockedSlugs.length} duration=${durationS}s`;
   console.log(summary);
   if (blocked) {
-    await pingFail(HEALTHCHECK_UUID, `BLOCKED ${summary}`);
+    // Include one per-suburb error so the alert names the real cause (e.g.
+    // "Bright Data: Account is suspended...") instead of a bare BLOCKED.
+    const firstErr = indexResults.find((r) => r.error)?.error;
+    await pingFail(HEALTHCHECK_UUID, `BLOCKED ${summary}${firstErr ? ` | ${firstErr}` : ''}`);
     process.exit(1);
   }
   await pingSuccess(HEALTHCHECK_UUID, summary);
