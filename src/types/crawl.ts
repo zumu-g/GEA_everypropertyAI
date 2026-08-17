@@ -137,7 +137,7 @@ export interface CrawlResult {
 // ─── Source Configuration ────────────────────────────────────────────────────
 
 /** The mechanism used to fetch a source's page. */
-export type FetchBackend = 'firecrawl' | 'apify' | 'stealth' | 'web-unlocker';
+export type FetchBackend = 'apify' | 'stealth' | 'web-unlocker';
 
 export interface SourceConfig {
   name: DataSourceName | string;
@@ -162,7 +162,7 @@ export interface SourceConfig {
     address: StructuredAddress,
     fetchPage: (url: string) => Promise<string | null>
   ) => Promise<string | null>;
-  /** Options passed to Firecrawl scrapeUrl */
+  /** Options passed to the fetch backend */
   scrapeOptions?: {
     waitFor?: string;
     timeout?: number;
@@ -174,7 +174,7 @@ export interface SourceConfig {
   // ─── Fetch backend selection ──────────────────────────────────────────────
   /**
    * Which backend fetches this source. When omitted, the backend is inferred:
-   * 'apify' if options.apifyActorId is set, otherwise 'firecrawl'.
+   * 'apify' if options.apifyActorId is set, otherwise 'stealth'.
    */
   fetchBackend?: FetchBackend;
   /**

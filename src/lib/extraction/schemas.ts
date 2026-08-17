@@ -651,39 +651,6 @@ export const llmPropertyExtractionSchema = propertyExtractionSchema.omit({
   rawContentHash: true,
 });
 
-/**
- * Trimmed schema for Firecrawl's native `/extract` (jsonOptions). Unlike
- * propertyExtractionSchema it omits the bookkeeping fields (sourceName/sourceUrl/
- * crawledAt) the model can't reliably produce — we fill those ourselves. Field
- * names match what `mergePropertyData` reads from each extraction's `.raw`.
- */
-export const firecrawlPropertySchema = z.object({
-  propertyType: z.string().optional(),
-  bedrooms: z.number().optional(),
-  bathrooms: z.number().optional(),
-  carSpaces: z.number().optional(),
-  garages: z.number().optional(),
-  landAreaSqm: z.number().optional(),
-  buildingAreaSqm: z.number().optional(),
-  yearBuilt: z.number().optional(),
-  features: z.array(z.string()).optional(),
-  priceText: z.string().optional(),
-  priceNumeric: z.number().optional(),
-  listingStatus: z.string().optional(),
-  dateFirstListed: z.string().optional(),
-  daysOnMarket: z.number().optional(),
-  saleHistory: z.array(z.object({
-    date: z.string().optional(),
-    price: z.number().optional(),
-    type: z.string().optional(),
-    agency: z.string().optional(),
-  })).optional(),
-  rentalHistory: z.array(z.object({
-    date: z.string().optional(),
-    weeklyRent: z.number().optional(),
-  })).optional(),
-});
-
 // ─── Crawl Schemas ───────────────────────────────────────────────────────────
 
 export const crawlStatusSchema = z.enum([

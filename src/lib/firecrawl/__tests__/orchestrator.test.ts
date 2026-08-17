@@ -39,11 +39,9 @@ describe('raceToFirstSuccess', () => {
   });
 });
 
-// Policy (2026-08-17): Firecrawl is fallback-only for bot-walled sources. The
-// fast path must honour each source's configured backend — forcing firecrawl
-// against REA/Domain/view burned the entire free credit pool on failures.
+// Policy (2026-08-18): Firecrawl removed entirely. Unconfigured sources
+// default to the self-hosted stealth backend; fast mode never uses apify.
 import { resolvePrimaryBackend } from '../orchestrator';
-import { sourceRegistry } from '../sources';
 
 describe('resolvePrimaryBackend', () => {
   it('fast mode honours a configured non-apify backend', () => {
@@ -51,22 +49,14 @@ describe('resolvePrimaryBackend', () => {
     expect(resolvePrimaryBackend({ fetchBackend: 'web-unlocker' }, true)).toBe('web-unlocker');
   });
 
-  it('fast mode never uses apify, falling back to firecrawl', () => {
-    expect(resolvePrimaryBackend({ fetchBackend: 'apify' }, true)).toBe('firecrawl');
-    expect(resolvePrimaryBackend({ options: { apifyActorId: 'x/y' } }, true)).toBe('firecrawl');
+  it('fast mode never uses apify, falling back to stealth', () => {
+    expect(resolvePrimaryBackend({ fetchBackend: 'apify' }, true)).toBe('stealth');
+    expect(resolvePrimaryBackend({ options: { apifyActorId: 'x/y' } }, true)).toBe('stealth');
   });
 
-  it('full mode keeps prior behaviour', () => {
-    expect(resolvePrimaryBackend({}, false)).toBe('firecrawl');
+  it('full mode defaults to stealth, honours apify actor config', () => {
+    expect(resolvePrimaryBackend({}, false)).toBe('stealth');
     expect(resolvePrimaryBackend({ fetchBackend: 'stealth' }, false)).toBe('stealth');
     expect(resolvePrimaryBackend({ options: { apifyActorId: 'x/y' } }, false)).toBe('apify');
-  });
-
-  it('no active source uses firecrawl as its primary backend', () => {
-    for (const source of Object.values(sourceRegistry)) {
-      if (!source.enabled) continue;
-      expect(resolvePrimaryBackend(source, false), source.name).not.toBe('firecrawl');
-      expect(resolvePrimaryBackend(source, true), source.name).not.toBe('firecrawl');
-    }
   });
 });
