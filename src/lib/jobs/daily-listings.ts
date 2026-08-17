@@ -12,7 +12,8 @@
  * - view.com.au — recent sold (VIC)
  */
 
-import { scrapeUrl, fetchPage } from '@/lib/firecrawl/client';
+import { fetchPage } from '@/lib/firecrawl/client';
+import { scrapeWithStealth as scrapeUrl } from '@/lib/stealth/client';
 import { extractPropertyData } from '@/lib/extraction/extractor';
 import { mergePropertyData } from '@/lib/extraction/merger';
 import { propertyCache } from '@/lib/cache';
@@ -223,14 +224,14 @@ async function crawlSuburb(
           const reaResult = scrapeUrl(
             `https://www.realestate.com.au/property/${slug}`,
             'realestate.com.au',
-            { timeout: 30000, formats: ['markdown'] }
+            { timeout: 30000 }
           );
 
           await rateLimitedFetch('domain.com.au');
           const domainResult = scrapeUrl(
             `https://www.domain.com.au/property-profile/${slug}`,
             'domain.com.au',
-            { timeout: 30000, formats: ['markdown'] }
+            { timeout: 30000 }
           );
 
           const propertyCrawls = await Promise.allSettled([reaResult, domainResult]);

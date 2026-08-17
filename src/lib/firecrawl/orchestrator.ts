@@ -1,6 +1,5 @@
 import type { StructuredAddress } from '@/types/property';
 import type { CrawlResult, FetchBackend } from '@/types/crawl';
-import { scrapeUrl } from './client';
 import { scrapeWithApify } from '@/lib/apify/client';
 import { scrapeWithStealth, isStealthConfigured } from '@/lib/stealth/client';
 import { scrapeWithWebUnlocker, isWebUnlockerConfigured } from '@/lib/webunlocker/client';
@@ -53,12 +52,9 @@ function setCachedResult(
 }
 
 /**
- * Resolve the primary fetch backend for a source. Fast mode used to force
- * 'firecrawl' for every source — but the fast sources (REA, Domain, view) are
- * exactly the bot-walled sites Firecrawl cannot get through, so each fast
- * lookup burned paid credits on guaranteed failures. Fast mode now honours the
- * source's configured backend (still never the slow Apify actor path) and only
- * defaults to firecrawl when nothing is configured.
+ * Resolve the primary fetch backend for a source. Fast mode honours the
+ * source's configured backend but never the slow Apify actor path.
+ * Unconfigured sources default to stealth.
  */
 export function resolvePrimaryBackend(
   source: { fetchBackend?: FetchBackend; options?: Record<string, unknown> },
@@ -68,9 +64,9 @@ export function resolvePrimaryBackend(
   if (fast) {
     return source.fetchBackend && source.fetchBackend !== 'apify'
       ? source.fetchBackend
-      : 'firecrawl';
+      : 'stealth';
   }
-  return source.fetchBackend ?? (apifyActorId ? 'apify' : 'firecrawl');
+  return source.fetchBackend ?? (apifyActorId ? 'apify' : 'stealth');
 }
 
 /**
@@ -133,7 +129,7 @@ export async function crawlProperty(
     let url = source.buildPropertyUrl(address);
     const apifyActorId = source.options?.apifyActorId as string | undefined;
 
-    // FAST path: force the firecrawl backend with a short timeout and skip Apify
+    // FAST path: use a short timeout and skip Apify
     // (its ~90s actor wait is the main source of slowness). The full background
     // crawl uses the normal backends/timeouts.
     const scrapeOptions = fast
@@ -197,7 +193,11 @@ export async function crawlProperty(
               error: 'apify backend requested but no apifyActorId configured',
             });
       }
-      return scrapeUrl(target, source.name, scrapeOptions);
+      return scrapeWithStealth(target, source.name, {
+        waitFor: scrapeOptions?.waitFor,
+        timeout: scrapeOptions?.timeout,
+        engine: scrapeOptions?.stealthEngine,
+      });
     };
 
     try {
@@ -214,10 +214,13 @@ export async function crawlProperty(
             });
             return wu.status === 'success' ? wu.html ?? null : null;
           }
-          // No Web Unlocker in this environment — try the firecrawl backend,
-          // which returns markdown; the link regex matches in markdown too.
-          const fc = await scrapeUrl(target, source.name, scrapeOptions);
-          return fc.status === 'success' ? fc.html ?? fc.markdown ?? null : null;
+          // No Web Unlocker in this environment — fall back to stealth.
+          const st = await scrapeWithStealth(target, source.name, {
+            waitFor: scrapeOptions?.waitFor,
+            timeout: scrapeOptions?.timeout,
+            engine: scrapeOptions?.stealthEngine,
+          });
+          return st.status === 'success' ? st.html ?? st.markdown ?? null : null;
         };
         const discovered = await source.discoverPropertyUrl(address, fetchPage);
         if (!discovered) {

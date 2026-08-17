@@ -11,7 +11,7 @@
  * - 'agency-verify'   — test whether an agency search URL returns data
  */
 
-import { scrapeUrl } from '@/lib/firecrawl/client';
+import { scrapeWithStealth as scrapeUrl } from '@/lib/stealth/client';
 import { extractPropertyData } from '@/lib/extraction/extractor';
 import { mergePropertyData } from '@/lib/extraction/merger';
 import { propertyCache } from '@/lib/cache';
@@ -107,7 +107,7 @@ async function handleSuburbListing(
 
   const results = await Promise.allSettled(
     urls.map(({ url, source }) =>
-      scrapeUrl(url, source, { timeout: 30000, formats: ['markdown'] })
+      scrapeUrl(url, source, { timeout: 30000 })
     )
   );
 
@@ -145,7 +145,6 @@ async function handlePropertyPage(
 
   const crawlResult = await scrapeUrl(url, source, {
     timeout: 30000,
-    formats: ['markdown'],
   });
 
   if (crawlResult.status !== 'success' || !crawlResult.markdown) {
@@ -191,7 +190,6 @@ async function handleAgencyVerify(
 
   const crawlResult = await scrapeUrl(testUrl, 'agency-verify', {
     timeout: 20000,
-    formats: ['markdown'],
   });
 
   const hasData =

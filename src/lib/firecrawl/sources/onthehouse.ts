@@ -90,7 +90,7 @@ export const onthehouseSource: SourceConfig = {
   // — Web Unlocker (AU exit) is the reliable primary; the JSON is parsed
   // deterministically by the parsers below. Fallbacks cover a WU outage.
   fetchBackend: 'web-unlocker',
-  fallbackBackends: ['stealth', 'firecrawl'],
+  fallbackBackends: ['stealth'],
   htmlToMarkdown: onthehousePropertyJsonToMarkdown,
   htmlToExtraction: onthehousePropertyJsonToExtraction,
   trustRank: 2,

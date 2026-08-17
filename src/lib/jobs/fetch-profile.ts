@@ -11,7 +11,6 @@ import { propertyCache } from '@/lib/cache';
 import { toSlug, formatAddress } from '@/lib/utils/address';
 import { crawlProperty } from '@/lib/firecrawl/orchestrator';
 import { extractPropertyData } from '@/lib/extraction/extractor';
-import { scrapeAndExtract } from '@/lib/firecrawl/client';
 import { mergePropertyData } from '@/lib/extraction/merger';
 import { partitionByAddressMatch } from '@/lib/extraction/address-match';
 import { groundFields } from '@/lib/extraction/grounding';
@@ -21,10 +20,6 @@ import { saveCachedProfile, getCachedProfile, getFeedSeedBySlug } from '@/lib/db
 import { mapFeedRowToProfileFields, applyFeedSeed } from '@/lib/jobs/feed-seed';
 import { persistSaleHistory } from '@/lib/jobs/persist-sale-history';
 import type { ExtractedPropertyData } from '@/types/property';
-
-// When 'firecrawl', use Firecrawl's native /extract (structured JSON) instead of
-// our own LLM extractor — removes the MiniMax/OpenRouter dependency.
-const EXTRACTION_PROVIDER = process.env.EXTRACTION_PROVIDER ?? 'llm';
 
 export interface FetchProfileResult {
   profile: PropertyProfile;
@@ -113,10 +108,8 @@ async function doFetchAndCacheProfile(
 
   const successful = crawlResults.filter((r) => r.status === 'success');
 
-  // Step 2: extract structured data from each successful source.
-  // firecrawl provider → Firecrawl native /extract (re-fetches the URL as JSON;
-  // no own-LLM key needed), falling back to the LLM extractor if it yields
-  // nothing. llm provider → our markdown extractor (MiniMax/OpenRouter/Anthropic).
+  // Step 2: extract structured data from each successful source via our
+  // markdown extractor (MiniMax/OpenRouter/Anthropic).
   const fullAddress = formatAddress(address);
   const extractions: ExtractedPropertyData[] = await Promise.all(
     successful.map(async (r) => {
@@ -127,15 +120,9 @@ async function doFetchAndCacheProfile(
       if (structured && Object.keys(structured.raw ?? {}).length > 0) {
         return structured;
       }
-      let ext: ExtractedPropertyData | undefined;
-      if (EXTRACTION_PROVIDER === 'firecrawl' && r.url) {
-        const fc = await scrapeAndExtract(r.url, r.source);
-        if (fc && Object.keys(fc.raw).length > 0) ext = fc;
-      }
-      if (!ext) ext = await extractPropertyData(r.markdown ?? '', r.source, fullAddress);
+      const ext = await extractPropertyData(r.markdown ?? '', r.source, fullAddress);
       // Grounding: keep only values provably present in this source's scraped
-      // content. Eliminates LLM-fabricated fields (whether from our own extractor
-      // or Firecrawl's LLM-backed /extract) before they can reach the merge.
+      // content. Eliminates LLM-fabricated fields before they can reach the merge.
       return groundExtraction(ext, r.markdown ?? '');
     })
   );

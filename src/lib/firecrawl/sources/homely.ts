@@ -149,7 +149,7 @@ export const homelySource: SourceConfig = {
   // the Next.js page) is a reliable primary; the detail data is parsed
   // deterministically out of __NEXT_DATA__ by the parsers below.
   fetchBackend: 'web-unlocker',
-  fallbackBackends: ['stealth', 'firecrawl'],
+  fallbackBackends: ['stealth'],
   htmlToMarkdown: homelyProfileHtmlToMarkdown,
   htmlToExtraction: homelyProfileHtmlToExtraction,
   trustRank: 2,
