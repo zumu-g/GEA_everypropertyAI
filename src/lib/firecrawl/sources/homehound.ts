@@ -55,5 +55,9 @@ export const homehoundSource: SourceConfig = {
   },
   enabled: true,
   trustRank: 3,
+  // Firecrawl demoted to fallback 2026-08-17: it was the default backend and
+  // burned ~all free credits on enrichment cache misses. Stealth is self-hosted.
+  fetchBackend: 'stealth',
+  fallbackBackends: ['firecrawl'],
   refreshIntervalHours: 24,
 };

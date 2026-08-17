@@ -53,6 +53,27 @@ function setCachedResult(
 }
 
 /**
+ * Resolve the primary fetch backend for a source. Fast mode used to force
+ * 'firecrawl' for every source — but the fast sources (REA, Domain, view) are
+ * exactly the bot-walled sites Firecrawl cannot get through, so each fast
+ * lookup burned paid credits on guaranteed failures. Fast mode now honours the
+ * source's configured backend (still never the slow Apify actor path) and only
+ * defaults to firecrawl when nothing is configured.
+ */
+export function resolvePrimaryBackend(
+  source: { fetchBackend?: FetchBackend; options?: Record<string, unknown> },
+  fast: boolean
+): FetchBackend {
+  const apifyActorId = source.options?.apifyActorId as string | undefined;
+  if (fast) {
+    return source.fetchBackend && source.fetchBackend !== 'apify'
+      ? source.fetchBackend
+      : 'firecrawl';
+  }
+  return source.fetchBackend ?? (apifyActorId ? 'apify' : 'firecrawl');
+}
+
+/**
  * Resolve as soon as one of `attempts` succeeds; if all fail, resolve with the
  * last one to settle. Lets fallback backends race instead of running serially
  * — a source doesn't have to pay for every fallback's timeout back-to-back.
@@ -119,11 +140,7 @@ export async function crawlProperty(
       ? { ...source.scrapeOptions, timeout: FAST_SOURCE_TIMEOUT_MS }
       : source.scrapeOptions;
 
-    // Resolve the primary fetch backend. Default preserves prior behaviour:
-    // apify when an actor id is configured, otherwise firecrawl.
-    const primary: FetchBackend = fast
-      ? 'firecrawl'
-      : source.fetchBackend ?? (apifyActorId ? 'apify' : 'firecrawl');
+    const primary: FetchBackend = resolvePrimaryBackend(source, fast);
 
     // Dispatch a single backend. Unavailable backends return a 'failed' result
     // (no actor id / stealth unconfigured) so the fallback loop can move on.
@@ -220,13 +237,6 @@ export async function crawlProperty(
       console.log(`[orchestrator] Crawling ${source.name} via ${primary}${fast ? ' (fast)' : ''}: ${url}`);
       let result = await dispatch(primary, url);
       console.log(`[orchestrator] ${source.name} result: status=${result.status}, markdown=${(result.markdown?.length ?? 0)} chars`);
-
-      // Search-URL fallback for the firecrawl backend only: if the direct page
-      // misses and the source has a search URL, retry against it.
-      if (result.status === 'failed' && primary === 'firecrawl' && source.buildSearchUrl) {
-        const searchUrl = source.buildSearchUrl(address);
-        result = await scrapeUrl(searchUrl, source.name, scrapeOptions);
-      }
 
       // Cross-backend fallback: try alternate backends in parallel (not one at a
       // time) and take whichever succeeds first. Skips backends that aren't
