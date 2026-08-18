@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
     bathrooms: num(p.get('baths')),
     carSpaces: num(p.get('cars')),
     landAreaSqm: num(p.get('land')),
+    buildingAreaSqm: num(p.get('build')),
     priorSale:
       priorSalePrice && priorSaleDate ? { price: priorSalePrice, date: priorSaleDate } : undefined,
     activeListing:

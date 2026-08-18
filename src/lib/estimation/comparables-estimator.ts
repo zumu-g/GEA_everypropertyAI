@@ -34,6 +34,7 @@ export interface ComparableSale {
   bathrooms?: number | null;
   carSpaces?: number | null;
   landAreaSqm?: number | null;
+  buildingAreaSqm?: number | null;
   propertyType?: string | null;
   latitude?: number | null;
   longitude?: number | null;
@@ -51,6 +52,7 @@ export interface ComparableSubject {
   bathrooms?: number;
   carSpaces?: number;
   landAreaSqm?: number;
+  buildingAreaSqm?: number;
   /** Subject's own most-recent sale — used as a cross-check, not a comp. */
   priorSale?: { price: number; date: string };
   /** Active listing guide — used as a cross-check. */
@@ -137,6 +139,12 @@ export const EXCESS_LAND_ALPHA = 0.3;
 export const EXCESS_LAND_MIN_RATIO = 2;
 /** Ratio cap — beyond this, extra land adds nothing (data-artefact guard). */
 export const EXCESS_LAND_MAX_RATIO = 200;
+
+/** Price-outlier trim: comps whose adjusted price falls outside
+ * [anchor/RATIO, anchor×RATIO] of the (attribute-anchored) weighted median are
+ * dropped before the final estimate — a $1.5M+ architect build is not a comp
+ * for a $780k estate home even 400m away (12 Basalt Dr investigation). */
+export const PRICE_TRIM_RATIO = 1.5;
 
 /** Uplifted mid for a subject whose land dwarfs the typical comp block, or
  * null when the ratio doesn't warrant it. Pure, unit-tested. */
@@ -333,11 +341,24 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
     }
   }
 
+  // Building area — the only attribute separating a $780k single-storey from
+  // a $1.2M double-storey with identical beds/baths/land in new-estate stock
+  // (12 Basalt Dr investigation). Coverage is sparse today, so a comp with
+  // unknown building area gets only a mild penalty until backfill improves it.
+  let wBuild = 1.0;
+  if (!isUnit && subject.buildingAreaSqm) {
+    if (comp.buildingAreaSqm && comp.buildingAreaSqm > 0) {
+      wBuild = Math.exp(-Math.abs(Math.log(comp.buildingAreaSqm / subject.buildingAreaSqm)) * 1.5);
+    } else {
+      wBuild = 0.85;
+    }
+  }
+
   // Recency.
   const monthsAgo = monthsSince(comp.saleDate);
   const wRecency = Math.exp(-monthsAgo / 18);
 
-  const w = wDistance * wType * wBeds * wBaths * wCars * wLand * wRecency;
+  const w = wDistance * wType * wBeds * wBaths * wCars * wLand * wBuild * wRecency;
   return Math.max(WEIGHT_EPSILON, w);
 }
 
@@ -408,8 +429,35 @@ export function estimateFromComparables(
 
   cleaned.sort((a, b) => b.weight - a.weight);
 
-  const values = cleaned.map((c) => c.adjustedPrice);
-  const weights = cleaned.map((c) => c.weight);
+  // Step B1 — attribute-known anchoring. Null-bed rows (common in VG/feed
+  // data) dodge the bed-match test and can carry the bulk of the pool's weight
+  // at big-house prices. When the subject's bed count is known and enough
+  // attribute-known comps exist, estimate from those alone.
+  let pool = cleaned;
+  let nullAttrSetAside = 0;
+  if (subject.bedrooms != null) {
+    const known = cleaned.filter((c) => c.bedrooms != null);
+    if (known.length >= IDEAL_COMPS) {
+      nullAttrSetAside = cleaned.length - known.length;
+      pool = known;
+    }
+  }
+
+  // Step B2 — price-outlier trim around the pool's weighted median.
+  let outliersTrimmed = 0;
+  if (pool.length > MIN_COMPS) {
+    const anchor = weightedMedian(pool.map((c) => c.adjustedPrice), pool.map((c) => c.weight));
+    const kept = pool.filter(
+      (c) => c.adjustedPrice >= anchor / PRICE_TRIM_RATIO && c.adjustedPrice <= anchor * PRICE_TRIM_RATIO,
+    );
+    if (kept.length >= MIN_COMPS) {
+      outliersTrimmed = pool.length - kept.length;
+      pool = kept;
+    }
+  }
+
+  const values = pool.map((c) => c.adjustedPrice);
+  const weights = pool.map((c) => c.weight);
   const sumW = weights.reduce((s, w) => s + w, 0);
   const sumW2 = weights.reduce((s, w) => s + w * w, 0);
 
@@ -419,19 +467,19 @@ export function estimateFromComparables(
 
   // Step D — dispersion, effective count, band (against the RAW comp median —
   // the acreage uplift below is a model adjustment, not comp scatter).
-  const absDev = cleaned.map((c) => Math.abs(c.adjustedPrice - rawMid));
+  const absDev = pool.map((c) => Math.abs(c.adjustedPrice - rawMid));
   const wMAD = weightedMedian(absDev, weights);
   const relDispersion = rawMid > 0 ? wMAD / rawMid : 0.2;
-  const nEff = sumW2 > 0 ? (sumW * sumW) / sumW2 : cleaned.length;
+  const nEff = sumW2 > 0 ? (sumW * sumW) / sumW2 : pool.length;
 
   const baseBand = clamp(relDispersion * 100 * 1.349, 6, 28);
   const countFactor = clamp(Math.sqrt(IDEAL_COMPS / nEff), 0.7, 1.6);
   let band = clamp(Math.round(baseBand * countFactor), 5, 30);
 
   // Confidence: penalise dispersion, low effective count, distance, staleness.
-  const wDistVals = cleaned.map((c) => c.distanceKm ?? 3); // null coord ≈ 3km penalty
+  const wDistVals = pool.map((c) => c.distanceKm ?? 3); // null coord ≈ 3km penalty
   const avgWeightedDistance = sumW > 0 ? wDistVals.reduce((s, d, i) => s + d * weights[i], 0) / sumW : 3;
-  const avgWeightedMonths = sumW > 0 ? cleaned.reduce((s, c, i) => s + c.monthsAgo * weights[i], 0) / sumW : 0;
+  const avgWeightedMonths = sumW > 0 ? pool.reduce((s, c, i) => s + c.monthsAgo * weights[i], 0) / sumW : 0;
 
   let confidence =
     100 -
@@ -454,7 +502,7 @@ export function estimateFromComparables(
     subject.landAreaSqm &&
     subject.landAreaSqm >= ACREAGE_MIN_SQM
   ) {
-    const landKnown = cleaned.filter((c) => c.landAreaSqm && c.landAreaSqm > 0);
+    const landKnown = pool.filter((c) => c.landAreaSqm && c.landAreaSqm > 0);
     if (landKnown.length >= MIN_COMPS) {
       const typicalLand = weightedMedian(
         landKnown.map((c) => c.landAreaSqm as number),
@@ -527,16 +575,22 @@ export function estimateFromComparables(
         `${diverging.length ? ` ${diverging.map((c) => `${c.label} diverges ${c.divergencePct > 0 ? '' : ''}${c.divergencePct}%`).join('; ')}.` : ''}`
       : '';
 
-  const maxDistance = Math.max(0, ...cleaned.map((c) => c.distanceKm ?? 0));
+  const maxDistance = Math.max(0, ...pool.map((c) => c.distanceKm ?? 0));
   const compNoun = subjBucket === 'land' ? 'comparable vacant-land sales' : 'comparable sales';
   const methodology =
-    `Based on ${cleaned.length} ${compNoun}` +
+    `Based on ${pool.length} ${compNoun}` +
     (maxDistance > 0 ? ` within ${maxDistance.toFixed(1)}km` : ' in the suburb') +
     (annualGrowth
       ? `, time-adjusted using ${annualGrowth.toFixed(1)}% p.a.` +
         (annualGrowth !== rawAnnualGrowth ? ` (dampened from ${rawAnnualGrowth.toFixed(1)}% suburb growth)` : ' suburb growth')
       : '') +
     `. Weighted-median estimate, ±${band}%.` +
+    (nullAttrSetAside > 0
+      ? ` ${nullAttrSetAside} nearby sale${nullAttrSetAside === 1 ? '' : 's'} without recorded attributes ${nullAttrSetAside === 1 ? 'was' : 'were'} set aside.`
+      : '') +
+    (outliersTrimmed > 0
+      ? ` ${outliersTrimmed} price outlier${outliersTrimmed === 1 ? '' : 's'} trimmed.`
+      : '') +
     checkNote +
     landSparseNote +
     acreageNote;
@@ -550,8 +604,8 @@ export function estimateFromComparables(
     confidenceLevel: confidence >= 75 ? 'high' : confidence >= 45 ? 'medium' : 'low',
     priceSource: 'comparables',
     methodology,
-    comparablesUsed: cleaned,
-    compCount: cleaned.length,
+    comparablesUsed: pool,
+    compCount: pool.length,
     crossChecks,
   };
 }

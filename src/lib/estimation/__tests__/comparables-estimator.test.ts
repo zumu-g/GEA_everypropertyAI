@@ -578,3 +578,51 @@ describe('acreage handling (40 Hyde Hill Rd shape)', () => {
     expect(far).toBeLessThan(near / 100);
   });
 });
+
+describe('attribute anchoring + price-outlier trim (12 Basalt Dr shape)', () => {
+  it('null-bed high-priced rows are set aside when enough attribute-known comps exist', () => {
+    const comps = [
+      // 8 attribute-known comps around $780k
+      ...Array.from({ length: 8 }, (_, i) => comp(760_000 + i * 10_000, { beds: 4, land: 400 }, i)),
+      // 12 null-bed rows at big-house prices that previously dominated
+      ...Array.from({ length: 12 }, (_, i) => comp(1_050_000 + i * 20_000, { beds: null, land: 450 }, 100 + i)),
+    ];
+    const result = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!;
+    expect(result.priceMid).toBeLessThan(900_000);
+    expect(result.compCount).toBe(8);
+    expect(result.methodology).toContain('12 nearby sales without recorded attributes were set aside');
+  });
+
+  it('price outliers beyond 1.5x the anchor are trimmed', () => {
+    const comps = [
+      ...Array.from({ length: 8 }, (_, i) => comp(780_000 + i * 5_000, { beds: 4, land: 400 }, i)),
+      comp(1_800_000, { beds: 4, land: 400 }, 50),
+      comp(1_500_000, { beds: 4, land: 400 }, 51),
+    ];
+    const result = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!;
+    expect(result.priceMid).toBeLessThan(850_000);
+    expect(result.methodology).toContain('2 price outliers trimmed');
+    expect(result.comparablesUsed.every((c) => c.salePrice < 1_400_000)).toBe(true);
+  });
+
+  it('anchoring does not fire with too few attribute-known comps', () => {
+    const comps = [
+      ...Array.from({ length: 4 }, (_, i) => comp(780_000, { beds: 4, land: 400 }, i)),
+      ...Array.from({ length: 8 }, (_, i) => comp(900_000, { beds: null, land: 450 }, 100 + i)),
+    ];
+    const result = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!;
+    expect(result.methodology).not.toContain('set aside');
+  });
+});
+
+describe('building-area similarity (wBuild)', () => {
+  it('a much larger build is down-weighted; unknown build gets a mild penalty', () => {
+    const subj = { ...SUBJECT, buildingAreaSqm: 180 };
+    const same = similarityWeight(subj, { ...comp(800_000), buildingAreaSqm: 185 });
+    const double = similarityWeight(subj, { ...comp(800_000), buildingAreaSqm: 360 });
+    const unknown = similarityWeight(subj, comp(800_000));
+    expect(double).toBeLessThan(same * 0.5);
+    expect(unknown / same).toBeGreaterThan(0.8);
+    expect(unknown / same).toBeLessThan(0.9);
+  });
+});
