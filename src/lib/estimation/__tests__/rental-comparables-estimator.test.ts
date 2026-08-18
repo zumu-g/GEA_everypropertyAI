@@ -166,3 +166,12 @@ describe('growth guard (plan 2026-08-18-002)', () => {
     expect(res!.methodology).toContain('price-growth proxy 5.6% p.a.');
   });
 });
+
+describe('proxy disclosure (review fix)', () => {
+  it('proxy methodology discloses the raw suburb rate it was dampened from', () => {
+    const market: RentMarketInput = { priceAnnualGrowth: 8, medianRent: 520 };
+    const comps = Array.from({ length: 6 }, (_, i) => comp(520, { monthsAgo: 4 }, i));
+    const res = estimateRentFromComparables(SUBJECT, comps, market, NOW);
+    expect(res!.methodology).toContain('(dampened from 8.0% suburb growth)');
+  });
+});

@@ -253,7 +253,12 @@ export function estimateRentFromComparables(
     `Based on ${cleaned.length} comparable rentals` +
     (maxDistance > 0 ? ` within ${maxDistance.toFixed(1)}km` : ' in the suburb') +
     (usePerBed ? ', normalised per bedroom' : '') +
-    (annualGrowth ? `, time-adjusted ${usedProxyGrowth ? 'using price-growth proxy ' : ''}${annualGrowth.toFixed(1)}% p.a.` : '') +
+    (annualGrowth
+      ? `, time-adjusted ${usedProxyGrowth ? 'using price-growth proxy ' : ''}${annualGrowth.toFixed(1)}% p.a.` +
+        (usedProxyGrowth && market?.priceAnnualGrowth != null && annualGrowth !== market.priceAnnualGrowth
+          ? ` (dampened from ${market.priceAnnualGrowth.toFixed(1)}% suburb growth)`
+          : '')
+      : '') +
     `. Weighted-median asking rent, ±${band}%.` +
     (corroborating.length ? ` ${corroborating.join(', ')} corroborate.` : '') +
     (diverging.length ? ` ${diverging.map((c) => `${c.label} diverges ${c.divergencePct}%`).join('; ')}.` : '') +

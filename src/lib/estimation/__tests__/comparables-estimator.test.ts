@@ -500,3 +500,10 @@ describe('growth guard (plan 2026-08-18-002)', () => {
     expect(res!.methodology).toContain('dampened from 6.0%');
   });
 });
+
+describe('growth guard hardening (review fixes)', () => {
+  it('NaN growth is treated as 0', () => {
+    expect(guardAnnualGrowth(NaN)).toBe(0);
+    expect(guardAnnualGrowth(Infinity)).toBe(0);
+  });
+});

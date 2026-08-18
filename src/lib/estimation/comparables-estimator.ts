@@ -176,6 +176,7 @@ export function monthsSince(date: string, now: Date = new Date()): number {
  * composition-inflated the same way.
  */
 export function guardAnnualGrowth(annualGrowthPct: number, dampen = true): number {
+  if (!Number.isFinite(annualGrowthPct)) return 0; // NaN from a malformed feed value would otherwise NaN the whole estimate
   const clamped = Math.max(-MAX_ANNUAL_GROWTH_PCT, Math.min(MAX_ANNUAL_GROWTH_PCT, annualGrowthPct));
   return dampen ? clamped * GROWTH_DAMPENING : clamped;
 }
