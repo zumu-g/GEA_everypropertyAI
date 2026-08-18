@@ -137,7 +137,7 @@ export interface CrawlResult {
 // ─── Source Configuration ────────────────────────────────────────────────────
 
 /** The mechanism used to fetch a source's page. */
-export type FetchBackend = 'apify' | 'stealth' | 'web-unlocker';
+export type FetchBackend = 'apify' | 'stealth' | 'web-unlocker' | 'direct';
 
 export interface SourceConfig {
   name: DataSourceName | string;

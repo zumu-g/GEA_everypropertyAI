@@ -1,5 +1,6 @@
 import type { StructuredAddress } from '@/types/property';
 import type { CrawlResult, FetchBackend } from '@/types/crawl';
+import { fetchPage } from './client';
 import { scrapeWithApify } from '@/lib/apify/client';
 import { scrapeWithStealth, isStealthConfigured } from '@/lib/stealth/client';
 import { scrapeWithWebUnlocker, isWebUnlockerConfigured } from '@/lib/webunlocker/client';
@@ -141,6 +142,36 @@ export async function crawlProperty(
     // Dispatch a single backend. Unavailable backends return a 'failed' result
     // (no actor id / stealth unconfigured) so the fallback loop can move on.
     const dispatch = async (backend: FetchBackend, target: string): Promise<CrawlResult> => {
+      if (backend === 'direct') {
+        // Plain server-side fetch — for sources with no bot wall (allhomes).
+        // Same parser contract as web-unlocker: a shell/404 page (parser
+        // returns null) is a failure so the fallback chain continues.
+        const page = await fetchPage(target, scrapeOptions?.timeout ?? 20000);
+        const base = { source: source.name, url: target, crawledAt: new Date() };
+        if (!page.ok || !page.html) {
+          return {
+            ...base,
+            status: page.status === 429 ? ('timeout' as const) : ('failed' as const),
+            error: `direct fetch returned HTTP ${page.status}`,
+          };
+        }
+        const markdown = source.htmlToMarkdown ? source.htmlToMarkdown(page.html) : page.html;
+        if (!markdown) {
+          return {
+            ...base,
+            status: 'failed' as const,
+            error: 'page fetched but contained no property data (shell/404)',
+          };
+        }
+        const structured = source.htmlToExtraction?.(page.html) ?? null;
+        return {
+          ...base,
+          status: 'success' as const,
+          html: page.html,
+          markdown,
+          ...(structured ? { metadata: { structuredExtraction: structured } } : {}),
+        };
+      }
       if (backend === 'web-unlocker') {
         // Web Unlocker returns raw HTML; render through an AU exit (the property
         // sites are AU-geofenced, client-rendered Next.js apps). Convert to

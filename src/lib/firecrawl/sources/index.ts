@@ -6,6 +6,7 @@ import { viewSource } from './view';
 import { oldlistingsSource, oldlistingsRentSource } from './oldlistings';
 import { homelySource } from './homely';
 import { onthehouseSource } from './onthehouse';
+import { allhomesSource } from './allhomes';
 import { ratemyagentSource } from './ratemyagent';
 import { homehoundSource } from './homehound';
 import { inspectRealEstateSource } from './inspectrealestate';
@@ -22,6 +23,7 @@ export const sourceRegistry: Record<string, SourceConfig> = {
   [oldlistingsRentSource.name]: oldlistingsRentSource,
   [homelySource.name]: homelySource,
   [onthehouseSource.name]: onthehouseSource,
+  [allhomesSource.name]: allhomesSource,
   [ratemyagentSource.name]: ratemyagentSource,
   [homehoundSource.name]: homehoundSource,
   [inspectRealEstateSource.name]: inspectRealEstateSource,
