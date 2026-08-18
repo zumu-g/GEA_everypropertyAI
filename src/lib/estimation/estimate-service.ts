@@ -27,6 +27,7 @@ import {
   MIN_COMPS,
   IDEAL_COMPS,
   MIN_LAND_SIMILAR_COMPS,
+  ACREAGE_MIN_SQM,
   MIN_PLAUSIBLE_SALE_PRICE,
   MAX_PLAUSIBLE_SALE_PRICE,
   type ComparableSale,
@@ -55,6 +56,11 @@ export interface EstimateSubjectInput {
 }
 
 const RADIUS_LADDER_KM = [1, 2, 5];
+/** Extra rungs for acreage subjects (land ≥ ACREAGE_MIN_SQM) still short of
+ * land-similar comps after the standard ladder — only land-similar comps are
+ * admitted at these radii, so the pool gains acreage sales without flooding
+ * with distant suburban stock. */
+const ACREAGE_RADIUS_LADDER_KM = [10, 20];
 const MAX_WINDOW_MONTHS = 36;
 const SUBURB_WINDOW_DAYS = 1095; // 36 months (limitDays is in DAYS)
 
@@ -195,6 +201,29 @@ export async function getEstimate(
           : [...comps.values()].filter((c) => isLandSimilar(subject.landAreaSqm, c.landAreaSqm)).length >=
             MIN_LAND_SIMILAR_COMPS;
       if (recentEnough && landSimilarEnough) break;
+    }
+
+    // ── Acreage widening ─────────────────────────────────────────────────────
+    // Large-land subjects trade in a regional acreage market; local suburban
+    // comps can never price them (40 Hyde Hill Rd investigation). Widen further
+    // but admit ONLY land-similar comps at these radii.
+    if (subject.landAreaSqm != null && subject.landAreaSqm >= ACREAGE_MIN_SQM) {
+      const landSimilarCount = () =>
+        [...comps.values()].filter((c) => isLandSimilar(subject.landAreaSqm, c.landAreaSqm)).length;
+      for (const radius of ACREAGE_RADIUS_LADDER_KM) {
+        if (landSimilarCount() >= MIN_LAND_SIMILAR_COMPS) break;
+        const box = await getRowsNearby<PropertySaleRecord>('property_sales', lat, lng, radius, 500);
+        for (const r of box) {
+          if (typeof r.latitude !== 'number' || typeof r.longitude !== 'number') continue;
+          const dist = haversineKm(lat, lng, r.latitude, r.longitude);
+          if (dist > radius) continue;
+          if (!priceSane(r.sale_price)) continue;
+          if (!withinMonths(r.sale_date, MAX_WINDOW_MONTHS, now)) continue;
+          if (!passesPrefilter(subject, r)) continue;
+          if (!isLandSimilar(subject.landAreaSqm, r.land_area_sqm)) continue;
+          addComp(comps, toComparable(r, dist), subject.excludeAddress);
+        }
+      }
     }
   }
 
