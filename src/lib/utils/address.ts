@@ -220,10 +220,14 @@ export function toSlug(address: StructuredAddress): string {
   const parts: string[] = [];
 
   if (address.unit) parts.push(address.unit);
+  // Normalise the street type ("Dr" → "Drive") so slugs match regardless of
+  // whether the address came from ingest (parseAddress, already expanded) or
+  // an autocomplete/URL StructuredAddress carrying the abbreviation. A
+  // mismatch here silently breaks the feed-seed lookup (photos, beds/baths).
   parts.push(
     address.streetNumber,
     address.streetName,
-    address.streetType,
+    address.streetType ? normaliseStreetType(address.streetType) : address.streetType,
     address.suburb,
     address.state,
     address.postcode

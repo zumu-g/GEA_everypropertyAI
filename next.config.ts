@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "**.reastatic.net" },       // REA photo CDN (i2.au.reastatic.net)
       { protocol: "https", hostname: "**.view.com.au" },         // View.com.au rental photos
       { protocol: "https", hostname: "**.homely.com.au" },       // Homely photos
+      { protocol: "https", hostname: "**.allhomes.com.au" },     // Allhomes photos (images.allhomes.com.au)
     ],
   },
 };

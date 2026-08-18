@@ -1,4 +1,5 @@
 import type { StructuredAddress } from '@/types/property';
+import { toSlug } from '@/lib/utils/address';
 
 /**
  * Convert a StructuredAddress into a URL-safe slug.
@@ -13,25 +14,7 @@ import type { StructuredAddress } from '@/types/property';
  *   → "10-king-road-melbourne-vic-3000"
  */
 export function toAddressSlug(address: StructuredAddress): string {
-  const parts: string[] = [];
-
-  if (address.unit) {
-    parts.push(address.unit);
-  }
-
-  parts.push(
-    address.streetNumber,
-    address.streetName,
-    address.streetType,
-    address.suburb,
-    address.state,
-    address.postcode
-  );
-
-  return parts
-    .join('-')
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-') // replace non-alphanumeric chars with hyphens
-    .replace(/-+/g, '-')          // collapse consecutive hyphens
-    .replace(/^-|-$/g, '');       // trim leading/trailing hyphens
+  // Delegates to the canonical slug builder so cache keys, profile slugs, and
+  // feed-row slugs all agree (including street-type normalisation, Dr → Drive).
+  return toSlug(address);
 }
