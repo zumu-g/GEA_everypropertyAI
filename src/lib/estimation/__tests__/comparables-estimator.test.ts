@@ -395,3 +395,21 @@ describe('null-attribute comp penalties (U2)', () => {
     expect(similarityWeight(noBedsSubject, nullBeds)).toBeCloseTo(similarityWeight(noBedsSubject, withBeds), 6);
   });
 });
+
+describe('suburb-median cross-check threshold (U3)', () => {
+  // 8 tight comps at a price ~20% above the suburb median → must FLAG now.
+  it('20% divergence from suburb median flags, widens band, cuts confidence', () => {
+    const comps = Array.from({ length: 8 }, (_, i) => comp(960_000, { distanceKm: 0.4, monthsAgo: 3 }, i));
+    const r = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!; // median 800k, est ~964k adj
+    const check = r.crossChecks.find((c) => c.label === 'Suburb median')!;
+    expect(check.flagged).toBe(true);
+    expect(r.methodology).toContain('Suburb median diverges');
+  });
+
+  it('10% divergence corroborates', () => {
+    const comps = Array.from({ length: 8 }, (_, i) => comp(860_000, { distanceKm: 0.4, monthsAgo: 0 }, i));
+    const r = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!;
+    const check = r.crossChecks.find((c) => c.label === 'Suburb median')!;
+    expect(check.flagged).toBe(false);
+  });
+});

@@ -363,7 +363,10 @@ export function estimateFromComparables(
       ? Math.round((subject.activeListing.priceLow + subject.activeListing.priceHigh) / 2)
       : undefined);
   pushCheck('Listing guide', listingMid, 0.15);
-  pushCheck('Suburb median', suburbMedian, 0.25);
+  // 0.25 let a 22.7% miss read as "corroborates" (66A Duncan Dr) — align with
+  // the same-property checks. If the U6 backtest shows well-comped outlier
+  // properties flagging too often, widen to 0.20 and record why.
+  pushCheck('Suburb median', suburbMedian, 0.15);
 
   // Land-similar-comp sparsity note (R5) — the pool met MIN_COMPS/IDEAL_COMPS
   // but comp-gathering couldn't find enough land-similar comps even after
