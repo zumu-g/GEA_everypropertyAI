@@ -12,6 +12,7 @@ vi.mock('@/lib/db/queries', () => ({
   getCachedProfile: (...a: unknown[]) => getCachedProfile(...a),
   getOverrides: vi.fn(async () => ({})),
   deleteCachedProfile: (...a: unknown[]) => deleteCachedProfile(...a),
+  getHistoryRowsForSlug: vi.fn(async () => ({ sales: [], rentals: [] })),
 }));
 
 import { POST } from '../route';

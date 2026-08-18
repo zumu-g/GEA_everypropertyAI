@@ -3,7 +3,8 @@ import type { StructuredAddress, MergedPropertyProfile as PropertyProfile } from
 import { propertyCache } from '@/lib/cache';
 import { toSlug } from '@/lib/utils/address';
 import { fetchAndCacheProfile } from '@/lib/jobs/fetch-profile';
-import { getCachedProfile, getOverrides, deleteCachedProfile } from '@/lib/db/queries';
+import { getCachedProfile, getOverrides, deleteCachedProfile, getHistoryRowsForSlug } from '@/lib/db/queries';
+import { applyDbHistory } from '@/lib/jobs/feed-seed';
 
 // Allow headroom for the stealth fallback (browser fetch ~10-15s/portal) on a
 // fresh, uncached lookup. Cached lookups return instantly. Declared maxDuration
@@ -38,6 +39,24 @@ function applyOverrides(
   }
 
   return { ...profile, data: patchedData, fieldConfidences: patchedConfidences };
+}
+
+/**
+ * Top up the profile's Property History from our own sold/rental feed rows
+ * for this address — crawled portal history stays authoritative; DB rows only
+ * add events the crawl missed (VG sales when portals are blocked, feed
+ * rentals). Fail-soft and serve-time so cached profiles benefit too.
+ */
+async function topUpHistory(profile: PropertyProfile, slug: string): Promise<PropertyProfile> {
+  try {
+    const { sales, rentals } = await getHistoryRowsForSlug(slug);
+    if (sales.length === 0 && rentals.length === 0) return profile;
+    const patched = { ...profile, data: { ...profile.data } };
+    applyDbHistory(patched, sales, rentals);
+    return patched;
+  } catch {
+    return profile;
+  }
 }
 
 const CORS_HEADERS = {
@@ -111,7 +130,7 @@ export async function POST(request: NextRequest) {
   const cached = refresh ? undefined : propertyCache.get(slug);
   if (cached && (fast || cachedOnly || cached.crawlMode !== 'fast')) {
     const overrides = await getOverrides(slug);
-    const finalProfile = applyOverrides(cached, overrides);
+    const finalProfile = applyOverrides(await topUpHistory(cached, slug), overrides);
     return NextResponse.json(
       { profile: finalProfile, source: 'cache', addressSlug: slug },
       {
@@ -130,7 +149,7 @@ export async function POST(request: NextRequest) {
   if (supabaseCached && (fast || cachedOnly || supabaseCached.crawlMode !== 'fast')) {
     propertyCache.set(slug, supabaseCached); // warm in-memory cache
     const overrides = await getOverrides(slug);
-    const finalProfile = applyOverrides(supabaseCached, overrides);
+    const finalProfile = applyOverrides(await topUpHistory(supabaseCached, slug), overrides);
     return NextResponse.json(
       { profile: finalProfile, source: 'cache', addressSlug: slug },
       {
@@ -173,7 +192,7 @@ export async function POST(request: NextRequest) {
       timeoutMs: fast ? FAST_TIMEOUT_MS : PIPELINE_TIMEOUT_MS,
     });
     const overrides = await getOverrides(slug);
-    const finalProfile = applyOverrides(profile, overrides);
+    const finalProfile = applyOverrides(await topUpHistory(profile, slug), overrides);
     const empty =
       (profile.sources?.length ?? 0) === 0 || Object.keys(profile.data ?? {}).length === 0;
 

@@ -173,3 +173,86 @@ export function applyFeedSeed(
 
   return seededAny;
 }
+
+// ── DB history top-up ─────────────────────────────────────────────────────────
+
+interface DbSaleRow {
+  sale_price?: number | null;
+  sale_date?: string | null;
+  agency_name?: string | null;
+  agent_name?: string | null;
+  source?: string;
+}
+interface DbRentalRow {
+  weekly_rent?: number | null;
+  listed_date?: string | null;
+  created_at?: string | null;
+  agency_name?: string | null;
+  agent_name?: string | null;
+  source?: string;
+}
+
+/** Month+price dedup key — VG contract dates and portal dates drift within a month. */
+const saleKey = (date?: string | null, price?: number | null) =>
+  `${(date ?? '').slice(0, 7)}:${price ?? ''}`;
+
+/**
+ * Merge our own sold/rental feed rows for this address into the profile's
+ * saleHistory/rentalHistory. Crawl-sourced entries win; DB rows only add
+ * events the crawl didn't know about (e.g. VG sales when portals are blocked).
+ * Mutates the profile; returns true when anything was added.
+ */
+export function applyDbHistory(
+  profile: Pick<MergedPropertyProfile, 'data'>,
+  sales: DbSaleRow[],
+  rentals: DbRentalRow[]
+): boolean {
+  let added = false;
+
+  if (sales.length > 0) {
+    const existing = Array.isArray(profile.data.saleHistory)
+      ? (profile.data.saleHistory as Array<{ date?: string; price?: number }>)
+      : [];
+    const seen = new Set(existing.map((s) => saleKey(s.date, s.price)));
+    const extra = sales
+      .filter((r) => r.sale_date && !seen.has(saleKey(r.sale_date, r.sale_price)))
+      .map((r) => ({
+        date: r.sale_date!,
+        ...(r.sale_price != null && r.sale_price > 0 ? { price: r.sale_price } : {}),
+        ...(r.agency_name ? { agency: r.agency_name } : {}),
+        ...(r.agent_name ? { agentName: r.agent_name } : {}),
+        type: 'sold',
+        source: r.source ?? 'property-feed',
+      }));
+    if (extra.length > 0) {
+      profile.data.saleHistory = [...existing, ...extra].sort((a, b) =>
+        String(b.date ?? '').localeCompare(String(a.date ?? ''))
+      );
+      added = true;
+    }
+  }
+
+  if (rentals.length > 0) {
+    const existing = Array.isArray(profile.data.rentalHistory)
+      ? (profile.data.rentalHistory as Array<{ date?: string; weeklyRent?: number }>)
+      : [];
+    const seen = new Set(existing.map((r) => saleKey(r.date, r.weeklyRent)));
+    const extra = rentals
+      .map((r) => ({ ...r, date: (r.listed_date ?? r.created_at ?? '').slice(0, 10) }))
+      .filter((r) => r.date && r.weekly_rent != null && !seen.has(saleKey(r.date, r.weekly_rent)))
+      .map((r) => ({
+        date: r.date,
+        weeklyRent: r.weekly_rent!,
+        ...(r.agency_name ? { agency: r.agency_name } : {}),
+        ...(r.agent_name ? { agentName: r.agent_name } : {}),
+      }));
+    if (extra.length > 0) {
+      profile.data.rentalHistory = [...existing, ...extra].sort((a, b) =>
+        String(b.date ?? '').localeCompare(String(a.date ?? ''))
+      );
+      added = true;
+    }
+  }
+
+  return added;
+}
