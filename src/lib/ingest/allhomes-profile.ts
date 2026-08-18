@@ -38,7 +38,7 @@ interface MediaBlock {
 
 interface HistoryEntry {
   date?: string;
-  listing?: { price?: string; media?: MediaBlock } | null;
+  listing?: { price?: string; daysOnMarket?: number | null; media?: MediaBlock } | null;
 }
 
 /** Extract the APP_PROPS JSON blob from the page HTML, or null. */
@@ -124,12 +124,20 @@ export function allhomesProfileHtmlToExtraction(html: string): ExtractedProperty
   if (photos.length > 0) set('photos', photos);
 
   const sales = (p.history ?? [])
-    .map((h) => ({ date: h.date?.slice(0, 10), price: priceNumber(h.listing?.price) }))
+    .map((h) => ({
+      date: h.date?.slice(0, 10),
+      price: priceNumber(h.listing?.price),
+      ...(h.listing?.daysOnMarket != null ? { daysOnMarket: h.listing.daysOnMarket } : {}),
+    }))
     .filter((s) => s.date);
   if (sales.length > 0) set('saleHistory', sales);
 
   const rentals = (p.rentalHistory ?? [])
-    .map((h) => ({ date: h.date?.slice(0, 10), weeklyRent: priceNumber(h.listing?.price) }))
+    .map((h) => ({
+      date: h.date?.slice(0, 10),
+      weeklyRent: priceNumber(h.listing?.price),
+      ...(h.listing?.daysOnMarket != null ? { daysOnMarket: h.listing.daysOnMarket } : {}),
+    }))
     .filter((r) => r.date);
   if (rentals.length > 0) set('rentalHistory', rentals);
 

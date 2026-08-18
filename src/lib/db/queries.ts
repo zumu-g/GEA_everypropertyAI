@@ -1645,3 +1645,40 @@ export async function isPropertyClaimed(userId: string, slug: string): Promise<b
     return false;
   }
 }
+
+/**
+ * All sold + rental feed rows for one address slug — used to top up a
+ * profile's Property History from our own DB when portal crawls are blocked
+ * or stale. Fail-soft: errors return empty arrays.
+ */
+export async function getHistoryRowsForSlug(
+  slug: string
+): Promise<{ sales: PropertySaleRecord[]; rentals: PropertyRentalRecord[] }> {
+  if (!isSupabaseConfigured() || !slug) return { sales: [], rentals: [] };
+  try {
+    const [salesRes, rentalsRes] = await Promise.all([
+      supabase()
+        .from('property_sales')
+        .select('raw_address, state, source, sale_price, sale_date, agency_name, agent_name, listing_url')
+        .eq('address_slug', slug)
+        .not('sale_date', 'is', null)
+        .order('sale_date', { ascending: false })
+        .limit(20),
+      supabase()
+        .from('property_rentals')
+        .select('raw_address, state, source, weekly_rent, display_price, listed_date, created_at, agency_name, agent_name')
+        .eq('address_slug', slug)
+        .order('created_at', { ascending: false })
+        .limit(20),
+    ]);
+    if (salesRes.error) console.warn('[getHistoryRowsForSlug] sales:', salesRes.error.message);
+    if (rentalsRes.error) console.warn('[getHistoryRowsForSlug] rentals:', rentalsRes.error.message);
+    return {
+      sales: (salesRes.data as PropertySaleRecord[] | null) ?? [],
+      rentals: (rentalsRes.data as PropertyRentalRecord[] | null) ?? [],
+    };
+  } catch (e) {
+    console.warn('[getHistoryRowsForSlug] threw:', e);
+    return { sales: [], rentals: [] };
+  }
+}
