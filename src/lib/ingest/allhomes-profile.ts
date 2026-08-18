@@ -20,6 +20,11 @@ interface AllhomesProperty {
     bedrooms?: number;
     bathrooms?: { total?: number };
     parking?: { total?: number };
+    // Building size — Allhomes exposes all three keys; usually null, sometimes
+    // populated. Values observed as plain numbers (sqm).
+    floorArea?: number | null;
+    buildingSize?: number | null;
+    buildingArea?: number | null;
   };
   derived?: { keyDetails?: Array<{ label?: string; value?: string; type?: string }> };
   listing?: { media?: MediaBlock } | null;
@@ -106,6 +111,8 @@ export function allhomesProfileHtmlToExtraction(html: string): ExtractedProperty
 
   const blockSize = Number(keyDetail(p, 'Block Size'));
   if (Number.isFinite(blockSize) && blockSize > 0) set('landArea', blockSize);
+  const buildingSqm = Number(p.features?.floorArea ?? p.features?.buildingSize ?? p.features?.buildingArea);
+  if (Number.isFinite(buildingSqm) && buildingSqm > 0) set('buildingArea', buildingSqm);
   const lot = keyDetail(p, 'Lot');
   const plan = keyDetail(p, 'Plan');
   if (lot && plan) set('lotPlan', `${lot}/${plan}`);
