@@ -32,11 +32,14 @@ export function TrackPropertyButton({ addressSlug, fullAddress, variant = "defau
       }
 
       try {
+        // The route returns 200 with { claimed: boolean } for any signed-in
+        // user — res.ok alone read every property as "tracking".
         const res = await fetch(`/api/user/properties/${addressSlug}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
+        const json = res.ok ? await res.json().catch(() => null) : null;
         if (!cancelled) {
-          setState(res.ok ? "tracking" : "not-tracking");
+          setState(json?.claimed === true ? "tracking" : "not-tracking");
         }
       } catch {
         if (!cancelled) setState("not-tracking");
