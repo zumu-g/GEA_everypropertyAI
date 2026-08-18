@@ -19,7 +19,7 @@
  */
 
 import type { PriceEstimateResult } from './price-estimator';
-import { weightedMedian, typeBucket, monthsSince, timeAdjust } from './comparables-estimator';
+import { weightedMedian, typeBucket, monthsSince, timeAdjust, guardAnnualGrowth, MAX_TOTAL_ADJUST } from './comparables-estimator';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -151,11 +151,15 @@ export function estimateRentFromComparables(
   market: RentMarketInput | null,
   now: Date = new Date(),
 ): RentalEstimateResult | null {
-  // Growth: prefer real 12-month rent growth; else proxy from price growth.
-  let annualGrowth = market?.annualRentGrowth;
+  // Growth: prefer real 12-month rent growth (clamp only — the rent series is
+  // per-dwelling asking data, not composition-inflated); else proxy from price
+  // growth, which IS a raw sales-median change → clamp AND dampen (guardAnnualGrowth).
+  let annualGrowth: number;
   let usedProxyGrowth = false;
-  if (annualGrowth == null) {
-    annualGrowth = market?.priceAnnualGrowth ?? 0;
+  if (market?.annualRentGrowth != null) {
+    annualGrowth = guardAnnualGrowth(market.annualRentGrowth, false);
+  } else {
+    annualGrowth = guardAnnualGrowth(market?.priceAnnualGrowth ?? 0);
     usedProxyGrowth = market?.priceAnnualGrowth != null;
   }
   const monthlyGrowth = annualGrowth / 12 / 100;
@@ -166,7 +170,7 @@ export function estimateRentFromComparables(
     if (!c.asOf) continue;
     if (!(c.weeklyRent > MIN_RENT && c.weeklyRent <= MAX_RENT)) continue;
     const monthsAgo = monthsSince(c.asOf, now);
-    const adjustedRent = timeAdjust(c.weeklyRent, monthsAgo, monthlyGrowth);
+    const adjustedRent = timeAdjust(c.weeklyRent, monthsAgo, monthlyGrowth, MAX_TOTAL_ADJUST);
     const weight = rentalSimilarityWeight(subject, c);
     cleaned.push({ ...c, monthsAgo, adjustedRent, weight });
   }
@@ -249,7 +253,12 @@ export function estimateRentFromComparables(
     `Based on ${cleaned.length} comparable rentals` +
     (maxDistance > 0 ? ` within ${maxDistance.toFixed(1)}km` : ' in the suburb') +
     (usePerBed ? ', normalised per bedroom' : '') +
-    (annualGrowth ? `, time-adjusted ${usedProxyGrowth ? 'using price-growth proxy ' : ''}${annualGrowth.toFixed(1)}% p.a.` : '') +
+    (annualGrowth
+      ? `, time-adjusted ${usedProxyGrowth ? 'using price-growth proxy ' : ''}${annualGrowth.toFixed(1)}% p.a.` +
+        (usedProxyGrowth && market?.priceAnnualGrowth != null && annualGrowth !== market.priceAnnualGrowth
+          ? ` (dampened from ${market.priceAnnualGrowth.toFixed(1)}% suburb growth)`
+          : '')
+      : '') +
     `. Weighted-median asking rent, ±${band}%.` +
     (corroborating.length ? ` ${corroborating.join(', ')} corroborate.` : '') +
     (diverging.length ? ` ${diverging.map((c) => `${c.label} diverges ${c.divergencePct}%`).join('; ')}.` : '') +

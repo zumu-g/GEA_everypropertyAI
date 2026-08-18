@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  guardAnnualGrowth,
+  MAX_TOTAL_ADJUST,
   estimateFromComparables,
   timeAdjust,
   weightedMedian,
@@ -455,5 +457,53 @@ describe('external AVM cross-checks (U4)', () => {
     const b = estimateFromComparables({ ...SUBJECT, externalEstimates: [] }, tightComps(), MARKET, NOW)!;
     expect(a.priceMid).toBe(b.priceMid);
     expect(a.confidenceScore).toBe(b.confidenceScore);
+  });
+});
+
+describe('growth guard (plan 2026-08-18-002)', () => {
+  it('dampens a plausible rate: 8% → 5.6%', () => {
+    expect(guardAnnualGrowth(8)).toBeCloseTo(5.6, 5);
+  });
+
+  it('clamps then dampens an extreme rate: 20% → 8.4%', () => {
+    expect(guardAnnualGrowth(20)).toBeCloseTo(8.4, 5);
+  });
+
+  it('clamps then dampens negative growth: -20% → -8.4%', () => {
+    expect(guardAnnualGrowth(-20)).toBeCloseTo(-8.4, 5);
+  });
+
+  it('clamp-only mode passes a modest rate through: 2.7% → 2.7%', () => {
+    expect(guardAnnualGrowth(2.7, false)).toBeCloseTo(2.7, 5);
+  });
+
+  it('timeAdjust caps total uplift at +15% for old comps', () => {
+    // 36 months at 5.6% p.a. uncapped ≈ +18.2%
+    const adj = timeAdjust(1_000_000, 36, 5.6 / 12 / 100, MAX_TOTAL_ADJUST);
+    expect(adj).toBe(1_150_000);
+  });
+
+  it('timeAdjust caps total downlift at -15%', () => {
+    const adj = timeAdjust(1_000_000, 36, -8.4 / 12 / 100, MAX_TOTAL_ADJUST);
+    expect(adj).toBe(850_000);
+  });
+
+  it('uncapped timeAdjust keeps the loose 3x outer bound for prior-sale paths', () => {
+    const adj = timeAdjust(1_000_000, 600, 0.1 / 12);
+    expect(adj).toBe(3_000_000);
+  });
+
+  it('methodology reports the applied (dampened) rate and the raw suburb rate', () => {
+    const comps = Array.from({ length: 6 }, (_, i) => comp(800_000, { distanceKm: 0.4, monthsAgo: 6 }, i));
+    const res = estimateFromComparables(SUBJECT, comps, MARKET, NOW);
+    expect(res!.methodology).toContain('4.2% p.a.');
+    expect(res!.methodology).toContain('dampened from 6.0%');
+  });
+});
+
+describe('growth guard hardening (review fixes)', () => {
+  it('NaN growth is treated as 0', () => {
+    expect(guardAnnualGrowth(NaN)).toBe(0);
+    expect(guardAnnualGrowth(Infinity)).toBe(0);
   });
 });

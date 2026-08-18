@@ -4,6 +4,7 @@
  */
 
 import { formatCurrency as fmtCurrency } from "@/lib/format-currency";
+import { timeAdjust, guardAnnualGrowth } from "./comparables-estimator";
 
 export interface PriceEstimateInput {
   propertyType?: string;
@@ -72,7 +73,8 @@ export function calculateEnrichedPriceEstimate(
   // Step 0: Determine property segment
   const isUnit = ['apartment', 'unit', 'studio'].includes(property.propertyType ?? '');
   const segment = isUnit ? marketData?.units : marketData?.houses;
-  const annualGrowth = segment?.annualGrowth ?? 0;
+  const rawAnnualGrowth = segment?.annualGrowth ?? 0;
+  const annualGrowth = guardAnnualGrowth(rawAnnualGrowth);
   const monthlyGrowth = annualGrowth / 12 / 100;
   const suburbMedian = segment?.medianPrice;
   const grossYield = segment?.grossYield;
@@ -127,11 +129,10 @@ export function calculateEnrichedPriceEstimate(
     const now = new Date();
     const monthsAgo = Math.max(0, (now.getFullYear() - saleDate.getFullYear()) * 12 + (now.getMonth() - saleDate.getMonth()));
 
-    // Apply compound growth
-    let adjustedPrice = validSale.price * Math.pow(1 + monthlyGrowth, monthsAgo);
-
-    // Cap adjustment to prevent absurd values (max 3x, min 0.33x)
-    adjustedPrice = Math.max(validSale.price * 0.33, Math.min(validSale.price * 3.0, adjustedPrice));
+    // Apply compound growth via the shared guard (uncapped variant: this is the
+    // subject's own prior sale, legitimately multi-year — the loose 0.33x/3x
+    // outer bound inside timeAdjust still applies).
+    let adjustedPrice: number = timeAdjust(validSale.price, monthsAgo, monthlyGrowth);
 
     // Sanity check against suburb median if available
     if (suburbMedian && suburbMedian > 100000) {
@@ -159,7 +160,7 @@ export function calculateEnrichedPriceEstimate(
 
     const growthPct = ((adjustedPrice / validSale.price) - 1) * 100;
     methodology = `Based on last sale of ${fmtCurrency(validSale.price)} (${formatDateShort(validSale.date)}, ${monthsAgo} months ago)` +
-      (annualGrowth ? `, adjusted ${growthPct > 0 ? '+' : ''}${growthPct.toFixed(1)}% using ${annualGrowth.toFixed(1)}% p.a. suburb growth` : '') +
+      (annualGrowth ? `, adjusted ${growthPct > 0 ? '+' : ''}${growthPct.toFixed(1)}% using ${annualGrowth.toFixed(1)}% p.a. (dampened from ${rawAnnualGrowth.toFixed(1)}% suburb growth)` : '') +
       `. Confidence band: ±${band}%.`;
 
     growthAdjustment = {
