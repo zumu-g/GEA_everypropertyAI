@@ -247,6 +247,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   const [property, setProperty] = useState<MergedPropertyProfile | null>(null);
   const [enrichment, setEnrichment] = useState<EnrichmentData | null>(null);
   const [enrichedEstimate, setEnrichedEstimate] = useState<PriceEstimateResult | null>(null);
+  // True while /api/estimate is in flight. Gates the legacy stored-price block so
+  // the card doesn't flash a stale scraped price and then swap to the comparables
+  // estimate ~10s later — the legacy block renders only if the estimate resolves null.
+  const [estimateLoading, setEstimateLoading] = useState(false);
   // Widened beyond PriceEstimateResult so the comparables path's
   // comparablesUsed survives for the Comparable Rentals section.
   const [rentalEstimate, setRentalEstimate] = useState<
@@ -291,6 +295,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     setIsLoading(true);
     setError(null);
     setUpgrading(false); // reset any prior property's pending upgrade indicator
+    setEnrichedEstimate(null); // don't show the previous property's estimate while this one loads
+    setRentalEstimate(null);
+    setEstimateLoading(true);
     try {
       let structured: StructuredAddress;
       try {
@@ -422,6 +429,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     profile: MergedPropertyProfile,
     requestId: number
   ) => {
+    setEstimateLoading(true);
     const pd = profile.data;
     const sh =
       (pd.saleHistory as Array<{
@@ -508,11 +516,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         calculateEnrichedPriceEstimate(fallbackInput, marketDataRef.current);
       if (requestId !== requestIdRef.current) return; // stale property, drop
       setEnrichedEstimate(estimate);
+      setEstimateLoading(false);
       saleMid = estimate?.priceMid;
     } catch {
       const fb = calculateEnrichedPriceEstimate(fallbackInput, marketDataRef.current);
       if (requestId !== requestIdRef.current) return;
       setEnrichedEstimate(fb);
+      setEstimateLoading(false);
       saleMid = fb?.priceMid;
     }
 
@@ -977,7 +987,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         )}
 
         {/* ─── Estimated Price Range ─── */}
-        {(enrichedEstimate || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
+        {(enrichedEstimate || estimateLoading || priceLow != null || priceMid != null || currentPrice != null || priceLabel != null) && (
           <section>
             {/* items-stretch equalises both columns' overall height; each header
                 has a fixed min-height so a wrapping title never shifts where its
@@ -1047,6 +1057,16 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                           Estimate generated {new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </p>
                       </div>
+                    </div>
+                  </>
+                ) : estimateLoading ? (
+                  <>
+                    <div className="min-h-[4rem]">
+                      <SectionTitle icon={TrendingUp} title="Estimated Value" />
+                    </div>
+                    <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-[#E7E9EE] bg-white p-6">
+                      <div className="h-10 w-40 animate-pulse rounded-lg bg-[#F4F5F7]" />
+                      <p className="mt-3 text-sm text-[#8A8F97]">Analysing comparable sales…</p>
                     </div>
                   </>
                 ) : (
