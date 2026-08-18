@@ -151,3 +151,18 @@ describe('external rent cross-check + yield interaction (U5, plan 2026-08-18-001
     expect(inflated.crossChecks.find((c) => c.label === 'Yield-implied rent')!.flagged).toBe(true);
   });
 });
+
+describe('growth guard (plan 2026-08-18-002)', () => {
+  it('rent-series growth is clamped but NOT dampened: 5% applied as 5.0%', () => {
+    const comps = Array.from({ length: 6 }, (_, i) => comp(520, { monthsAgo: 4 }, i));
+    const res = estimateRentFromComparables(SUBJECT, comps, MARKET, NOW);
+    expect(res!.methodology).toContain('5.0% p.a.');
+  });
+
+  it('price-growth proxy IS dampened: 8% applied as 5.6%', () => {
+    const market: RentMarketInput = { priceAnnualGrowth: 8, medianRent: 520 };
+    const comps = Array.from({ length: 6 }, (_, i) => comp(520, { monthsAgo: 4 }, i));
+    const res = estimateRentFromComparables(SUBJECT, comps, market, NOW);
+    expect(res!.methodology).toContain('price-growth proxy 5.6% p.a.');
+  });
+});

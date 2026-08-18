@@ -91,6 +91,18 @@ export const MIN_LAND_SIMILAR_COMPS = 3;
 
 const GROWTH_CLAMP_LO = 0.33;
 const GROWTH_CLAMP_HI = 3.0;
+/** Fraction of the stated suburb growth applied when time-adjusting. Suburb
+ * annual growth is a raw sales-median change (composition-sensitive — new/larger
+ * stock selling inflates it beyond like-for-like appreciation), so we apply
+ * standard AVM-style conservatism rather than the full rate.
+ * See docs/plans/2026-08-18-002-fix-growth-rate-robustness-plan.md. */
+export const GROWTH_DAMPENING = 0.7;
+/** Annual growth rates beyond this are treated as data artefacts and clamped. */
+export const MAX_ANNUAL_GROWTH_PCT = 12;
+/** Max total time-adjustment applied to any single COMP (±15%), regardless of
+ * age. Does not apply to the subject's own prior-sale/prior-rent cross-checks,
+ * where multi-year adjustment is legitimate. */
+export const MAX_TOTAL_ADJUST = 0.15;
 const WEIGHT_EPSILON = 1e-4;
 /** Ratio band matching similarityWeight's land decay inflection zone (see
  * wLand below) — a comp within this band is "close enough in size to
@@ -155,10 +167,31 @@ export function monthsSince(date: string, now: Date = new Date()): number {
   return Math.max(0, (now.getFullYear() - d.getFullYear()) * 12 + (now.getMonth() - d.getMonth()));
 }
 
-/** Time-adjust a sale price to today using compounded monthly growth, clamped. */
-export function timeAdjust(price: number, monthsAgo: number, monthlyGrowth: number): number {
-  const adj = price * Math.pow(1 + monthlyGrowth, monthsAgo);
-  return Math.round(Math.max(price * GROWTH_CLAMP_LO, Math.min(price * GROWTH_CLAMP_HI, adj)));
+/**
+ * Guard a suburb annual-growth % before it drives time adjustment: clamp
+ * extreme rates to ±MAX_ANNUAL_GROWTH_PCT, then (by default) dampen by
+ * GROWTH_DAMPENING to discount composition inflation in raw sales medians.
+ * Pass dampen=false for rates computed from the subject's own series
+ * (e.g. the rental estimator's rent-series growth), which aren't
+ * composition-inflated the same way.
+ */
+export function guardAnnualGrowth(annualGrowthPct: number, dampen = true): number {
+  const clamped = Math.max(-MAX_ANNUAL_GROWTH_PCT, Math.min(MAX_ANNUAL_GROWTH_PCT, annualGrowthPct));
+  return dampen ? clamped * GROWTH_DAMPENING : clamped;
+}
+
+/**
+ * Time-adjust a sale price to today using compounded monthly growth.
+ * When `maxTotalAdjust` is given (comp adjustments), the compounded factor is
+ * clamped to [1-max, 1+max]. Without it (subject's own prior-sale/rent paths,
+ * legitimately multi-year), only the loose outer [0.33x, 3x] sanity bound applies.
+ */
+export function timeAdjust(price: number, monthsAgo: number, monthlyGrowth: number, maxTotalAdjust?: number): number {
+  let factor = Math.pow(1 + monthlyGrowth, monthsAgo);
+  factor = maxTotalAdjust != null
+    ? Math.max(1 - maxTotalAdjust, Math.min(1 + maxTotalAdjust, factor))
+    : Math.max(GROWTH_CLAMP_LO, Math.min(GROWTH_CLAMP_HI, factor));
+  return Math.round(price * factor);
 }
 
 // ── Similarity weighting ───────────────────────────────────────────────────────
@@ -293,7 +326,8 @@ export function estimateFromComparables(
   const subjBucket = typeBucket(subject.propertyType);
   const isUnit = subjBucket === 'unit';
   const segment = isUnit ? marketData?.units : marketData?.houses;
-  const annualGrowth = segment?.annualGrowth ?? 0;
+  const rawAnnualGrowth = segment?.annualGrowth ?? 0;
+  const annualGrowth = guardAnnualGrowth(rawAnnualGrowth);
   const monthlyGrowth = annualGrowth / 12 / 100;
   const suburbMedian = segment?.medianPrice;
 
@@ -303,7 +337,7 @@ export function estimateFromComparables(
     if (!c.saleDate) continue;
     if (!(c.salePrice > MIN_PLAUSIBLE_SALE_PRICE && c.salePrice <= MAX_PLAUSIBLE_SALE_PRICE)) continue;
     const monthsAgo = monthsSince(c.saleDate, now);
-    const adjustedPrice = timeAdjust(c.salePrice, monthsAgo, monthlyGrowth);
+    const adjustedPrice = timeAdjust(c.salePrice, monthsAgo, monthlyGrowth, MAX_TOTAL_ADJUST);
     const weight = similarityWeight(subject, c);
     cleaned.push({ ...c, monthsAgo, adjustedPrice, weight });
   }
@@ -402,7 +436,10 @@ export function estimateFromComparables(
   const methodology =
     `Based on ${cleaned.length} ${compNoun}` +
     (maxDistance > 0 ? ` within ${maxDistance.toFixed(1)}km` : ' in the suburb') +
-    (annualGrowth ? `, time-adjusted using ${annualGrowth.toFixed(1)}% p.a. suburb growth` : '') +
+    (annualGrowth
+      ? `, time-adjusted using ${annualGrowth.toFixed(1)}% p.a.` +
+        (annualGrowth !== rawAnnualGrowth ? ` (dampened from ${rawAnnualGrowth.toFixed(1)}% suburb growth)` : ' suburb growth')
+      : '') +
     `. Weighted-median estimate, ±${band}%.` +
     checkNote +
     landSparseNote;

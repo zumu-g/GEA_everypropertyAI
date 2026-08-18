@@ -19,7 +19,7 @@
  */
 
 import type { PriceEstimateResult } from './price-estimator';
-import { weightedMedian, typeBucket, monthsSince, timeAdjust } from './comparables-estimator';
+import { weightedMedian, typeBucket, monthsSince, timeAdjust, guardAnnualGrowth, MAX_TOTAL_ADJUST } from './comparables-estimator';
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -151,11 +151,15 @@ export function estimateRentFromComparables(
   market: RentMarketInput | null,
   now: Date = new Date(),
 ): RentalEstimateResult | null {
-  // Growth: prefer real 12-month rent growth; else proxy from price growth.
-  let annualGrowth = market?.annualRentGrowth;
+  // Growth: prefer real 12-month rent growth (clamp only — the rent series is
+  // per-dwelling asking data, not composition-inflated); else proxy from price
+  // growth, which IS a raw sales-median change → clamp AND dampen (guardAnnualGrowth).
+  let annualGrowth: number;
   let usedProxyGrowth = false;
-  if (annualGrowth == null) {
-    annualGrowth = market?.priceAnnualGrowth ?? 0;
+  if (market?.annualRentGrowth != null) {
+    annualGrowth = guardAnnualGrowth(market.annualRentGrowth, false);
+  } else {
+    annualGrowth = guardAnnualGrowth(market?.priceAnnualGrowth ?? 0);
     usedProxyGrowth = market?.priceAnnualGrowth != null;
   }
   const monthlyGrowth = annualGrowth / 12 / 100;
@@ -166,7 +170,7 @@ export function estimateRentFromComparables(
     if (!c.asOf) continue;
     if (!(c.weeklyRent > MIN_RENT && c.weeklyRent <= MAX_RENT)) continue;
     const monthsAgo = monthsSince(c.asOf, now);
-    const adjustedRent = timeAdjust(c.weeklyRent, monthsAgo, monthlyGrowth);
+    const adjustedRent = timeAdjust(c.weeklyRent, monthsAgo, monthlyGrowth, MAX_TOTAL_ADJUST);
     const weight = rentalSimilarityWeight(subject, c);
     cleaned.push({ ...c, monthsAgo, adjustedRent, weight });
   }
