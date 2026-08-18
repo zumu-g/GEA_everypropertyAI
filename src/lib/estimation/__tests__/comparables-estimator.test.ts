@@ -507,3 +507,22 @@ describe('growth guard hardening (review fixes)', () => {
     expect(guardAnnualGrowth(Infinity)).toBe(0);
   });
 });
+
+describe('car-spaces similarity weight', () => {
+  const carSubject: ComparableSubject = { ...SUBJECT, carSpaces: 1 };
+
+  it('penalises car-count mismatch mildly (0 diff > 1 diff > 2+ diff)', () => {
+    const same = similarityWeight(carSubject, { ...comp(800_000), carSpaces: 1 });
+    const off1 = similarityWeight(carSubject, { ...comp(800_000), carSpaces: 2 });
+    const off3 = similarityWeight(carSubject, { ...comp(800_000), carSpaces: 4 });
+    expect(off1).toBeCloseTo(same * 0.92, 6);
+    expect(off3).toBeCloseTo(same * 0.8, 6);
+  });
+
+  it('unknown car count on either side carries no penalty', () => {
+    const nullComp = similarityWeight(carSubject, { ...comp(800_000), carSpaces: null });
+    const noSubject = similarityWeight(SUBJECT, { ...comp(800_000), carSpaces: 4 });
+    expect(nullComp).toBeCloseTo(similarityWeight(carSubject, { ...comp(800_000), carSpaces: 1 }), 6);
+    expect(noSubject).toBeCloseTo(similarityWeight(SUBJECT, comp(800_000)), 6);
+  });
+});

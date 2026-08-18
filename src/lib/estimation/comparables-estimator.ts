@@ -49,6 +49,7 @@ export interface ComparableSubject {
   propertyType?: string;
   bedrooms?: number;
   bathrooms?: number;
+  carSpaces?: number;
   landAreaSqm?: number;
   /** Subject's own most-recent sale — used as a cross-check, not a comp. */
   priorSale?: { price: number; date: string };
@@ -240,6 +241,16 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
     wBaths = diff === 0 ? 1.0 : diff === 1 ? 0.9 : 0.75;
   }
 
+  // Car spaces — mild secondary signal. VG rows carry car data patchily, so a
+  // NULL on either side is "can't compare" (1.0), NOT an uncertainty penalty
+  // like wBeds/wLand — penalising the many null-car comps would reshuffle
+  // pools on a weak attribute.
+  let wCars = 1.0;
+  if (subject.carSpaces != null && comp.carSpaces != null) {
+    const diff = Math.abs(comp.carSpaces - subject.carSpaces);
+    wCars = diff === 0 ? 1.0 : diff === 1 ? 0.92 : 0.8;
+  }
+
   // Land (houses and vacant land), symmetric in log-space. Land subjects have
   // no beds/baths/building area to differentiate comps, so land-area
   // similarity is weighted more steeply (KTD4) — it's the dominant signal.
@@ -276,7 +287,7 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
   const monthsAgo = monthsSince(comp.saleDate);
   const wRecency = Math.exp(-monthsAgo / 18);
 
-  const w = wDistance * wType * wBeds * wBaths * wLand * wRecency;
+  const w = wDistance * wType * wBeds * wBaths * wCars * wLand * wRecency;
   return Math.max(WEIGHT_EPSILON, w);
 }
 
