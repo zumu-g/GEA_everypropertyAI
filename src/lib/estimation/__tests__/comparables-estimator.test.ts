@@ -271,11 +271,11 @@ describe('estimateFromComparables', () => {
   // the pair) rather than comparing an absolute weight to a hand-derived
   // wLand-only formula — mirrors the existing "land-area similarity
   // dominates" test's approach above.
-  it('house subject with bedrooms known: land-decay steepness unchanged from baseline (0.7)', () => {
+  it('house subject with bedrooms known: land-decay steepness is 1.2 (plan 2026-08-18-001)', () => {
     const nearComp = comp(900_000, { type: 'house', land: 600 }, 1); // exact match to SUBJECT's 600m²
     const farComp = comp(900_000, { type: 'house', land: 1200 }, 2); // 2x
     const ratio = similarityWeight(SUBJECT, farComp) / similarityWeight(SUBJECT, nearComp); // SUBJECT.bedrooms = 3
-    const expectedRatio = Math.exp(-Math.abs(Math.log(1200 / 600)) * 0.7);
+    const expectedRatio = Math.exp(-Math.abs(Math.log(1200 / 600)) * 1.2);
     expect(ratio).toBeCloseTo(expectedRatio, 6);
   });
 
@@ -322,5 +322,76 @@ describe('estimateFromComparables', () => {
     const ratio = similarityWeight(landSubject, farComp) / similarityWeight(landSubject, nearComp);
     const expectedRatio = Math.exp(-Math.abs(Math.log(1200 / 600)) * 2.0);
     expect(ratio).toBeCloseTo(expectedRatio, 6);
+  });
+});
+
+// ── 66A Duncan Dr reproduction: skewed pool of larger/null-attribute comps ────
+// Plan 2026-08-18-001. A 3-bed 370m² subject surrounded by a growth-corridor
+// pool dominated by bigger/newer stock (and NULL-attribute VG rows) must land
+// near its size-matched cluster, not the pool-wide median.
+
+const SKEW_SUBJECT: ComparableSubject = {
+  latitude: -38.073,
+  longitude: 145.4679,
+  suburb: 'Pakenham',
+  propertyType: 'house',
+  bedrooms: 3,
+  bathrooms: 2,
+  landAreaSqm: 370,
+};
+
+const SKEW_MARKET = { houses: { medianPrice: 720_000, annualGrowth: 8 }, units: { medianPrice: 550_000, annualGrowth: 13 } };
+
+function skewedPool(): ComparableSale[] {
+  const pool: ComparableSale[] = [];
+  // 15 size-matched sales: 3 bed, 300–450m², $620–680k
+  for (let i = 0; i < 15; i++) {
+    pool.push(comp(620_000 + (i % 4) * 20_000, { beds: 3, land: 300 + (i % 6) * 30, distanceKm: 0.3 + (i % 5) * 0.15, monthsAgo: 2 + (i % 10) }, i));
+  }
+  // 25 larger sales: 4–5 bed, 500–700m², $850k–$1.05M
+  for (let i = 0; i < 25; i++) {
+    pool.push(comp(850_000 + (i % 5) * 50_000, { beds: 4 + (i % 2), land: 500 + (i % 5) * 50, distanceKm: 0.3 + (i % 6) * 0.12, monthsAgo: 1 + (i % 12) }, 100 + i));
+  }
+  // 15 NULL-attribute VG rows at big-house prices
+  for (let i = 0; i < 15; i++) {
+    pool.push(comp(900_000 + (i % 4) * 40_000, { beds: null, baths: null, land: null, distanceKm: 0.4 + (i % 5) * 0.15, monthsAgo: 2 + (i % 14) }, 200 + i));
+  }
+  return pool;
+}
+
+describe('small-property skew reproduction (66A Duncan Dr shape)', () => {
+  it('size-matched-only pool lands inside its own cluster (sanity baseline)', () => {
+    const matched = skewedPool().filter((c) => c.bedrooms === 3);
+    const r = estimateFromComparables(SKEW_SUBJECT, matched, SKEW_MARKET, NOW);
+    expect(r).not.toBeNull();
+    expect(r!.priceMid).toBeGreaterThanOrEqual(600_000);
+    expect(r!.priceMid).toBeLessThanOrEqual(720_000);
+  });
+
+  it('skewed pool with known-attribute subject lands near the size-matched cluster', () => {
+    const r = estimateFromComparables(SKEW_SUBJECT, skewedPool(), SKEW_MARKET, NOW);
+    expect(r).not.toBeNull();
+    expect(r!.priceMid).toBeGreaterThanOrEqual(600_000);
+    expect(r!.priceMid).toBeLessThanOrEqual(760_000);
+  });
+});
+
+describe('null-attribute comp penalties (U2)', () => {
+  it('NULL-bed comp vs known-bed subject: between matching and diff>=2 weights', () => {
+    const matching = comp(900_000, { beds: 3 }, 1);
+    const nullBeds = comp(900_000, { beds: null }, 2);
+    const farBeds = comp(900_000, { beds: 5 }, 3);
+    const wMatch = similarityWeight(SUBJECT, matching);
+    const wNull = similarityWeight(SUBJECT, nullBeds);
+    const wFar = similarityWeight(SUBJECT, farBeds);
+    expect(wNull).toBeLessThan(wMatch);
+    expect(wNull).toBeGreaterThan(wFar);
+  });
+
+  it('subject with unknown beds: NULL-bed comps keep full bed weight', () => {
+    const noBedsSubject: ComparableSubject = { ...SUBJECT, bedrooms: undefined };
+    const nullBeds = comp(900_000, { beds: null }, 1);
+    const withBeds = comp(900_000, { beds: 3 }, 2);
+    expect(similarityWeight(noBedsSubject, nullBeds)).toBeCloseTo(similarityWeight(noBedsSubject, withBeds), 6);
   });
 });

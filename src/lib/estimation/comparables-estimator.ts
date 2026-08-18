@@ -161,8 +161,10 @@ export function timeAdjust(price: number, monthsAgo: number, monthlyGrowth: numb
 // ── Similarity weighting ───────────────────────────────────────────────────────
 
 /**
- * Multiplicative similarity weight in (0, 1]. Each factor defaults to 1.0 when
- * the relevant attribute is missing on either side (never penalise a NULL).
+ * Multiplicative similarity weight in (0, 1]. A missing attribute on the
+ * SUBJECT side means "can't compare" → factor 1.0. A missing attribute on the
+ * COMP side when the subject's value IS known is an uncertainty penalty
+ * (wBeds 0.7, wLand 0.6) — never an exclusion, but no free pass either.
  */
 export function similarityWeight(subject: ComparableSubject, comp: ComparableSale): number {
   const subjBucket = typeBucket(subject.propertyType);
@@ -180,11 +182,18 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
   if (compBucket === 'unknown' || subjBucket === 'unknown') wType = 0.85;
   else wType = compBucket === subjBucket ? 1.0 : 0.45;
 
-  // Bedrooms.
+  // Bedrooms. When the subject's bed count is known but the comp's is NULL,
+  // that's an uncertainty penalty (mirrors the null-land rule below) — NULL-bed
+  // VG rows at big-house prices otherwise ride into the weighted median at full
+  // weight and drag small-property estimates toward the area's typical stock
+  // (66A Duncan Dr investigation, plan 2026-08-18-001). A NULL on the SUBJECT
+  // side still means "can't compare" → 1.0.
   let wBeds = 1.0;
   if (subject.bedrooms != null && comp.bedrooms != null) {
     const diff = Math.abs(comp.bedrooms - subject.bedrooms);
-    wBeds = diff === 0 ? 1.0 : diff === 1 ? 0.75 : 0.4;
+    wBeds = diff === 0 ? 1.0 : diff === 1 ? 0.6 : 0.25;
+  } else if (subject.bedrooms != null && comp.bedrooms == null) {
+    wBeds = 0.7;
   }
 
   // Bathrooms.
@@ -215,7 +224,11 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
   if (!isUnit && subject.landAreaSqm) {
     if (comp.landAreaSqm && comp.landAreaSqm > 0) {
       const ratio = comp.landAreaSqm / subject.landAreaSqm;
-      const steepness = subjBucket === 'land' ? 2.0 : subject.bedrooms == null ? 1.5 : 0.7;
+      // Known-bed house subjects used 0.7 — too shallow: a 600m² comp against a
+      // 370m² subject kept ~71% weight, letting bigger-block stock dominate
+      // (plan 2026-08-18-001). 1.2 drops that comp to ~56% while a same-size
+      // comp stays at 1.0.
+      const steepness = subjBucket === 'land' ? 2.0 : subject.bedrooms == null ? 1.5 : 1.2;
       wLand = Math.exp(-Math.abs(Math.log(ratio)) * steepness);
     } else {
       wLand = 0.6;
