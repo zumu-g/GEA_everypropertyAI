@@ -46,6 +46,7 @@ export interface EstimateSubjectInput {
   bathrooms?: number;
   carSpaces?: number;
   landAreaSqm?: number;
+  buildingAreaSqm?: number;
   priorSale?: { price: number; date: string };
   activeListing?: { priceLow?: number; priceHigh?: number; priceMid?: number };
   /** Scraped third-party AVM estimates — cross-checks only (KTD2). */
@@ -97,6 +98,7 @@ function toComparable(r: PropertySaleRecord, distanceKm: number | null): Compara
     bathrooms: r.bathrooms ?? null,
     carSpaces: r.car_spaces ?? null,
     landAreaSqm: r.land_area_sqm ?? null,
+    buildingAreaSqm: r.building_area_sqm ?? null,
     propertyType: r.property_type ?? null,
     latitude: r.latitude ?? null,
     longitude: r.longitude ?? null,
@@ -256,6 +258,7 @@ export async function getEstimate(
     bathrooms: subject.bathrooms,
     carSpaces: subject.carSpaces,
     landAreaSqm: subject.landAreaSqm,
+    buildingAreaSqm: subject.buildingAreaSqm,
     priorSale: subject.priorSale,
     activeListing: subject.activeListing,
     externalEstimates: subject.externalEstimates,

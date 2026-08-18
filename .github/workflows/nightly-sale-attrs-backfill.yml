@@ -1,0 +1,47 @@
+name: Nightly sale-attributes backfill
+
+# Slow background drip: fills bedrooms/bathrooms/cars/land/building on
+# property_sales rows whose Domain feed item omitted them, by fetching each
+# row's own listing page via Bright Data Web Unlocker (see
+# scripts/backfill-sale-attrs-from-domain.mjs). ~2/3 of comps entered the
+# estimator with bedrooms NULL and dodged bed-match weighting (12 Basalt Dr
+# investigation, 2026-08-18).
+#
+# 200 rows/night, most-recent sales first, 4s between fetches — ~27 min/run,
+# ~30k backlog cleared in a few months with the freshest (most comp-relevant)
+# rows fixed first. Idempotent: only NULL columns are ever written.
+#
+# Schedule: 14:41 UTC ≈ 00:41 Melbourne (12:41am AEST / 1:41am AEDT), minute
+# deliberately OFF the top of the hour (GitHub drops :00-queued runs — see
+# daily-domain-scrape.yml note).
+#
+# Required repo secrets (all already present for the Domain feeds):
+#   BRIGHTDATA_WEB_UNLOCKER_TOKEN, BRIGHTDATA_WEB_UNLOCKER_ZONE,
+#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+
+on:
+  schedule:
+    - cron: '41 14 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly-sale-attrs-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BRIGHTDATA_WEB_UNLOCKER_TOKEN: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_TOKEN }}
+      BRIGHTDATA_WEB_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_ZONE }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      # Node built-ins only — no npm install needed.
+      - name: Backfill 200 rows (most recent first)
+        run: node scripts/backfill-sale-attrs-from-domain.mjs --limit 200 --delay 4000
