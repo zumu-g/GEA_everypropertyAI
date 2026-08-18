@@ -9,6 +9,7 @@ import {
   typeBucket,
   isVacantLandType,
   isLandSimilar,
+  excessLandUplift,
   similarityWeight,
   type ComparableSale,
   type ComparableSubject,
@@ -524,5 +525,56 @@ describe('car-spaces similarity weight', () => {
     const noSubject = similarityWeight(SUBJECT, { ...comp(800_000), carSpaces: 4 });
     expect(nullComp).toBeCloseTo(similarityWeight(carSubject, { ...comp(800_000), carSpaces: 1 }), 6);
     expect(noSubject).toBeCloseTo(similarityWeight(SUBJECT, comp(800_000)), 6);
+  });
+});
+
+describe('acreage handling (40 Hyde Hill Rd shape)', () => {
+  const ACREAGE_SUBJECT: ComparableSubject = {
+    ...SUBJECT,
+    suburb: 'Harkaway',
+    bedrooms: 4,
+    bathrooms: 3,
+    landAreaSqm: 81_227, // ~20 acres
+  };
+
+  it('excessLandUplift scales the base price with diminishing returns', () => {
+    const up = excessLandUplift(1_500_000, 81_227, 800);
+    expect(up).not.toBeNull();
+    // ratio ~101.5 → uplift well above base but far below linear extrapolation
+    expect(up!).toBeGreaterThan(2_500_000);
+    expect(up!).toBeLessThan(6_000_000);
+    // Below the min ratio: no uplift
+    expect(excessLandUplift(1_500_000, 1_000, 800)).toBeNull();
+    // Garbage in: null out
+    expect(excessLandUplift(0, 81_227, 800)).toBeNull();
+    expect(excessLandUplift(1_500_000, 81_227, 0)).toBeNull();
+  });
+
+  it('landSimilarSparse acreage subject gets an uplifted, low-confidence estimate', () => {
+    // 8 ordinary suburban comps only — the pre-fix shape that returned ~$1.5M flat.
+    const comps = Array.from({ length: 8 }, (_, i) => comp(1_500_000, { land: 800, beds: 4, baths: 3 }, i));
+    const result = estimateFromComparables(ACREAGE_SUBJECT, comps, MARKET, NOW, { landSimilarSparse: true })!;
+    expect(result.priceMid).toBeGreaterThan(2_500_000);
+    expect(result.confidenceLevel).toBe('low');
+    expect(result.confidenceBand).toBe(30);
+    expect(result.methodology).toContain('non-subdividable land');
+  });
+
+  it('genuine acreage comps 12km away outweigh adjacent suburban blocks', () => {
+    const comps = [
+      ...Array.from({ length: 6 }, (_, i) => comp(1_400_000, { land: 800, distanceKm: 0.8, beds: 4, baths: 3 }, i)),
+      ...Array.from({ length: 3 }, (_, i) =>
+        comp(3_800_000 + i * 100_000, { land: 78_000 + i * 3_000, distanceKm: 12, beds: 4, baths: 3 }, 100 + i),
+      ),
+    ];
+    const result = estimateFromComparables(ACREAGE_SUBJECT, comps, MARKET, NOW)!;
+    // Weighted median should land on the acreage cluster, not the suburban one.
+    expect(result.priceMid).toBeGreaterThan(3_000_000);
+  });
+
+  it('suburban subjects keep the tight distance decay', () => {
+    const near = similarityWeight(SUBJECT, comp(800_000, { distanceKm: 0.5 }));
+    const far = similarityWeight(SUBJECT, comp(800_000, { distanceKm: 12 }));
+    expect(far).toBeLessThan(near / 100);
   });
 });

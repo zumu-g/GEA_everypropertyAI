@@ -111,6 +111,49 @@ const WEIGHT_EPSILON = 1e-4;
 const LAND_SIMILAR_RATIO_LO = 0.6;
 const LAND_SIMILAR_RATIO_HI = 1.6;
 
+/** Subjects at/above this land size (~1 acre) trade in a wider acreage market:
+ * comp-gathering widens its radius ladder for them (estimate-service.ts) and
+ * similarityWeight relaxes its distance decay so a genuine acreage comp 12km
+ * away can outweigh a next-door suburban block. */
+export const ACREAGE_MIN_SQM = 4046;
+/** Distance-decay sigma (km): suburban subjects vs acreage subjects. */
+const DISTANCE_SIGMA_KM = 1.5;
+const ACREAGE_DISTANCE_SIGMA_KM = 8;
+
+// ── Excess-land uplift (no land-similar comps found anywhere) ────────────────
+// When the subject's block is far larger than every comp's, the weighted median
+// degenerates to "house on a typical local block" (uniform down-weighting
+// cancels out of a weighted median). Model the subject instead as that typical
+// dwelling PLUS its excess non-subdividable land at a steeply diminishing
+// marginal rate: land component scales as (subjectLand/typicalLand)^ALPHA.
+// ponytail: heuristic with calibration knobs — ALPHA 0.3 puts a 20-acre
+// Harkaway holding vs ~800m² comps at ~2.5x the base estimate; tune ALPHA/SHARE
+// against real acreage sales when a backtest set exists.
+/** Share of a typical comp's price attributed to its land. */
+export const LAND_VALUE_SHARE = 0.5;
+/** Diminishing-returns exponent on the land-size ratio. */
+export const EXCESS_LAND_ALPHA = 0.3;
+/** Uplift only fires when subject land ≥ this multiple of the typical comp's. */
+export const EXCESS_LAND_MIN_RATIO = 2;
+/** Ratio cap — beyond this, extra land adds nothing (data-artefact guard). */
+export const EXCESS_LAND_MAX_RATIO = 200;
+
+/** Uplifted mid for a subject whose land dwarfs the typical comp block, or
+ * null when the ratio doesn't warrant it. Pure, unit-tested. */
+export function excessLandUplift(
+  priceMid: number,
+  subjectLandSqm: number,
+  typicalCompLandSqm: number,
+): number | null {
+  if (!(priceMid > 0) || !(subjectLandSqm > 0) || !(typicalCompLandSqm > 0)) return null;
+  const ratio = subjectLandSqm / typicalCompLandSqm;
+  if (ratio < EXCESS_LAND_MIN_RATIO) return null;
+  const capped = Math.min(ratio, EXCESS_LAND_MAX_RATIO);
+  return Math.round(
+    priceMid * (1 - LAND_VALUE_SHARE + LAND_VALUE_SHARE * Math.pow(capped, EXCESS_LAND_ALPHA)),
+  );
+}
+
 // ── Property-type bucketing ───────────────────────────────────────────────────
 
 const UNIT_TYPES = ['apartment', 'unit', 'studio', 'flat'];
@@ -208,11 +251,18 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
   const subjBucket = typeBucket(subject.propertyType);
   const isUnit = subjBucket === 'unit';
 
-  // Distance: Gaussian decay (sigma 1.5km). Suburb-only comp (no distance) → 0.6.
+  // Distance: Gaussian decay. Suburb-only comp (no distance) → 0.6. Acreage
+  // subjects use a wide sigma — their market is regional, and the tight sigma
+  // would make a genuine acreage comp 12km away weigh less than an adjacent
+  // suburban block, defeating the acreage radius widening.
+  const sigma =
+    !isUnit && subject.landAreaSqm && subject.landAreaSqm >= ACREAGE_MIN_SQM
+      ? ACREAGE_DISTANCE_SIGMA_KM
+      : DISTANCE_SIGMA_KM;
   const wDistance =
     comp.distanceKm == null
       ? 0.6
-      : Math.exp(-(comp.distanceKm * comp.distanceKm) / (2 * 1.5 * 1.5));
+      : Math.exp(-(comp.distanceKm * comp.distanceKm) / (2 * sigma * sigma));
 
   // Property type bucket.
   const compBucket = typeBucket(comp.propertyType);
@@ -364,12 +414,14 @@ export function estimateFromComparables(
   const sumW2 = weights.reduce((s, w) => s + w * w, 0);
 
   // Step C — central estimate (weighted median).
-  const priceMid = weightedMedian(values, weights);
+  let priceMid = weightedMedian(values, weights);
+  const rawMid = priceMid;
 
-  // Step D — dispersion, effective count, band.
-  const absDev = cleaned.map((c) => Math.abs(c.adjustedPrice - priceMid));
+  // Step D — dispersion, effective count, band (against the RAW comp median —
+  // the acreage uplift below is a model adjustment, not comp scatter).
+  const absDev = cleaned.map((c) => Math.abs(c.adjustedPrice - rawMid));
   const wMAD = weightedMedian(absDev, weights);
-  const relDispersion = priceMid > 0 ? wMAD / priceMid : 0.2;
+  const relDispersion = rawMid > 0 ? wMAD / rawMid : 0.2;
   const nEff = sumW2 > 0 ? (sumW * sumW) / sumW2 : cleaned.length;
 
   const baseBand = clamp(relDispersion * 100 * 1.349, 6, 28);
@@ -388,6 +440,38 @@ export function estimateFromComparables(
     avgWeightedDistance * 4 -
     (avgWeightedMonths / 12) * 6;
   confidence = clamp(Math.round(confidence), 5, 92);
+
+  // Step D2 — excess-land uplift. Even the widened acreage radius ladder found
+  // no land-similar comps, so the weighted median above is effectively "house
+  // on a typical local block" (uniform land down-weighting cancels out of a
+  // weighted median). Uplift for the subject's additional non-subdividable
+  // land at a diminishing marginal rate, and be honest about it: band to max,
+  // confidence capped low.
+  let acreageNote = '';
+  if (
+    opts.landSimilarSparse &&
+    !isUnit &&
+    subject.landAreaSqm &&
+    subject.landAreaSqm >= ACREAGE_MIN_SQM
+  ) {
+    const landKnown = cleaned.filter((c) => c.landAreaSqm && c.landAreaSqm > 0);
+    if (landKnown.length >= MIN_COMPS) {
+      const typicalLand = weightedMedian(
+        landKnown.map((c) => c.landAreaSqm as number),
+        landKnown.map((c) => c.weight),
+      );
+      const uplifted = excessLandUplift(priceMid, subject.landAreaSqm, typicalLand);
+      if (uplifted != null) {
+        priceMid = uplifted;
+        band = 30;
+        confidence = Math.min(confidence, 35);
+        acreageNote =
+          ` No sales of similarly-sized holdings (~${Math.round(subject.landAreaSqm)}m²) were found even after widening the search;` +
+          ` the estimate takes the comparable-sales value of a dwelling on a typical local block (~${Math.round(typicalLand)}m²)` +
+          ` and adds the remaining non-subdividable land at a diminishing marginal rate. Treat as indicative only.`;
+      }
+    }
+  }
 
   // Step E — cross-checks (divergence flags).
   const crossChecks: CrossCheck[] = [];
@@ -425,7 +509,7 @@ export function estimateFromComparables(
   // widening the full radius ladder, so the estimate may still skew toward
   // the area's typical (often larger) block size.
   let landSparseNote = '';
-  if (opts.landSimilarSparse) {
+  if (opts.landSimilarSparse && !acreageNote) {
     const landDesc = subject.landAreaSqm ? `~${Math.round(subject.landAreaSqm)}m²` : 'its size';
     landSparseNote =
       ` Note: few sales of similarly-sized blocks (${landDesc}) were found nearby even after widening the search radius; this estimate may skew toward the area's typical (larger) block size.`;
@@ -454,7 +538,8 @@ export function estimateFromComparables(
       : '') +
     `. Weighted-median estimate, ±${band}%.` +
     checkNote +
-    landSparseNote;
+    landSparseNote +
+    acreageNote;
 
   return {
     priceLow,
