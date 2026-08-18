@@ -494,6 +494,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     if (fallbackInput.priceTo != null) estParams.set('listingHigh', String(fallbackInput.priceTo));
     if (fallbackInput.priceNumeric != null) estParams.set('listingMid', String(fallbackInput.priceNumeric));
     estParams.set('excludeAddress', fullAddr);
+    // Scraped AVM estimates (Allhomes/OnTheHouse) — server cross-checks each.
+    for (const ext of (pd.externalEstimates as Array<{ source: string; value: number }> | undefined) ?? []) {
+      if (ext?.source && ext.value > 0) estParams.append('extEst', `${ext.source}:${ext.value}`);
+    }
 
     let saleMid: number | undefined;
     try {
@@ -530,6 +534,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       rentParams.set('priorRentDate', priorRent.date);
     }
     rentParams.set('excludeAddress', fullAddr);
+    for (const ext of (pd.externalRentEstimates as Array<{ source: string; value: number }> | undefined) ?? []) {
+      if (ext?.source && ext.value > 0) rentParams.append('extRent', `${ext.source}:${ext.value}`);
+    }
     try {
       const rentRes = await fetch(`/api/estimate-rent?${rentParams.toString()}`);
       const rentJson = rentRes.ok ? await rentRes.json() : null;

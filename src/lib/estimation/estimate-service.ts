@@ -46,6 +46,8 @@ export interface EstimateSubjectInput {
   landAreaSqm?: number;
   priorSale?: { price: number; date: string };
   activeListing?: { priceLow?: number; priceHigh?: number; priceMid?: number };
+  /** Scraped third-party AVM estimates — cross-checks only (KTD2). */
+  externalEstimates?: Array<{ source: string; value: number }>;
   excludeAddress?: string;
   /** Richer signals for the legacy fallback (sale/rental history, listing price). */
   fallbackInput?: PriceEstimateInput;
@@ -225,6 +227,7 @@ export async function getEstimate(
     landAreaSqm: subject.landAreaSqm,
     priorSale: subject.priorSale,
     activeListing: subject.activeListing,
+    externalEstimates: subject.externalEstimates,
   };
 
   if (compList.length >= MIN_COMPS) {

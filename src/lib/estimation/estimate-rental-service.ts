@@ -38,6 +38,7 @@ export interface RentalEstimateSubjectInput {
   landAreaSqm?: number;
   priorRent?: { weeklyRent: number; date: string };
   saleEstimateMid?: number;
+  externalRentEstimates?: Array<{ source: string; value: number }>;
   excludeAddress?: string;
 }
 
@@ -159,6 +160,7 @@ export async function getRentalEstimate(
     landAreaSqm: subject.landAreaSqm,
     priorRent: subject.priorRent,
     saleEstimateMid: subject.saleEstimateMid,
+    externalRentEstimates: subject.externalRentEstimates,
   };
 
   if (compList.length >= MIN_COMPS) {

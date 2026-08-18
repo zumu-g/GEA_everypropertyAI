@@ -54,6 +54,9 @@ export interface ComparableSubject {
   priorSale?: { price: number; date: string };
   /** Active listing guide — used as a cross-check. */
   activeListing?: { priceLow?: number; priceHigh?: number; priceMid?: number };
+  /** Scraped third-party AVM estimates (Allhomes, OnTheHouse) — cross-checks
+   * ONLY, never inputs to the median (KTD2, plan 2026-08-18-001). */
+  externalEstimates?: Array<{ source: string; value: number }>;
 }
 
 export interface WeightedComp extends ComparableSale {
@@ -161,8 +164,10 @@ export function timeAdjust(price: number, monthsAgo: number, monthlyGrowth: numb
 // ── Similarity weighting ───────────────────────────────────────────────────────
 
 /**
- * Multiplicative similarity weight in (0, 1]. Each factor defaults to 1.0 when
- * the relevant attribute is missing on either side (never penalise a NULL).
+ * Multiplicative similarity weight in (0, 1]. A missing attribute on the
+ * SUBJECT side means "can't compare" → factor 1.0. A missing attribute on the
+ * COMP side when the subject's value IS known is an uncertainty penalty
+ * (wBeds 0.7, wLand 0.6) — never an exclusion, but no free pass either.
  */
 export function similarityWeight(subject: ComparableSubject, comp: ComparableSale): number {
   const subjBucket = typeBucket(subject.propertyType);
@@ -180,11 +185,18 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
   if (compBucket === 'unknown' || subjBucket === 'unknown') wType = 0.85;
   else wType = compBucket === subjBucket ? 1.0 : 0.45;
 
-  // Bedrooms.
+  // Bedrooms. When the subject's bed count is known but the comp's is NULL,
+  // that's an uncertainty penalty (mirrors the null-land rule below) — NULL-bed
+  // VG rows at big-house prices otherwise ride into the weighted median at full
+  // weight and drag small-property estimates toward the area's typical stock
+  // (66A Duncan Dr investigation, plan 2026-08-18-001). A NULL on the SUBJECT
+  // side still means "can't compare" → 1.0.
   let wBeds = 1.0;
   if (subject.bedrooms != null && comp.bedrooms != null) {
     const diff = Math.abs(comp.bedrooms - subject.bedrooms);
-    wBeds = diff === 0 ? 1.0 : diff === 1 ? 0.75 : 0.4;
+    wBeds = diff === 0 ? 1.0 : diff === 1 ? 0.6 : 0.25;
+  } else if (subject.bedrooms != null && comp.bedrooms == null) {
+    wBeds = 0.7;
   }
 
   // Bathrooms.
@@ -215,7 +227,11 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
   if (!isUnit && subject.landAreaSqm) {
     if (comp.landAreaSqm && comp.landAreaSqm > 0) {
       const ratio = comp.landAreaSqm / subject.landAreaSqm;
-      const steepness = subjBucket === 'land' ? 2.0 : subject.bedrooms == null ? 1.5 : 0.7;
+      // Known-bed house subjects used 0.7 — too shallow: a 600m² comp against a
+      // 370m² subject kept ~71% weight, letting bigger-block stock dominate
+      // (plan 2026-08-18-001). 1.2 drops that comp to ~56% while a same-size
+      // comp stays at 1.0.
+      const steepness = subjBucket === 'land' ? 2.0 : subject.bedrooms == null ? 1.5 : 1.2;
       wLand = Math.exp(-Math.abs(Math.log(ratio)) * steepness);
     } else {
       wLand = 0.6;
@@ -350,7 +366,13 @@ export function estimateFromComparables(
       ? Math.round((subject.activeListing.priceLow + subject.activeListing.priceHigh) / 2)
       : undefined);
   pushCheck('Listing guide', listingMid, 0.15);
-  pushCheck('Suburb median', suburbMedian, 0.25);
+  for (const ext of subject.externalEstimates ?? []) {
+    pushCheck(`${ext.source} estimate`, ext.value, 0.15);
+  }
+  // 0.25 let a 22.7% miss read as "corroborates" (66A Duncan Dr) — align with
+  // the same-property checks. If the U6 backtest shows well-comped outlier
+  // properties flagging too often, widen to 0.20 and record why.
+  pushCheck('Suburb median', suburbMedian, 0.15);
 
   // Land-similar-comp sparsity note (R5) — the pool met MIN_COMPS/IDEAL_COMPS
   // but comp-gathering couldn't find enough land-similar comps even after
