@@ -23,3 +23,12 @@ describe('allhomes building-area capture', () => {
     expect(raw.buildingArea).toBe(204);
   });
 });
+
+describe('allhomes history daysOnMarket capture', () => {
+  it('rental history entries carry daysOnMarket when the payload provides it', () => {
+    const raw = allhomesProfileHtmlToExtraction(fixture)!.raw as Record<string, unknown>;
+    const rentals = raw.rentalHistory as Array<{ date: string; weeklyRent: number | null; daysOnMarket?: number }>;
+    expect(rentals[0].daysOnMarket).toBe(11);
+    expect(rentals[0].weeklyRent).toBe(360);
+  });
+});
