@@ -105,3 +105,49 @@ describe('estimateRentFromComparables', () => {
     expect(r.priceMid).toBeGreaterThan(500); // 5% p.a. over 12mo
   });
 });
+
+describe('external rent cross-check + yield interaction (U5, plan 2026-08-18-001)', () => {
+  const tight = () => Array.from({ length: 8 }, (_, i) => comp(530, { distanceKm: 0.3, monthsAgo: 0 }, i));
+
+  it('divergent external rent estimate flags and names the source', () => {
+    const r = estimateRentFromComparables(
+      { ...SUBJECT, externalRentEstimates: [{ source: 'allhomes.com.au', value: 400 }] },
+      tight(), MARKET, NOW,
+    )!;
+    expect(r.crossChecks.find((c) => c.label === 'allhomes.com.au rent estimate')!.flagged).toBe(true);
+  });
+
+  it('close external rent estimate corroborates', () => {
+    const r = estimateRentFromComparables(
+      { ...SUBJECT, externalRentEstimates: [{ source: 'allhomes.com.au', value: 530 }] },
+      tight(), MARKET, NOW,
+    )!;
+    expect(r.crossChecks.find((c) => c.label === 'allhomes.com.au rent estimate')!.flagged).toBe(false);
+  });
+
+  it('no external rent estimates: behaviour unchanged', () => {
+    const a = estimateRentFromComparables(SUBJECT, tight(), MARKET, NOW)!;
+    const b = estimateRentFromComparables({ ...SUBJECT, externalRentEstimates: [] }, tight(), MARKET, NOW)!;
+    expect(a.priceMid).toBe(b.priceMid);
+    expect(a.confidenceScore).toBe(b.confidenceScore);
+  });
+
+  it('yield-implied check clears with a corrected sale estimate (~$680k)', () => {
+    // 66A shape: comps ~$531/wk, gross yield 4.06%. Corrected sale mid 680k →
+    // yield-implied ≈ $531 → not flagged. Inflated 930k → ≈ $727 → flagged.
+    const market: RentMarketInput = { ...MARKET, grossYield: 4.06 };
+    const corrected = estimateRentFromComparables(
+      { ...SUBJECT, saleEstimateMid: 680_000 },
+      Array.from({ length: 8 }, (_, i) => comp(531, { distanceKm: 0.3, monthsAgo: 0 }, i)),
+      market, NOW,
+    )!;
+    expect(corrected.crossChecks.find((c) => c.label === 'Yield-implied rent')!.flagged).toBe(false);
+
+    const inflated = estimateRentFromComparables(
+      { ...SUBJECT, saleEstimateMid: 930_917 },
+      Array.from({ length: 8 }, (_, i) => comp(531, { distanceKm: 0.3, monthsAgo: 0 }, i)),
+      market, NOW,
+    )!;
+    expect(inflated.crossChecks.find((c) => c.label === 'Yield-implied rent')!.flagged).toBe(true);
+  });
+});

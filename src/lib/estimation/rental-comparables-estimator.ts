@@ -54,6 +54,8 @@ export interface RentalSubject {
   priorRent?: { weeklyRent: number; date: string };
   /** Headline sale estimate (mid) — enables the yield cross-check. */
   saleEstimateMid?: number;
+  /** Scraped third-party rent estimates (e.g. Allhomes) — cross-checks only. */
+  externalRentEstimates?: Array<{ source: string; value: number }>;
 }
 
 export interface RentMarketInput {
@@ -230,6 +232,9 @@ export function estimateRentFromComparables(
     if (m <= 12) pushCheck('Own recent rent (adjusted)', timeAdjust(subject.priorRent.weeklyRent, m, monthlyGrowth), 0.15);
   }
   pushCheck('Suburb median rent', market?.medianRent, 0.2);
+  for (const ext of subject.externalRentEstimates ?? []) {
+    pushCheck(`${ext.source} rent estimate`, ext.value, 0.15);
+  }
   if (subject.saleEstimateMid && market?.grossYield) {
     pushCheck('Yield-implied rent', (subject.saleEstimateMid * (market.grossYield / 100)) / 52, 0.25);
   }

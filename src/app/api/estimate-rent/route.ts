@@ -57,6 +57,14 @@ export async function GET(request: NextRequest) {
     saleEstimateMid: num(p.get('saleEstimateMid')),
     priorRent: priorRent && priorRentDate ? { weeklyRent: priorRent, date: priorRentDate } : undefined,
     excludeAddress: p.get('excludeAddress') ?? undefined,
+    // Repeated extRent=<source>:<value> params — scraped rent-AVM cross-checks.
+    externalRentEstimates: p
+      .getAll('extRent')
+      .map((s) => {
+        const i = s.lastIndexOf(':');
+        return { source: s.slice(0, i), value: Number(s.slice(i + 1)) };
+      })
+      .filter((e) => e.source && Number.isFinite(e.value) && e.value > 0),
   };
 
   try {
