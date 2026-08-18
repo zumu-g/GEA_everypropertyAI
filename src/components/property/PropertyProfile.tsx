@@ -485,6 +485,7 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     if (fallbackInput.propertyType) estParams.set('propertyType', fallbackInput.propertyType);
     if (fallbackInput.bedrooms != null) estParams.set('beds', String(fallbackInput.bedrooms));
     if (fallbackInput.bathrooms != null) estParams.set('baths', String(fallbackInput.bathrooms));
+    if (fallbackInput.carSpaces != null) estParams.set('cars', String(fallbackInput.carSpaces));
     if (fallbackInput.landAreaSqm != null) estParams.set('land', String(fallbackInput.landAreaSqm));
     if (priorSale?.price && priorSale.date) {
       estParams.set('priorSalePrice', String(priorSale.price));

@@ -43,6 +43,7 @@ export interface EstimateSubjectInput {
   propertyType?: string;
   bedrooms?: number;
   bathrooms?: number;
+  carSpaces?: number;
   landAreaSqm?: number;
   priorSale?: { price: number; date: string };
   activeListing?: { priceLow?: number; priceHigh?: number; priceMid?: number };
@@ -224,6 +225,7 @@ export async function getEstimate(
     propertyType: subject.propertyType,
     bedrooms: subject.bedrooms,
     bathrooms: subject.bathrooms,
+    carSpaces: subject.carSpaces,
     landAreaSqm: subject.landAreaSqm,
     priorSale: subject.priorSale,
     activeListing: subject.activeListing,
