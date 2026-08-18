@@ -1369,6 +1369,12 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               </div>
             </div>
 
+            {(enrichment.marketData.houses.annualGrowth != null || enrichment.marketData.units.annualGrowth != null) && (
+              <p className="mb-6 -mt-3 text-xs text-[#6B7077]">
+                Annual growth is the 12-month change in the sales median (CoreLogic). It is sensitive to the mix of stock sold — not a like-for-like index.
+              </p>
+            )}
+
             {/* Demographics */}
             {enrichment.marketData.demographics && (
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-3">
