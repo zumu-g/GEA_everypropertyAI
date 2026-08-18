@@ -413,3 +413,47 @@ describe('suburb-median cross-check threshold (U3)', () => {
     expect(check.flagged).toBe(false);
   });
 });
+
+describe('external AVM cross-checks (U4)', () => {
+  const tightComps = () => Array.from({ length: 8 }, (_, i) => comp(800_000, { distanceKm: 0.4, monthsAgo: 0 }, i));
+
+  it('divergent external estimate flags, widens band, cuts confidence, names source', () => {
+    const base = estimateFromComparables(SUBJECT, tightComps(), MARKET, NOW)!;
+    const r = estimateFromComparables(
+      { ...SUBJECT, externalEstimates: [{ source: 'allhomes.com.au', value: 630_000 }] },
+      tightComps(), MARKET, NOW,
+    )!;
+    const check = r.crossChecks.find((c) => c.label === 'allhomes.com.au estimate')!;
+    expect(check.flagged).toBe(true);
+    expect(r.confidenceBand).toBeGreaterThan(base.confidenceBand);
+    expect(r.confidenceScore).toBeLessThan(base.confidenceScore);
+    expect(r.methodology).toContain('allhomes.com.au estimate diverges');
+  });
+
+  it('close external estimate corroborates', () => {
+    const r = estimateFromComparables(
+      { ...SUBJECT, externalEstimates: [{ source: 'onthehouse.com.au', value: 810_000 }] },
+      tightComps(), MARKET, NOW,
+    )!;
+    expect(r.crossChecks.find((c) => c.label === 'onthehouse.com.au estimate')!.flagged).toBe(false);
+  });
+
+  it('two externals, one diverging: only that one flags', () => {
+    const r = estimateFromComparables(
+      { ...SUBJECT, externalEstimates: [
+        { source: 'allhomes.com.au', value: 810_000 },
+        { source: 'onthehouse.com.au', value: 600_000 },
+      ] },
+      tightComps(), MARKET, NOW,
+    )!;
+    expect(r.crossChecks.find((c) => c.label === 'allhomes.com.au estimate')!.flagged).toBe(false);
+    expect(r.crossChecks.find((c) => c.label === 'onthehouse.com.au estimate')!.flagged).toBe(true);
+  });
+
+  it('no external estimates: behaviour unchanged', () => {
+    const a = estimateFromComparables(SUBJECT, tightComps(), MARKET, NOW)!;
+    const b = estimateFromComparables({ ...SUBJECT, externalEstimates: [] }, tightComps(), MARKET, NOW)!;
+    expect(a.priceMid).toBe(b.priceMid);
+    expect(a.confidenceScore).toBe(b.confidenceScore);
+  });
+});

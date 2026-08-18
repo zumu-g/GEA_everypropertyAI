@@ -23,6 +23,7 @@ const SCALAR_FIELDS = [
   'currentPrice',
   'priceLabel',
   'estimatedValue',
+  'estimatedRent',
   'councilRates',
   'latitude',
   'longitude',
@@ -97,6 +98,20 @@ export function mergePropertyData(
       fieldConfidences[field] = { confidence, contributedBy };
     }
   }
+
+  // Per-source external AVM estimates — the scalar merge above collapses
+  // estimatedValue/estimatedRent to one winner, but the estimator cross-checks
+  // each source's figure individually (plan 2026-08-18-001, KTD2), so preserve
+  // them as arrays alongside the merged scalars.
+  const externalEstimates = valid
+    .map((e) => ({ source: e.source, value: getFieldValue(e, 'estimatedValue') }))
+    .filter((x): x is { source: string; value: number } => typeof x.value === 'number' && x.value > 0);
+  if (externalEstimates.length > 0) mergedData.externalEstimates = externalEstimates;
+
+  const externalRentEstimates = valid
+    .map((e) => ({ source: e.source, value: getFieldValue(e, 'estimatedRent') }))
+    .filter((x): x is { source: string; value: number } => typeof x.value === 'number' && x.value > 0);
+  if (externalRentEstimates.length > 0) mergedData.externalRentEstimates = externalRentEstimates;
 
   // Merge features arrays — union with dedup
   const allFeatures = collectArrayValues<string>(valid, 'features');

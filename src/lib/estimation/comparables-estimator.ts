@@ -54,6 +54,9 @@ export interface ComparableSubject {
   priorSale?: { price: number; date: string };
   /** Active listing guide — used as a cross-check. */
   activeListing?: { priceLow?: number; priceHigh?: number; priceMid?: number };
+  /** Scraped third-party AVM estimates (Allhomes, OnTheHouse) — cross-checks
+   * ONLY, never inputs to the median (KTD2, plan 2026-08-18-001). */
+  externalEstimates?: Array<{ source: string; value: number }>;
 }
 
 export interface WeightedComp extends ComparableSale {
@@ -363,6 +366,9 @@ export function estimateFromComparables(
       ? Math.round((subject.activeListing.priceLow + subject.activeListing.priceHigh) / 2)
       : undefined);
   pushCheck('Listing guide', listingMid, 0.15);
+  for (const ext of subject.externalEstimates ?? []) {
+    pushCheck(`${ext.source} estimate`, ext.value, 0.15);
+  }
   // 0.25 let a 22.7% miss read as "corroborates" (66A Duncan Dr) — align with
   // the same-property checks. If the U6 backtest shows well-comped outlier
   // properties flagging too often, widen to 0.20 and record why.

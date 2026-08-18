@@ -70,6 +70,14 @@ export async function GET(request: NextRequest) {
         ? { priceLow: listingLow, priceHigh: listingHigh, priceMid: listingMid }
         : undefined,
     excludeAddress: p.get('excludeAddress') ?? undefined,
+    // Repeated extEst=<source>:<value> params — scraped AVM cross-checks.
+    externalEstimates: p
+      .getAll('extEst')
+      .map((s) => {
+        const i = s.lastIndexOf(':');
+        return { source: s.slice(0, i), value: Number(s.slice(i + 1)) };
+      })
+      .filter((e) => e.source && Number.isFinite(e.value) && e.value > 0),
   };
 
   try {

@@ -494,6 +494,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
     if (fallbackInput.priceTo != null) estParams.set('listingHigh', String(fallbackInput.priceTo));
     if (fallbackInput.priceNumeric != null) estParams.set('listingMid', String(fallbackInput.priceNumeric));
     estParams.set('excludeAddress', fullAddr);
+    // Scraped AVM estimates (Allhomes/OnTheHouse) — server cross-checks each.
+    for (const ext of (pd.externalEstimates as Array<{ source: string; value: number }> | undefined) ?? []) {
+      if (ext?.source && ext.value > 0) estParams.append('extEst', `${ext.source}:${ext.value}`);
+    }
 
     let saleMid: number | undefined;
     try {
