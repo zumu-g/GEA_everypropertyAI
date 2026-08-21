@@ -339,15 +339,21 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
       // enrich's `.then`, gated on `data?.marketData && property` where `property`
       // read stale closure state that was always null on first load — see below.)
       fetchEnrichment(structured, requestId);
-      fetchEstimates(structured, data.profile, requestId);
 
       // Fast partial (or queued empty) → poll the cache until the background
-      // full crawl lands, then swap the complete profile in.
+      // full crawl lands, then swap the complete profile in. The estimate is
+      // fetched ONCE, with the best profile available: on a fast partial it
+      // waits for the full profile (the partial often lacks beds/land/coords,
+      // which changes the comparables result), so the displayed figure never
+      // swaps a couple of seconds after first paint (estimate-swap bug,
+      // 2026-08-21). The "Analysing comparable sales…" skeleton shows while it
+      // waits; cached full profiles still estimate immediately.
       if (data.profile?.crawlMode === 'fast' || data.source === 'queued') {
         setUpgrading(true);
-        pollForFullProfile(structured, requestId);
+        pollForFullProfile(structured, data.profile, requestId);
       } else {
         setUpgrading(false);
+        fetchEstimates(structured, data.profile, requestId);
       }
     } catch (err) {
       if (requestId !== requestIdRef.current) return;
@@ -360,10 +366,16 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
   }, [address]);
 
   // Poll the property cache (cachedOnly never crawls) until the background full
-  // crawl finishes, then swap the complete profile in and re-run the estimates
-  // (the fast partial often lacks coords/attrs, degrading the first estimate).
+  // crawl finishes, then swap the complete profile in and run the estimates —
+  // their one and only run for a fast-partial load, so the displayed figure
+  // never changes after first paint. If the poll gives up, estimate from the
+  // partial profile rather than never showing a figure.
   // Stops on supersession (requestId), success, or a ~3-minute cap.
-  const pollForFullProfile = async (structured: StructuredAddress, requestId: number) => {
+  const pollForFullProfile = async (
+    structured: StructuredAddress,
+    partialProfile: MergedPropertyProfile,
+    requestId: number,
+  ) => {
     const POLL_MS = 5_000;
     const MAX_ATTEMPTS = 36;
     for (let i = 0; i < MAX_ATTEMPTS; i++) {
@@ -388,7 +400,10 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         // transient network error — keep polling
       }
     }
-    if (requestId === requestIdRef.current) setUpgrading(false); // gave up quietly
+    if (requestId === requestIdRef.current) {
+      setUpgrading(false); // gave up quietly
+      fetchEstimates(structured, partialProfile, requestId); // best data we have
+    }
   };
 
   // Enrichment only: suburb/schools/transport market context. No longer carries
