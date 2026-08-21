@@ -511,3 +511,57 @@ describe('Comparable Rentals section (U3)', () => {
     expect(screen.queryByText('Comparable Rentals')).toBeNull();
   });
 });
+
+describe('fast-partial estimate single-shot (estimate-swap regression, 2026-08-21)', () => {
+  it('does not fetch the estimate for a fast partial; fetches once when the full profile lands', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const log: FetchLog = [];
+    const fastProfile = { ...PROFILE, crawlMode: 'fast', data: { ...PROFILE.data, bedrooms: undefined } };
+    const fullProfile = { ...PROFILE, crawlMode: 'full' };
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        const body = typeof init?.body === 'string' ? init.body : '';
+        log.push({ url: url + (body.includes('cachedOnly') ? '#cachedOnly' : '') });
+        if (url.startsWith('/api/property')) {
+          if (body.includes('cachedOnly')) {
+            return { ok: true, json: async () => ({ profile: fullProfile, addressSlug: 'test-slug' }) } as Response;
+          }
+          return { ok: true, json: async () => ({ profile: fastProfile, addressSlug: 'test-slug', source: 'crawl' }) } as Response;
+        }
+        if (url.startsWith('/api/enrich')) {
+          return { ok: true, json: async () => ({ schools: [], childcare: [], transport: [] }) } as Response;
+        }
+        if (url.startsWith('/api/estimate-rent')) {
+          return { ok: true, json: async () => ({ result: null }) } as Response;
+        }
+        if (url.startsWith('/api/estimate')) {
+          return { ok: true, json: async () => ({ result: { priceLow: 700000, priceMid: 750000, priceHigh: 800000, confidenceLevel: 'high', priceSource: 'comparables', methodology: 'x' } }) } as Response;
+        }
+        return { ok: true, json: async () => ({}) } as Response;
+      }) as unknown as typeof fetch,
+    );
+
+    render(<PropertyProfile address={STRUCTURED_ADDRESS} />);
+
+    // Let the initial fast fetch settle — no estimate call may happen yet.
+    await vi.waitFor(() => {
+      expect(log.some((c) => c.url.startsWith('/api/property'))).toBe(true);
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(log.filter((c) => c.url.startsWith('/api/estimate?'))).toHaveLength(0);
+
+    // Advance past one poll tick — full profile lands, estimate fires exactly once.
+    await vi.advanceTimersByTimeAsync(5100);
+    await vi.waitFor(() => {
+      expect(log.filter((c) => c.url.startsWith('/api/estimate?'))).toHaveLength(1);
+    });
+
+    // More time passes — still exactly one estimate call (no swap).
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(log.filter((c) => c.url.startsWith('/api/estimate?'))).toHaveLength(1);
+    vi.useRealTimers();
+  });
+});
