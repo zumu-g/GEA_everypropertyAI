@@ -15,6 +15,7 @@ export interface ComparableResult {
   saleDate: string;
   beds?: number;
   baths?: number;
+  cars?: number;
   landAreaSqm?: number;
   similarityScore: number;
   imageUrl?: string;
@@ -216,7 +217,7 @@ export function ComparableSales({
                 <p className="mt-0.5 text-xs text-[#6B7077]">{fmtDate(comp.saleDate)}</p>
               )}
 
-              {(comp.beds != null || comp.baths != null || comp.landAreaSqm != null) && (
+              {(comp.beds != null || comp.baths != null || comp.cars != null || comp.landAreaSqm != null) && (
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {comp.beds != null && (
                     <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
@@ -226,6 +227,11 @@ export function ComparableSales({
                   {comp.baths != null && (
                     <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
                       {comp.baths} bath
+                    </span>
+                  )}
+                  {comp.cars != null && (
+                    <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
+                      {comp.cars} car
                     </span>
                   )}
                   {comp.landAreaSqm != null && (

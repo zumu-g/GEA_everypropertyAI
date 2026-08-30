@@ -105,7 +105,7 @@ export function ComparableRentals({ comps }: ComparableRentalsProps) {
 
                 {date && <p className="mt-0.5 text-xs text-[#6B7077]">{date}</p>}
 
-                {(comp.bedrooms != null || comp.bathrooms != null || comp.landAreaSqm != null) && (
+                {(comp.bedrooms != null || comp.bathrooms != null || comp.carSpaces != null || comp.landAreaSqm != null) && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {comp.bedrooms != null && (
                       <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
@@ -115,6 +115,11 @@ export function ComparableRentals({ comps }: ComparableRentalsProps) {
                     {comp.bathrooms != null && (
                       <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
                         {comp.bathrooms} bath
+                      </span>
+                    )}
+                    {comp.carSpaces != null && (
+                      <span className="rounded-full bg-[#F4F5F7] px-2.5 py-0.5 text-xs font-medium text-[#4A4E57]">
+                        {comp.carSpaces} car
                       </span>
                     )}
                     {comp.landAreaSqm != null && (

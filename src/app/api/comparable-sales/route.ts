@@ -28,6 +28,7 @@ interface ComparableResult {
   saleDate: string;
   beds?: number;
   baths?: number;
+  cars?: number;
   landAreaSqm?: number;
   similarityScore: number;
   imageUrl?: string;
@@ -188,6 +189,7 @@ function findComparablesFromCache(
       saleDate,
       beds: rowBeds,
       baths: rowBaths,
+      cars: typeof d.carSpaces === 'number' ? d.carSpaces : undefined,
       landAreaSqm: typeof d.landAreaSqm === 'number' ? d.landAreaSqm : undefined,
       similarityScore: score,
       imageUrl: firstPhotoUrl(d),
@@ -333,6 +335,7 @@ export async function GET(request: NextRequest) {
         saleDate,
         beds: rowBeds,
         baths: rowBaths,
+        cars: typeof innerData.carSpaces === 'number' ? innerData.carSpaces : undefined,
         landAreaSqm,
         similarityScore: score,
         imageUrl: firstPhotoUrl(innerData),
