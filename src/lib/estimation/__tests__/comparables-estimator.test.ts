@@ -214,19 +214,37 @@ describe('estimateFromComparables', () => {
     expect(r!.compCount).toBe(4);
   });
 
-  it('cross-check divergence flags and widens band', () => {
+  it('recent own sale anchors the mid instead of cross-checking', () => {
     const comps = Array.from({ length: 6 }, (_, i) => comp(800_000, { distanceKm: 0.4, monthsAgo: 3 }, i));
     const base = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!;
-    const withDivergentPrior = estimateFromComparables(
-      { ...SUBJECT, priorSale: { price: 1_200_000, date: dateMonthsAgo(0) } },
+    const anchored = estimateFromComparables(
+      { ...SUBJECT, priorSale: { price: 1_200_000, date: dateMonthsAgo(2) } },
       comps,
       MARKET,
       NOW,
     )!;
-    const flagged = withDivergentPrior.crossChecks.find((c) => c.label === 'Prior sale (adjusted)');
+    // Mid pulled toward the recent own sale, no self-corroborating cross-check.
+    expect(anchored.priceMid).toBeGreaterThan(base.priceMid);
+    expect(anchored.crossChecks.find((c) => c.label === 'Prior sale (adjusted)')).toBeUndefined();
+    expect(anchored.methodology).toMatch(/Anchored to the property's own/);
+    // No confidence comparison: the anchor boosts confidence but moving the mid
+    // can make other cross-checks (suburb median) diverge and deduct — both are
+    // correct, so the net direction is scenario-dependent.
+  });
+
+  it('old prior sale (beyond anchor window) still cross-checks and widens band', () => {
+    const comps = Array.from({ length: 6 }, (_, i) => comp(800_000, { distanceKm: 0.4, monthsAgo: 3 }, i));
+    const base = estimateFromComparables(SUBJECT, comps, MARKET, NOW)!;
+    const withOldPrior = estimateFromComparables(
+      { ...SUBJECT, priorSale: { price: 1_200_000, date: dateMonthsAgo(30) } },
+      comps,
+      MARKET,
+      NOW,
+    )!;
+    const flagged = withOldPrior.crossChecks.find((c) => c.label === 'Prior sale (adjusted)');
     expect(flagged?.flagged).toBe(true);
-    expect(withDivergentPrior.confidenceBand).toBeGreaterThanOrEqual(base.confidenceBand);
-    expect(withDivergentPrior.confidenceScore).toBeLessThan(base.confidenceScore);
+    expect(withOldPrior.confidenceBand).toBeGreaterThanOrEqual(base.confidenceBand);
+    expect(withOldPrior.confidenceScore).toBeLessThan(base.confidenceScore);
   });
 
   it('land subject: land comps produce a "vacant-land sales" methodology note', () => {

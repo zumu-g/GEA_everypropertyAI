@@ -87,6 +87,11 @@ export const MAX_PLAUSIBLE_SALE_PRICE = 50_000_000;
 export const MIN_PLAUSIBLE_SALE_PRICE = 50_000;
 export const MIN_COMPS = 3;
 export const IDEAL_COMPS = 8;
+/** Own-sale anchoring: a sale of the subject itself within this window blends
+ * into the mid instead of serving as a cross-check only. */
+export const PRIOR_ANCHOR_MAX_MONTHS = 24;
+/** Blend weight at age 0, decaying exp(-months/12): 2mo→~0.54, 12mo→~0.24. */
+export const PRIOR_ANCHOR_MAX_WEIGHT = 0.65;
 /** Minimum land-similar comps the radius ladder must find (when the subject's
  * land size is known) before it's allowed to stop widening — see
  * isLandSimilar and estimate-service.ts's radius/time ladder. */
@@ -354,9 +359,13 @@ export function similarityWeight(subject: ComparableSubject, comp: ComparableSal
     }
   }
 
-  // Recency.
+  // Recency. 12-month e-folding (was 18): a 12-month-old comp holds ~37%
+  // weight instead of ~51%, so the latest quarter dominates when fresh comps
+  // exist while older stock still degrades gracefully in thin suburbs. The
+  // preferred lever over relaxing growth dampening — recent sales ARE the
+  // market, no index needed (18 Lancaster Way investigation).
   const monthsAgo = monthsSince(comp.saleDate);
-  const wRecency = Math.exp(-monthsAgo / 18);
+  const wRecency = Math.exp(-monthsAgo / 12);
 
   const w = wDistance * wType * wBeds * wBaths * wCars * wLand * wBuild * wRecency;
   return Math.max(WEIGHT_EPSILON, w);
@@ -386,6 +395,12 @@ export function weightedMedian(values: number[], weights: number[]): number {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
+}
+
+function fmtMonthsAgo(m: number): string {
+  if (m < 1) return 'recent';
+  const r = Math.round(m);
+  return r === 1 ? '1-month-ago' : r < 12 ? `${r}-months-ago` : r < 24 ? '1-year-ago' : `${Math.round(r / 12)}-years-ago`;
 }
 
 // ── Main entry point ───────────────────────────────────────────────────────────
@@ -521,6 +536,27 @@ export function estimateFromComparables(
     }
   }
 
+  // Step D3 — own-sale anchoring. A recent sale of the SUBJECT ITSELF is
+  // stronger evidence than any comp pool, but before this it was only a
+  // band-widening cross-check — the mid ignored it entirely (18 Lancaster Way:
+  // sold $960k two months earlier, estimated $828k). Blend the time-adjusted
+  // prior sale into the mid with weight decaying by age; beyond
+  // PRIOR_ANCHOR_MAX_MONTHS the market has moved too much and it reverts to a
+  // cross-check only. Applied after the acreage uplift so the two model
+  // adjustments don't compound blindly — the anchor partially overrides it.
+  let anchoredToPriorSale = false;
+  if (subject.priorSale?.price && subject.priorSale.date) {
+    const m = monthsSince(subject.priorSale.date, now);
+    if (m <= PRIOR_ANCHOR_MAX_MONTHS && subject.priorSale.price > MIN_PLAUSIBLE_SALE_PRICE) {
+      const adjPrior = timeAdjust(subject.priorSale.price, m, monthlyGrowth, MAX_TOTAL_ADJUST);
+      const anchorW = PRIOR_ANCHOR_MAX_WEIGHT * Math.exp(-m / 12);
+      priceMid = Math.round(anchorW * adjPrior + (1 - anchorW) * priceMid);
+      confidence = clamp(confidence + Math.round(20 * anchorW), 5, 92);
+      band = Math.max(5, Math.round(band * (1 - anchorW / 2)));
+      anchoredToPriorSale = true;
+    }
+  }
+
   // Step E — cross-checks (divergence flags).
   const crossChecks: CrossCheck[] = [];
   const pushCheck = (label: string, value: number | undefined, threshold: number) => {
@@ -534,7 +570,9 @@ export function estimateFromComparables(
     }
   };
 
-  if (subject.priorSale?.price && subject.priorSale.date) {
+  // Skip when anchored — the prior sale is already inside the mid, so a
+  // cross-check against it would self-corroborate.
+  if (!anchoredToPriorSale && subject.priorSale?.price && subject.priorSale.date) {
     const m = monthsSince(subject.priorSale.date, now);
     pushCheck('Prior sale (adjusted)', timeAdjust(subject.priorSale.price, m, monthlyGrowth), 0.15);
   }
@@ -585,6 +623,9 @@ export function estimateFromComparables(
         (annualGrowth !== rawAnnualGrowth ? ` (dampened from ${rawAnnualGrowth.toFixed(1)}% suburb growth)` : ' suburb growth')
       : '') +
     `. Weighted-median estimate, ±${band}%.` +
+    (anchoredToPriorSale
+      ? ` Anchored to the property's own ${fmtMonthsAgo(monthsSince(subject.priorSale!.date, now))} sale (time-adjusted).`
+      : '') +
     (nullAttrSetAside > 0
       ? ` ${nullAttrSetAside} nearby sale${nullAttrSetAside === 1 ? '' : 's'} without recorded attributes ${nullAttrSetAside === 1 ? 'was' : 'were'} set aside.`
       : '') +

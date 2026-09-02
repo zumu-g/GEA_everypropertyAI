@@ -123,10 +123,21 @@ function compKey(rawAddress: string): string {
   return slug || rawAddress.trim().toLowerCase();
 }
 
-/** Keep the most-recent sale per address (slug-normalised across sources). */
-function addComp(map: Map<string, ComparableSale>, c: ComparableSale, excludeAddress?: string) {
+/** Keep the most-recent sale per address (slug-normalised across sources).
+ * The subject's own sale is excluded from the comp pool but captured in `own`
+ * so it can anchor the estimate as a prior sale — the scraped profile's sale
+ * history often lacks it even when property_sales has it (18 Lancaster Way). */
+function addComp(
+  map: Map<string, ComparableSale>,
+  c: ComparableSale,
+  excludeAddress?: string,
+  own?: { sale?: ComparableSale },
+) {
   const key = compKey(c.rawAddress);
-  if (excludeAddress && key === compKey(excludeAddress)) return;
+  if (excludeAddress && key === compKey(excludeAddress)) {
+    if (own && (!own.sale || c.saleDate > own.sale.saleDate)) own.sale = c;
+    return;
+  }
   const existing = map.get(key);
   if (!existing || (c.saleDate > existing.saleDate)) map.set(key, c);
 }
@@ -175,6 +186,7 @@ export async function getEstimate(
   )) as MarketDataInput | null;
 
   const comps = new Map<string, ComparableSale>();
+  const own: { sale?: ComparableSale } = {};
 
   // ── Radius/time ladder (geo) ────────────────────────────────────────────────
   if (hasGeo) {
@@ -189,7 +201,7 @@ export async function getEstimate(
         if (!priceSane(r.sale_price)) continue;
         if (!withinMonths(r.sale_date, MAX_WINDOW_MONTHS, now)) continue;
         if (!passesPrefilter(subject, r)) continue;
-        addComp(comps, toComparable(r, dist), subject.excludeAddress);
+        addComp(comps, toComparable(r, dist), subject.excludeAddress, own);
       }
       // Stop widening once we have enough recent (<=24mo) comps AND, when the
       // subject's land size is known, enough land-similar comps too — a pool
@@ -223,7 +235,7 @@ export async function getEstimate(
           if (!withinMonths(r.sale_date, MAX_WINDOW_MONTHS, now)) continue;
           if (!passesPrefilter(subject, r)) continue;
           if (!isLandSimilar(subject.landAreaSqm, r.land_area_sqm)) continue;
-          addComp(comps, toComparable(r, dist), subject.excludeAddress);
+          addComp(comps, toComparable(r, dist), subject.excludeAddress, own);
         }
       }
     }
@@ -236,7 +248,7 @@ export async function getEstimate(
       if (!priceSane(r.sale_price)) continue;
       if (!r.sale_date) continue;
       if (!passesPrefilter(subject, r)) continue;
-      addComp(comps, toComparable(r, null), subject.excludeAddress);
+      addComp(comps, toComparable(r, null), subject.excludeAddress, own);
     }
   }
 
@@ -259,7 +271,13 @@ export async function getEstimate(
     carSpaces: subject.carSpaces,
     landAreaSqm: subject.landAreaSqm,
     buildingAreaSqm: subject.buildingAreaSqm,
-    priorSale: subject.priorSale,
+    // Prefer the most recent known own-sale: the DB row captured during comp
+    // gathering can be fresher than the scraped profile's sale history.
+    priorSale:
+      own.sale && priceSane(own.sale.salePrice) && own.sale.saleDate &&
+      (!subject.priorSale?.date || own.sale.saleDate > subject.priorSale.date)
+        ? { price: own.sale.salePrice, date: own.sale.saleDate }
+        : subject.priorSale,
     activeListing: subject.activeListing,
     externalEstimates: subject.externalEstimates,
   };
