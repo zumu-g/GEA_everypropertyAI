@@ -1,0 +1,42 @@
+name: Weekly Valuer-General suburb medians ingest
+
+# Refreshes suburb_medians from the Valuer-General Victoria quarterly and
+# yearly suburb-median datasets via POST /api/cron/vg-suburb-medians on the
+# live Railway service. This is a dedicated schedule for that one route --
+# separate from the combined NSW/VIC/WA /api/cron/ingest-vg route -- so a
+# failure in an unrelated state's ingest can never mask whether this step ran.
+# See docs/plans/2026-09-07-1735-feat-casey-cardinia-values-guide-plan.md (U1).
+#
+# The prior `vercel.json` cron entry for /api/cron/ingest-vg was dead: the
+# app runs on Railway, not Vercel, so no scheduler was ever calling it.
+#
+# Required repo secrets:
+#   EVERYPROPERTY_BASE_URL — the live Railway service base URL
+#   CRON_SECRET            — same value as the CRON_SECRET env var on Railway
+
+on:
+  schedule:
+    - cron: '15 15 * * 1' # Monday 15:15 UTC (~1:15am AEDT Tuesday), off top-of-hour
+  workflow_dispatch: {}
+
+concurrency:
+  group: weekly-vg-suburb-medians
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger suburb-medians ingest
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -o /tmp/response.json -w "%{http_code}" \
+            -X POST "${{ secrets.EVERYPROPERTY_BASE_URL }}/api/cron/vg-suburb-medians" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP status: $status"
+          cat /tmp/response.json
+          if [ "$status" -ge 300 ]; then
+            echo "::error::vg-suburb-medians ingest failed (HTTP $status)"
+            exit 1
+          fi

@@ -195,17 +195,18 @@ describe('runValuerGeneralIngestion (VIC cron wiring)', () => {
     vi.restoreAllMocks();
   });
 
-  it('fires both the suburb-medians task and the individual-sales task when vic is enabled (integration)', async () => {
+  it('fires the individual-sales task when vic is enabled, and no longer the retired suburb-medians aggregate task (integration)', async () => {
+    // Suburb medians moved to src/lib/jobs/vg-suburb-medians.ts, ingested via
+    // the separate /api/cron/vg-suburb-medians route -- see U1,
+    // docs/plans/2026-09-07-1735-feat-casey-cardinia-values-guide-plan.md.
+    // The old property_sales 'vic-vg-aggregate' write this combined route
+    // used to also trigger is retired, so discover.data.vic.gov.au is no
+    // longer called from here.
     const fetchSpy = vi.fn(async (url: string) => {
       if (url.includes('property-sales-statistics')) {
         // Individual-sales statistics page -> current-quarter link -> CSV
         if (url.endsWith('.csv')) return mockResponse(200, CASEY_ROW);
         return mockResponse(200, '<a href="https://example.com/q2.csv">Q2</a>');
-      }
-      if (url.includes('discover.data.vic.gov.au')) {
-        // Suburb-medians dataset page -> link -> file
-        if (url.endsWith('.csv')) return mockResponse(200, 'suburb,median\nBerwick,900000');
-        return mockResponse(200, '<a href="https://example.com/medians.csv">Medians</a>');
       }
       return mockResponse(200, '');
     });
@@ -215,7 +216,7 @@ describe('runValuerGeneralIngestion (VIC cron wiring)', () => {
 
     const calledUrls = fetchSpy.mock.calls.map((c) => c[0] as string);
     expect(calledUrls.some((u) => u.includes('property-sales-statistics'))).toBe(true);
-    expect(calledUrls.some((u) => u.includes('discover.data.vic.gov.au'))).toBe(true);
+    expect(calledUrls.some((u) => u.includes('discover.data.vic.gov.au'))).toBe(false);
   });
 
   it('skips both VIC tasks when vic is disabled (edge case)', async () => {

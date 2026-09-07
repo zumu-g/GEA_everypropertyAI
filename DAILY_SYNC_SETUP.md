@@ -203,3 +203,27 @@ steady-state path.
   roughly a few thousand results/day ≈ ~$3–5/day.
 - The old `daily-listings` Firecrawl cron was removed (superseded). Backfill stays paused; per-property
   live crawl is on-demand only.
+
+---
+
+## Weekly Valuer-General suburb medians (added 2026-09-07)
+
+`suburb_medians` (migration 014) is refreshed weekly by
+`.github/workflows/weekly-vg-suburb-medians.yml`, which POSTs to the live
+Railway service's `POST /api/cron/vg-suburb-medians` (Monday 15:15 UTC).
+This is a **separate schedule** from the combined `/api/cron/ingest-vg` route
+above, deliberately: a WA or NSW scrape failure inside the combined route must
+never mask whether the suburb-medians step ran.
+
+The prior `crons` entry for `/api/cron/ingest-vg` in `vercel.json` was dead —
+the app runs on Railway, not Vercel, so nothing was ever calling either route
+on a schedule before this change.
+
+Required repo secrets for the new workflow: `EVERYPROPERTY_BASE_URL` (the
+live Railway service base URL) and `CRON_SECRET` (same value as the
+`CRON_SECRET` env var set on the Railway service).
+
+See `docs/plans/2026-09-07-1735-feat-casey-cardinia-values-guide-plan.md` (U1)
+for the full design: parser (`src/lib/jobs/vg-suburb-medians.ts`), batch gate,
+and the retirement of the old non-idempotent `property_sales`
+`source: 'vic-vg-aggregate'` write.

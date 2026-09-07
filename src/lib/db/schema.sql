@@ -466,3 +466,24 @@ CREATE INDEX IF NOT EXISTS idx_property_rentals_slug   ON property_rentals (addr
 ALTER TABLE property_rentals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read access"       ON property_rentals FOR SELECT USING (true);
 CREATE POLICY "Service role full access" ON property_rentals FOR ALL    USING (auth.role() = 'service_role');
+
+-- ============================================================================
+-- suburb_medians — Valuer-General per-suburb house/unit medians (migration 014)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS suburb_medians (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  suburb          TEXT NOT NULL,
+  property_type   TEXT NOT NULL CHECK (property_type IN ('house', 'unit')),
+  period_type     TEXT NOT NULL CHECK (period_type IN ('quarter', 'year')),
+  period_start    DATE NOT NULL,
+  median          NUMERIC(12,2) CHECK (median IS NULL OR median > 0),
+  sales_count     INTEGER,
+  source_url      TEXT NOT NULL,
+  fetched_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (suburb, property_type, period_type, period_start)
+);
+
+CREATE INDEX IF NOT EXISTS idx_suburb_medians_suburb_type ON suburb_medians (suburb, property_type);
+
+ALTER TABLE suburb_medians ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON suburb_medians FOR ALL USING (auth.role() = 'service_role');

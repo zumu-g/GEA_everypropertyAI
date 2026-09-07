@@ -37,7 +37,7 @@ export async function GET() {
       salesTotal,
       salesNsw,
       salesWa,
-      salesVic,
+      suburbMedians,
     ] = await Promise.all([
       // Queue: pending
       supabase
@@ -118,11 +118,12 @@ export async function GET() {
         .select('id', { count: 'exact', head: true })
         .eq('source', 'wa-landgate'),
 
-      // Property sales: VIC VG aggregate
+      // Suburb medians: rows in the dedicated table (replaces the retired
+      // property_sales 'vic-vg-aggregate' pseudo-sale count -- see U1,
+      // docs/plans/2026-09-07-1735-feat-casey-cardinia-values-guide-plan.md).
       supabase
-        .from('property_sales')
-        .select('id', { count: 'exact', head: true })
-        .eq('source', 'vic-vg-aggregate'),
+        .from('suburb_medians')
+        .select('id', { count: 'exact', head: true }),
     ]);
 
     // Feed health + freshness (migration 007). Joins the per-run health record
@@ -170,7 +171,9 @@ export async function GET() {
         total: salesTotal.count ?? 0,
         nsw_vg: salesNsw.count ?? 0,
         wa_landgate: salesWa.count ?? 0,
-        vic_vg: salesVic.count ?? 0,
+      },
+      suburb_medians: {
+        total: suburbMedians.count ?? 0,
       },
       feeds,
       cache: {
