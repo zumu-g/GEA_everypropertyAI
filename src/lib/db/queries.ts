@@ -951,6 +951,51 @@ export async function insertPropertySales(sales: PropertySaleRecord[]): Promise<
   }
 }
 
+// ─── Property Rental History Queries ──────────────────────────────────────────
+// Append-only historical leases (migration 013) — distinct from property_rentals,
+// which tracks only the CURRENT asking rent per (raw_address, source).
+
+export interface PropertyRentalHistoryRecord {
+  address_slug?: string;
+  raw_address: string;
+  suburb?: string;
+  state: string;
+  postcode?: string;
+  weekly_rent: number;
+  lease_date: string;
+  bond?: number;
+  lease_term?: string;
+  agency_name?: string;
+  agent_name?: string;
+  source: string;
+  raw_data?: Record<string, unknown>;
+}
+
+export async function insertPropertyRentalHistory(
+  rentals: PropertyRentalHistoryRecord[]
+): Promise<void> {
+  if (!isSupabaseConfigured() || rentals.length === 0) return;
+  const CHUNK = 500;
+  let failedChunks = 0;
+  let failedRows = 0;
+  for (let i = 0; i < rentals.length; i += CHUNK) {
+    const chunk = rentals.slice(i, i + CHUNK);
+    const { error } = await supabase()
+      .from('property_rental_history')
+      .upsert(chunk, { onConflict: 'raw_address,lease_date,weekly_rent,source', ignoreDuplicates: true });
+    if (error) {
+      console.error('[insertPropertyRentalHistory] chunk error:', error.message);
+      failedChunks++;
+      failedRows += chunk.length;
+    }
+  }
+  if (failedChunks > 0) {
+    throw new Error(
+      `[insertPropertyRentalHistory] ${failedChunks} chunk(s) failed (${failedRows} row(s) not persisted)`
+    );
+  }
+}
+
 // ─── Bed/bath backfill lookup (sold rows → listings/rentals) ──────────────────
 //
 // Domain's sold-listings Apify actor never returns bedrooms/bathrooms for sold
