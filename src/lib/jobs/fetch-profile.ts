@@ -19,6 +19,7 @@ import { fetchParcelLandArea } from '@/lib/enrichment/parcel';
 import { saveCachedProfile, getCachedProfile, getFeedSeedBySlug } from '@/lib/db/queries';
 import { mapFeedRowToProfileFields, applyFeedSeed } from '@/lib/jobs/feed-seed';
 import { persistSaleHistory } from '@/lib/jobs/persist-sale-history';
+import { persistRentalHistory } from '@/lib/jobs/persist-rental-history';
 import type { ExtractedPropertyData } from '@/types/property';
 
 export interface FetchProfileResult {
@@ -201,6 +202,11 @@ async function doFetchAndCacheProfile(
   // fire-and-forget promise can be frozen by Vercel at response end and the
   // insert would silently never run; the write is one fast upsert.
   await persistSaleHistory(profile, slug).catch(() => {});
+
+  // Step 4c: same write-back for rentalHistory → property_rental_history.
+  // See persist-rental-history.ts — mirrors 4b, independently gated on its
+  // own field confidence.
+  await persistRentalHistory(profile, slug).catch(() => {});
 
   return { profile, slug, empty: false };
 }
