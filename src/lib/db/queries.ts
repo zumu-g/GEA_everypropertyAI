@@ -1727,3 +1727,59 @@ export async function getHistoryRowsForSlug(
     return { sales: [], rentals: [] };
   }
 }
+
+/** Suburb median row as stored by the Valuer-General ingest (migration 014). */
+export interface SuburbMedianRecord {
+  suburb: string;
+  property_type: 'house' | 'unit';
+  period_type: 'quarter' | 'year';
+  period_start: string;
+  median: number | null;
+  sales_count: number | null;
+  source_url: string;
+}
+
+/** All suburb_medians rows, paginated (bulk fetch — no per-suburb loop). */
+export async function getAllSuburbMedians(): Promise<SuburbMedianRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const out: SuburbMedianRecord[] = [];
+  const PAGE = 1000;
+  const MAX_PAGES = 100;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await supabase()
+      .from('suburb_medians')
+      .select('suburb, property_type, period_type, period_start, median, sales_count, source_url')
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) { console.error('[getAllSuburbMedians]', error.message); break; }
+    if (!data || data.length === 0) break;
+    out.push(...(data as SuburbMedianRecord[]));
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
+/**
+ * All property_sales rows in the last `sinceDays` days with a positive price, across every
+ * suburb (caller filters to the service area via isServiceAreaSuburb, same as the ingest
+ * guard). Paginated bulk fetch, mirrors getAddressesForSuburb's PAGE=1000 loop.
+ */
+export async function getRecentPricedSales(sinceDays: number): Promise<PropertySaleRecord[]> {
+  if (!isSupabaseConfigured()) return [];
+  const since = new Date(Date.now() - sinceDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const out: PropertySaleRecord[] = [];
+  const PAGE = 1000;
+  const MAX_PAGES = 100;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { data, error } = await supabase()
+      .from('property_sales')
+      .select('raw_address, address_slug, suburb, state, property_type, sale_price, sale_date, source')
+      .gte('sale_date', since)
+      .gt('sale_price', 0)
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) { console.error('[getRecentPricedSales]', error.message); break; }
+    if (!data || data.length === 0) break;
+    out.push(...(data as PropertySaleRecord[]));
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
