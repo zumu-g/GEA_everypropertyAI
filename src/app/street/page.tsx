@@ -356,8 +356,9 @@ function StreetResults() {
                 ) : (
                   <>
                     <Download className="h-4 w-4" />
-                    Load details
-                    {emptyRowCount > MAX_CRAWL ? ` (${MAX_CRAWL})` : ""}
+                    {emptyRowCount > MAX_CRAWL
+                      ? `Load next ${MAX_CRAWL} of ${emptyRowCount}`
+                      : `Load details (${emptyRowCount})`}
                   </>
                 )}
               </button>
