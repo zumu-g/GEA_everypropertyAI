@@ -45,6 +45,9 @@ const SCALAR_FIELDS = [
   'headline',
 ] as const;
 
+/** Count fields where 0 means "unknown" rather than "none" — see pickBestValue. */
+const COUNT_FIELDS = new Set<string>(['bedrooms', 'bathrooms', 'carSpaces']);
+
 /** Address sub-fields. */
 const ADDRESS_FIELDS = [
   'fullAddress',
@@ -220,9 +223,13 @@ function pickBestValue(
 
   for (const ext of extractions) {
     const val = getFieldValue(ext, field, isAddressField);
-    if (val !== undefined && val !== null && val !== '') {
-      entries.push({ value: val, source: ext.source });
-    }
+    if (val === undefined || val === null || val === '') continue;
+    // A 0 bed/bath/car count is "unmapped", not a value — allhomes returns 0
+    // for anything it can't map, and a literal 0 survives every `??` fallback
+    // downstream (street-details never reaches the sold feed, the property
+    // page renders "0 bedrooms", the estimator gets beds=0).
+    if (COUNT_FIELDS.has(field) && val === 0) continue;
+    entries.push({ value: val, source: ext.source });
   }
 
   if (entries.length === 0) {
