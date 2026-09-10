@@ -52,8 +52,33 @@ const SUBURB = arg('suburb', null);
 const LIMIT = Number(arg('limit', '25'));
 const DELAY_MS = Number(arg('delay', '4000'));
 const NEAR = arg('near', null); // "lat,lng,km"
+// Stop cleanly instead of being killed by the job's timeout (a killed run logs
+// nothing useful and shows as "cancelled"); 0 = no budget.
+const MAX_MINUTES = Number(arg('max-minutes', '0'));
+// Domain sometimes protection-walls Web Unlocker for a whole window (every row
+// captcha, ~80s each) — bail after this many fetch failures in a row.
+const MAX_CONSEC_FAIL = Number(arg('max-consec-fail', '8'));
 
 const HEADERS = { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` };
+
+// Marker written into raw_data when a page was fetched but carried no attrs
+// (e.g. the listing is gone), so the nightly drip moves past it instead of
+// re-fetching the same rows forever. Vacant land is excluded up front — it has
+// no bedrooms to find and was clogging the head of the sale_date-desc queue.
+export const CHECKED_KEY = 'attrs_backfill_checked';
+const LAND_TYPES = ['VacantLand', 'Vacant land', 'New land'];
+
+export function targetsQuery({ suburb = null } = {}) {
+  return (
+    `property_sales?` +
+    (suburb ? `suburb=ilike.${encodeURIComponent(suburb)}&` : '') +
+    `bedrooms=is.null&listing_url=not.is.null` +
+    `&property_type=not.in.(${LAND_TYPES.map((t) => `"${t}"`).join(',')})` +
+    `&raw_data->>${CHECKED_KEY}=is.null` +
+    `&select=id,raw_address,sale_date,listing_url,latitude,longitude,bedrooms,bathrooms,car_spaces,land_area_sqm,building_area_sqm,raw_data` +
+    `&order=sale_date.desc&limit=1000`
+  );
+}
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371, toRad = (d) => (d * Math.PI) / 180;
@@ -63,13 +88,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 async function fetchTargets() {
-  const url =
-    `${SUPABASE_URL}/rest/v1/property_sales?` +
-    (SUBURB ? `suburb=ilike.${encodeURIComponent(SUBURB)}&` : '') +
-    `bedrooms=is.null&listing_url=not.is.null` +
-    `&select=id,raw_address,sale_date,listing_url,latitude,longitude,bedrooms,bathrooms,car_spaces,land_area_sqm,building_area_sqm` +
-    `&order=sale_date.desc&limit=1000`;
-  const res = await fetch(url, { headers: HEADERS });
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${targetsQuery({ suburb: SUBURB })}`, { headers: HEADERS });
   if (!res.ok) throw new Error(`select failed: HTTP ${res.status}`);
   let rows = await res.json();
   if (NEAR) {
@@ -174,31 +193,41 @@ async function updateRow(id, patch) {
 async function main() {
   const targets = await fetchTargets();
   console.log(`${targets.length} null-bed ${SUBURB ?? 'all-suburb'} rows targeted${NEAR ? ` (near ${NEAR})` : ''}${DRY ? ' [DRY]' : ''}`);
-  let updated = 0, noAttrs = 0, fetchFail = 0;
+  let updated = 0, noAttrs = 0, fetchFail = 0, consecFail = 0;
+  const deadline = MAX_MINUTES > 0 ? Date.now() + MAX_MINUTES * 60_000 : Infinity;
+  let stopped = null;
   for (const [i, row] of targets.entries()) {
+    if (Date.now() > deadline) { stopped = `time budget of ${MAX_MINUTES} min reached`; break; }
+    if (consecFail >= MAX_CONSEC_FAIL) { stopped = `${consecFail} consecutive fetch failures (protection wall?)`; break; }
     try {
       const html = await fetchPage(row.listing_url);
+      consecFail = 0;
       const m = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
       const attrs = extractAttrs(JSON.parse(m[1]));
       const patch = {};
       for (const k of ['bedrooms', 'bathrooms', 'car_spaces', 'land_area_sqm', 'building_area_sqm']) {
         if (row[k] == null && attrs[k] != null) patch[k] = attrs[k];
       }
-      if (Object.keys(patch).length === 0) {
+      // Bedrooms still unknown after a successful fetch → mark so tomorrow's
+      // run picks the next row instead of this one again.
+      if (attrs.bedrooms == null) {
+        patch.raw_data = { ...(row.raw_data ?? {}), [CHECKED_KEY]: new Date().toISOString().slice(0, 10) };
         noAttrs++;
-        console.log(`[${i + 1}/${targets.length}] ${row.raw_address} — no attrs found on page`);
+        console.log(`[${i + 1}/${targets.length}] ${row.raw_address} — no beds on page (marked)${Object.keys(patch).length > 1 ? ` ${JSON.stringify(patch)}` : ''}`);
       } else {
-        if (!DRY) await updateRow(row.id, patch);
         updated++;
         console.log(`[${i + 1}/${targets.length}] ${row.raw_address} ← ${JSON.stringify(patch)}`);
       }
+      if (!DRY) await updateRow(row.id, patch);
     } catch (e) {
       fetchFail++;
+      consecFail++;
       console.log(`[${i + 1}/${targets.length}] ${row.raw_address} — FAILED: ${e.message}`);
     }
     if (i < targets.length - 1) await new Promise((r) => setTimeout(r, DELAY_MS));
   }
-  console.log(`\ndone: ${updated} updated, ${noAttrs} pages without attrs, ${fetchFail} fetch failures`);
+  console.log(`\ndone: ${updated} updated, ${noAttrs} pages without attrs, ${fetchFail} fetch failures${stopped ? ` — STOPPED EARLY: ${stopped}` : ''}`);
+  if (stopped && updated === 0) process.exit(1);
 }
 
 const invokedDirectly = process.argv[1] && import.meta.url === (await import('node:url')).pathToFileURL(process.argv[1]).href;
