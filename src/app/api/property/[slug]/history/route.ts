@@ -10,7 +10,9 @@ import { insertPropertySales, insertPropertyRentalHistory } from '@/lib/db/queri
  * Property History picks them up on the next load via topUpHistory() and
  * sold comps / CMA queries see them like any feed row. Signed-in users only.
  */
-export const MANUAL_SOURCE = 'manual-import';
+// Not exported: a Next.js route module may only export route handlers and the
+// framework's own config keys, so an extra named export fails `next build`.
+const MANUAL_SOURCE = 'manual-import';
 
 interface Body {
   kind?: 'sale' | 'rental';
