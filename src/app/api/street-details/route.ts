@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchAddressSuggestions, type AddressSuggestion } from '@/lib/address-suggest';
 import { getCachedProfilesBySlugs, getSalesForStreet, type PropertySaleRecord } from '@/lib/db/queries';
-import { toSlug } from '@/lib/utils/address';
+import { parseAddress, toSlug } from '@/lib/utils/address';
 import type { StructuredAddress } from '@/types/property';
 import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
 
@@ -14,6 +14,13 @@ const CORS_HEADERS = {
 // Cache only genuine-success responses — never the 400, and never the
 // outer catch's `fallback: true` response, which is a soft failure, not data.
 const OK_HEADERS = { ...CORS_HEADERS, ...PUBLIC_GET_CACHE_HEADERS };
+
+/** Suggestions to request. A street roster needs the whole street, not the
+ *  typeahead default of 20, which truncated longer streets part-way along. */
+const SUGGEST_MAX = 100;
+
+/** Upper bound on returned rows, after suggestions and stored sales are merged. */
+const MAX_ROWS = 200;
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
@@ -57,7 +64,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const all = await fetchAddressSuggestions(query);
+    // A whole street, not a typeahead shortlist — the default of 20 truncated
+    // longer streets mid-way (Innes Ct, Berwick stopped at number 12).
+    const all = await fetchAddressSuggestions(query, undefined, SUGGEST_MAX);
 
     // Filter to addresses on the requested street (same logic as /api/street-search)
     const streetTokens = deriveStreetTokens(query.toLowerCase().split(/\s+/));
@@ -73,7 +82,7 @@ export async function GET(request: NextRequest) {
         return true;
       })
       .sort((a, b) => streetNumberOf(a) - streetNumberOf(b))
-      .slice(0, 40);
+      .slice(0, MAX_ROWS);
 
     if (suggestions.length === 0) {
       return NextResponse.json(
@@ -153,10 +162,52 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // Autocomplete is a suggestion service, not an address register: it knows
+    // nothing of properties that have not been listed lately, and it caps what
+    // it returns. Any stored sale on this street whose address the suggestion
+    // list never mentioned is a real address we already hold data for, so add
+    // it rather than discarding it.
+    const knownSlugs = new Set(parsed.map((p) => p.slug));
+    const targetStreet = streetIdentityOf(first.fullAddress);
+
+    for (const sale of vgSales) {
+      if (!sale.raw_address) continue;
+      const address = parseAddress(sale.raw_address);
+      if (!address.streetNumber) continue;
+      if (streetIdentityOf(sale.raw_address) !== targetStreet) continue;
+
+      const slug = toSlug(address);
+      if (knownSlugs.has(slug)) continue;
+      knownSlugs.add(slug);
+
+      // vgSales is ordered newest-first, so the first sighting is the latest sale.
+      rows.push({
+        streetAddress: [address.unit ? `${address.unit}/${address.streetNumber}` : address.streetNumber, address.streetName, address.streetType]
+          .filter(Boolean)
+          .join(' '),
+        suburb: address.suburb || first.suburb,
+        state: address.state || first.state,
+        postcode: address.postcode || sale.postcode || first.postcode,
+        slug,
+        propertyHref: `/property?address=${encodeURIComponent(JSON.stringify(address))}`,
+        landAreaSqm: sale.land_area_sqm ?? null,
+        buildingAreaSqm: sale.building_area_sqm ?? null,
+        bedrooms: sale.bedrooms ?? null,
+        bathrooms: sale.bathrooms ?? null,
+        garage: sale.car_spaces ?? null,
+        lastSaleDate: sale.sale_date ?? null,
+        lastSalePrice: sale.sale_price ?? null,
+        lastListedDate: sale.listed_date ?? null,
+        listedPrice: null,
+      });
+    }
+
+    rows.sort((a, b) => streetNumberValue(a.streetAddress) - streetNumberValue(b.streetAddress));
+
     const locationLabel = [first.suburb, first.state, first.postcode].filter(Boolean).join(', ');
 
     return NextResponse.json(
-      { rows, streetLabel: streetLabelOf(query), locationLabel },
+      { rows: rows.slice(0, MAX_ROWS), streetLabel: streetLabelOf(query), locationLabel },
       { status: 200, headers: OK_HEADERS }
     );
   } catch (error) {
@@ -180,6 +231,23 @@ function asString(v: unknown): string | null {
 
 function streetNumberOf(s: AddressSuggestion): number {
   return parseInt(s.streetAddress.match(/^\d+/)?.[0] ?? '0', 10);
+}
+
+/** Leading street number of a rendered row address, for the final sort. */
+function streetNumberValue(streetAddress: string): number {
+  // "12/6-8 Innes Ct" sorts on 6 — the street number, not the unit.
+  const match = streetAddress.match(/^(?:\d+[a-z]?\s*\/\s*)?(\d+)/i);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
+ * Identity of the street an address sits on: name plus canonical type, so
+ * "Innes Ct" and "Innes Court" agree and "Innes Grove" does not. parseAddress
+ * already expands the street type, so both sides normalise the same way.
+ */
+function streetIdentityOf(rawAddress: string): string {
+  const { streetName, streetType } = parseAddress(rawAddress);
+  return `${streetName} ${streetType}`.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 function streetLabelOf(query: string): string {
