@@ -46,13 +46,18 @@ const USER_AGENT =
 /**
  * Fetch address suggestions from realestate.com.au suggest API.
  * Optionally filter by Australian state code (e.g. 'VIC', 'NSW').
+ *
+ * `max` exists for callers that need a whole street rather than a typeahead
+ * shortlist (/api/street-details). Autocomplete callers should leave it at the
+ * default — a longer list is slower and no more useful while someone types.
  */
 export async function fetchAddressSuggestions(
   query: string,
-  stateFilter?: string
+  stateFilter?: string,
+  max: number = 20
 ): Promise<AddressSuggestion[]> {
   const url = new URL(SUGGEST_URL);
-  url.searchParams.set('max', '20');
+  url.searchParams.set('max', String(max));
   url.searchParams.set('type', 'address');
   url.searchParams.set('src', 'homepage');
   url.searchParams.set('query', query);
@@ -89,7 +94,7 @@ export async function fetchAddressSuggestions(
     }
   }
 
-  return suggestions.slice(0, 20); // Return more so the API route can sort & trim
+  return suggestions.slice(0, max); // Return more so the API route can sort & trim
 }
 
 /**
