@@ -315,7 +315,7 @@ function StreetResults() {
           <span
             className="text-xl tracking-tight text-[#16181D]"
           >
-            Property<span className="text-[#2E5470]">IQ</span>
+            everyproperty<span className="text-[#2E5470]">AI</span>
             <span className="ml-2 text-xs uppercase tracking-wide text-[#6B7077]">
               by Grants Estate Agents
             </span>
