@@ -1529,7 +1529,32 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
         {/* ─── Property History ─── */}
         <section>
           <SectionTitle title="Property History" />
-          <PropertyTimeline sales={saleHistory} rentals={rentalHistory} />
+          <PropertyTimeline
+            sales={saleHistory}
+            rentals={rentalHistory}
+            onAdd={addressSlug ? async (record) => {
+              // Persist to property_sales / property_rental_history; the
+              // profile refetch below merges it in via topUpHistory().
+              const res = await fetch(`/api/property/${addressSlug}/history`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  ...record,
+                  rawAddress: displayAddress,
+                  suburb: parsedAddress?.suburb ?? (addr.suburb as string | undefined),
+                  state: parsedAddress?.state ?? (addr.state as string | undefined) ?? 'VIC',
+                  postcode: parsedAddress?.postcode ?? (addr.postcode as string | undefined),
+                  latitude: d.latitude,
+                  longitude: d.longitude,
+                }),
+              });
+              if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error ?? 'Could not save the record');
+              }
+              await fetchProperty();
+            } : undefined}
+          />
         </section>
 
         {/* ─── Comparable Sales ─── */}

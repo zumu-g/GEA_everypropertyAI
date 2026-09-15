@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
-import { Clock, TrendingUp, TrendingDown, Home, DollarSign } from "lucide-react";
+import { Clock, TrendingUp, TrendingDown, Home, DollarSign, Plus } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -87,12 +87,147 @@ function growthPercent(older: number, newer: number): number {
   return ((newer - older) / older) * 100;
 }
 
+/** A sale or lease the user records by hand; persisted via /api/property/[slug]/history. */
+export interface NewHistoryRecord {
+  kind: "sale" | "rental";
+  /** YYYY-MM-DD */
+  date: string;
+  /** Sale price, or weekly rent for a lease */
+  amount: number;
+  agency?: string;
+}
+
 interface PropertyTimelineProps {
   sales: SaleHistoryEntry[];
   rentals: RentalHistoryEntry[];
+  /** When provided, an "Add record" form is shown. Should throw on failure. */
+  onAdd?: (record: NewHistoryRecord) => Promise<void>;
 }
 
-export function PropertyTimeline({ sales, rentals }: PropertyTimelineProps) {
+const INPUT_CLASS =
+  "h-10 w-full rounded-lg border border-[#E7E9EE] bg-white px-3 text-sm text-[#16181D] focus:border-[#2E5470] focus:outline-none focus:ring-2 focus:ring-[#2E5470]/20";
+
+function AddRecordForm({ onAdd }: { onAdd: (record: NewHistoryRecord) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<NewHistoryRecord["kind"]>("sale");
+  const [date, setDate] = useState("");
+  const [amount, setAmount] = useState("");
+  const [agency, setAgency] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E7E9EE] bg-white px-3 text-sm font-medium text-[#2E5470] transition-colors hover:bg-[#F4F5F7]"
+      >
+        <Plus className="h-4 w-4" aria-hidden="true" />
+        Add a sale or lease record
+      </button>
+    );
+  }
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const n = Number(amount.replace(/[^0-9.]/g, ""));
+    if (!date || !n) {
+      setError("Date and amount are required");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onAdd({ kind, date, amount: n, agency: agency.trim() || undefined });
+      setOpen(false);
+      setDate("");
+      setAmount("");
+      setAgency("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      aria-label="Add property record"
+      className="rounded-xl border border-[#E7E9EE] bg-white p-4"
+    >
+      <div className="grid gap-3 sm:grid-cols-4">
+        <label className="text-xs font-medium text-[#6B7077]">
+          Record
+          <select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as NewHistoryRecord["kind"])}
+            className={`${INPUT_CLASS} mt-1`}
+          >
+            <option value="sale">Sale</option>
+            <option value="rental">Lease</option>
+          </select>
+        </label>
+        <label className="text-xs font-medium text-[#6B7077]">
+          Date
+          <input
+            type="date"
+            required
+            value={date}
+            max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setDate(e.target.value)}
+            className={`${INPUT_CLASS} mt-1`}
+          />
+        </label>
+        <label className="text-xs font-medium text-[#6B7077]">
+          {kind === "sale" ? "Sale price ($)" : "Weekly rent ($)"}
+          <input
+            type="text"
+            inputMode="numeric"
+            required
+            placeholder={kind === "sale" ? "850000" : "650"}
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className={`${INPUT_CLASS} mt-1 tabular-nums`}
+          />
+        </label>
+        <label className="text-xs font-medium text-[#6B7077]">
+          Agency (optional)
+          <input
+            type="text"
+            value={agency}
+            onChange={(e) => setAgency(e.target.value)}
+            className={`${INPUT_CLASS} mt-1`}
+          />
+        </label>
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-[#C5544A]">
+          {error}
+        </p>
+      )}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="h-10 rounded-lg bg-[#2E5470] px-4 text-sm font-medium text-white transition-colors hover:bg-[#24435A] disabled:opacity-60"
+        >
+          {saving ? "Saving…" : "Save record"}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setOpen(false); setError(null); }}
+          className="h-10 rounded-lg px-4 text-sm font-medium text-[#6B7077] hover:text-[#33363D]"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export function PropertyTimeline({ sales, rentals, onAdd }: PropertyTimelineProps) {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
 
   const prefersReducedMotion =
@@ -112,6 +247,11 @@ export function PropertyTimeline({ sales, rentals }: PropertyTimelineProps) {
         <p className="mt-1 text-sm text-[#6B7077]">
           Sales and rental records will appear here when available.
         </p>
+        {onAdd && (
+          <div className="mt-5 w-full max-w-2xl text-left">
+            <AddRecordForm onAdd={onAdd} />
+          </div>
+        )}
       </div>
     );
   }
@@ -274,6 +414,8 @@ export function PropertyTimeline({ sales, rentals }: PropertyTimelineProps) {
           </motion.div>
         ))}
       </div>
+
+      {onAdd && <AddRecordForm onAdd={onAdd} />}
     </div>
   );
 }

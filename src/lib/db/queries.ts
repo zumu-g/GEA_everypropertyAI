@@ -1701,7 +1701,7 @@ export async function getHistoryRowsForSlug(
 ): Promise<{ sales: PropertySaleRecord[]; rentals: PropertyRentalRecord[] }> {
   if (!isSupabaseConfigured() || !slug) return { sales: [], rentals: [] };
   try {
-    const [salesRes, rentalsRes] = await Promise.all([
+    const [salesRes, rentalsRes, leasesRes] = await Promise.all([
       supabase()
         .from('property_sales')
         .select('raw_address, state, source, sale_price, sale_date, agency_name, agent_name, listing_url')
@@ -1715,12 +1715,22 @@ export async function getHistoryRowsForSlug(
         .eq('address_slug', slug)
         .order('created_at', { ascending: false })
         .limit(20),
+      // Past leases (migration 013) — where manually-added rental records land.
+      supabase()
+        .from('property_rental_history')
+        .select('raw_address, state, source, weekly_rent, lease_date, created_at, agency_name, agent_name')
+        .eq('address_slug', slug)
+        .order('lease_date', { ascending: false })
+        .limit(20),
     ]);
     if (salesRes.error) console.warn('[getHistoryRowsForSlug] sales:', salesRes.error.message);
     if (rentalsRes.error) console.warn('[getHistoryRowsForSlug] rentals:', rentalsRes.error.message);
+    if (leasesRes.error) console.warn('[getHistoryRowsForSlug] leases:', leasesRes.error.message);
+    const leases = ((leasesRes.data ?? []) as Array<PropertyRentalRecord & { lease_date: string }>)
+      .map(({ lease_date, ...r }) => ({ ...r, listed_date: lease_date }));
     return {
       sales: (salesRes.data as PropertySaleRecord[] | null) ?? [],
-      rentals: (rentalsRes.data as PropertyRentalRecord[] | null) ?? [],
+      rentals: [...((rentalsRes.data as PropertyRentalRecord[] | null) ?? []), ...leases],
     };
   } catch (e) {
     console.warn('[getHistoryRowsForSlug] threw:', e);
