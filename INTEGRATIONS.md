@@ -89,7 +89,41 @@ Endpoints (all middleware-gated, same allowlist as the rest of this doc):
 GET /api/sold-sales?suburb=<suburb>&state=VIC&sinceDays=<n>&limit=<n>
 GET /api/comparable-sales?suburb=<suburb>&beds=<n>&baths=<n>&propertyType=<type>
 GET /api/on-market-listings?suburb=<suburb>&sinceDays=<n>&limit=<n>
+GET /api/suburb-values
 ```
+
+**`GET /api/suburb-values`** (added for the `/property-values` guide, U2 of the
+2026-09-07 Casey/Cardinia values plan) — no query params, always returns every
+service-area suburb. Powers the whole-market values page, distinct from the
+agency-scoped `/api/sold-sales` etc above. Source: `suburb_medians` (Valuer-General
+Victoria quarterly + yearly medians, U1's weekly ingest) plus a computed "latest
+period" from the last 90 days of `property_sales`, gated against the newest
+overlapping Valuer-General quarter (±10%) before being trusted. Body:
+
+```jsonc
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-07T...Z",
+  "attribution": { "valuerGeneral": "...CC-BY 4.0", "everyproperty": "..." },
+  "suburbs": [
+    {
+      "name": "Berwick", "slug": "berwick",
+      "houses": {
+        "latest": { "median": 910000, "periodStart": "...", "periodEnd": "...", "periodLabel": "...", "salesCount": 25, "source": "property-sales-90d" } /* or null */,
+        "latestReason": null /* or unmatched | no-data | thin-sample | low-agreement | suppressed */,
+        "change3m": { "percent": 1.1, "fromLabel": "Dec 2025 quarter", "toLabel": "...", "reason": null },
+        "change12m": { "...": "same shape" },
+        "change5y": { "...": "same shape" },
+        "series": [ { "median": 840000, "periodStart": "2024-09-01", "periodLabel": "Sep 2024 quarter", "salesCount": 38, "source": "valuer-general-quarter" }, "..." ]
+      },
+      "units": { "...": "same shape as houses" }
+    }
+  ]
+}
+```
+
+Recommended cache: daily (server-side revalidate), per KTD3 of the plan — this is
+the whole point of the endpoint being cheap to compute in bulk rather than per-suburb.
 
 Verified live 2026-07-14 (all camelCase, no mapping needed):
 

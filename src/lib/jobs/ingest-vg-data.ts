@@ -197,149 +197,6 @@ export async function ingestNswValuerGeneral(
   return { inserted, errors };
 }
 
-// ─── VIC Valuer General (suburb medians) ─────────────────────────────────────
-
-const VIC_DATASET_PAGE =
-  'https://discover.data.vic.gov.au/dataset/victorian-property-sales-report-yearly-summary';
-
-/**
- * Simple CSV/text parser for VIC suburb median rows.
- * Handles comma-separated or tab-separated lines.
- */
-function parseVicMedianLine(
-  line: string,
-  headers: string[]
-): PropertySaleRecord | null {
-  if (!line.trim()) return null;
-
-  const sep = line.includes('\t') ? '\t' : ',';
-  const cols = line.split(sep).map((c) => c.replace(/^["']|["']$/g, '').trim());
-
-  if (cols.length < 3) return null;
-
-  // Try to map common header names
-  const idx = (names: string[]): number =>
-    names.reduce(
-      (found, n) =>
-        found >= 0
-          ? found
-          : headers.findIndex((h) => h.toLowerCase().includes(n.toLowerCase())),
-      -1
-    );
-
-  const suburbIdx = idx(['suburb']);
-  const typeIdx = idx(['type', 'property_type', 'prop_type']);
-  const quarterIdx = idx(['quarter', 'period', 'date']);
-  const medianIdx = idx(['median', 'median_price', 'price']);
-  const countIdx = idx(['count', 'sales', 'number']);
-
-  const suburb = suburbIdx >= 0 ? cols[suburbIdx] : cols[0];
-  const propertyType = typeIdx >= 0 ? cols[typeIdx] : undefined;
-  const quarter = quarterIdx >= 0 ? cols[quarterIdx] : undefined;
-  const medianPrice = medianIdx >= 0 ? parseFloat(cols[medianIdx].replace(/[^0-9.]/g, '')) : NaN;
-  const salesCount = countIdx >= 0 ? parseInt(cols[countIdx].replace(/[^0-9]/g, ''), 10) : NaN;
-
-  if (!suburb) return null;
-
-  return {
-    raw_address: `${suburb} VIC`,
-    suburb,
-    state: 'VIC',
-    property_type: propertyType,
-    sale_date: quarter,
-    source: 'vic-vg-aggregate',
-    raw_data: {
-      median_price: !isNaN(medianPrice) ? medianPrice : undefined,
-      sales_count: !isNaN(salesCount) ? salesCount : undefined,
-      quarter,
-      property_type: propertyType,
-    },
-  };
-}
-
-/**
- * Ingest VIC Valuer General quarterly suburb median data.
- */
-export async function ingestVicSuburbMedians(): Promise<{ rows: number; errors: number }> {
-  console.log('[ingest-vg] VIC: fetching dataset page...');
-
-  let downloadUrl: string | null = null;
-
-  try {
-    const pageResp = await fetch(VIC_DATASET_PAGE, {
-      headers: { 'User-Agent': 'PropertyIQ/1.0 (+https://propertyiq.com.au)' },
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!pageResp.ok) {
-      console.warn(`[ingest-vg] VIC: dataset page fetch failed (${pageResp.status})`);
-      return { rows: 0, errors: 1 };
-    }
-
-    const html = await pageResp.text();
-
-    // Find most recent Excel/CSV/ZIP download link
-    const linkMatch = html.match(
-      /href=["']([^"']*\.(?:xlsx?|csv|zip|XLSX?|CSV|ZIP)[^"']*)["']/i
-    );
-    if (linkMatch) {
-      const href = linkMatch[1];
-      downloadUrl = href.startsWith('http') ? href : `https://discover.data.vic.gov.au${href}`;
-    }
-  } catch (err) {
-    console.error('[ingest-vg] VIC: dataset page error', err);
-    return { rows: 0, errors: 1 };
-  }
-
-  if (!downloadUrl) {
-    console.warn('[ingest-vg] VIC: no download link found on dataset page');
-    return { rows: 0, errors: 1 };
-  }
-
-  console.log(`[ingest-vg] VIC: downloading ${downloadUrl}`);
-
-  try {
-    const fileResp = await fetch(downloadUrl, {
-      headers: { 'User-Agent': 'PropertyIQ/1.0 (+https://propertyiq.com.au)' },
-      signal: AbortSignal.timeout(120_000),
-    });
-
-    if (!fileResp.ok) {
-      console.warn(`[ingest-vg] VIC: download failed (${fileResp.status})`);
-      return { rows: 0, errors: 1 };
-    }
-
-    // Treat as text (CSV or text-extractable Excel)
-    const text = await fileResp.text();
-    const lines = text.split('\n').filter((l) => l.trim());
-
-    if (lines.length < 2) {
-      console.warn('[ingest-vg] VIC: downloaded file appears empty');
-      return { rows: 0, errors: 1 };
-    }
-
-    // First non-empty line as header
-    const sep = lines[0].includes('\t') ? '\t' : ',';
-    const headers = lines[0].split(sep).map((h) => h.replace(/^["']|["']$/g, '').trim());
-
-    const records: PropertySaleRecord[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const record = parseVicMedianLine(lines[i], headers);
-      if (record) records.push(record);
-    }
-
-    if (records.length > 0) {
-      await insertPropertySales(records);
-    }
-
-    console.log(`[ingest-vg] VIC complete: ${records.length} rows`);
-    return { rows: records.length, errors: 0 };
-  } catch (err) {
-    console.error('[ingest-vg] VIC: download/parse error', err);
-    return { rows: 0, errors: 1 };
-  }
-}
-
 // ─── WA Landgate ──────────────────────────────────────────────────────────────
 
 const WA_CATALOGUE_URL = 'https://catalogue.data.wa.gov.au/dataset/sales-evidence-data';
@@ -472,9 +329,10 @@ export async function ingestWaLandgate(): Promise<{ inserted: number; errors: nu
 
 // ─── VIC Valuer General (individual property sales) ──────────────────────────
 //
-// Distinct from ingestVicSuburbMedians() above (aggregate quarterly stats):
-// this ingests one row per actual sale, giving property_sales a genuine
-// multi-sale history over time as it re-runs each quarter.
+// Distinct from src/lib/jobs/vg-suburb-medians.ts (aggregate suburb medians,
+// in the dedicated suburb_medians table): this ingests one row per actual
+// sale, giving property_sales a genuine multi-sale history over time as it
+// re-runs each quarter.
 
 const VIC_INDIVIDUAL_SALES_PAGE =
   'https://www.land.vic.gov.au/valuations/resources-and-reports/property-sales-statistics';
@@ -709,9 +567,9 @@ async function discoverVicIndividualSalesLinks(logPrefix: string): Promise<strin
 
 /**
  * Auto-discover and ingest the current quarter's VIC individual property
- * sales CSV — no manual URL required. Mirrors ingestVicSuburbMedians()'s
- * fetch-page/regex-link/fetch-file shape, against the individual-sales
- * statistics page instead of the yearly-summary dataset page.
+ * sales CSV — no manual URL required. Mirrors the fetch-page/regex-link/
+ * fetch-file shape used by src/lib/jobs/vg-suburb-medians.ts, against the
+ * individual-sales statistics page instead of a suburb-median dataset page.
  */
 export async function ingestVicIndividualSales(): Promise<{ inserted: number; errors: number }> {
   const links = await discoverVicIndividualSalesLinks('[ingest-vg] VIC individual sales');
@@ -815,11 +673,13 @@ export async function runValuerGeneralIngestion(
   }
 
   if (options.vic !== false) {
-    tasks.push(
-      ingestVicSuburbMedians().then((r) =>
-        console.log(`[ingest-vg] VIC summary: ${r.rows} rows, ${r.errors} errors`)
-      )
-    );
+    // ingestVicSuburbMedians() (below) is retired from this combined run --
+    // it wrote non-idempotent pseudo-sale rows into property_sales
+    // (source: 'vic-vg-aggregate'; null price never collides with the
+    // unique key, so every weekly run duplicated it). Suburb medians are now
+    // ingested by src/lib/jobs/vg-suburb-medians.ts into the dedicated
+    // suburb_medians table via the separate /api/cron/vg-suburb-medians
+    // route -- see docs/plans/2026-09-07-1735-feat-casey-cardinia-values-guide-plan.md (U1).
     tasks.push(
       ingestVicIndividualSales().then((r) =>
         console.log(`[ingest-vg] VIC individual sales summary: ${r.inserted} inserted, ${r.errors} errors`)

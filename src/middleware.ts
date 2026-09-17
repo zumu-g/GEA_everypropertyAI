@@ -97,6 +97,7 @@ export const config = {
     '/api/comparable-sales',
     '/api/sold-sales',
     '/api/market-segments',
+    '/api/suburb-values',
     '/api/on-market-listings',
     '/api/rental-listings',
     '/api/vendor-report',
