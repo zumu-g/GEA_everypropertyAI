@@ -875,16 +875,6 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
 
           {/* Track + quick stats + on-market tag: one row */}
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-[#E7E9EE] px-6 py-4 sm:px-8">
-            {addressSlug && property.data && (
-              <TrackPropertyButton
-                addressSlug={addressSlug}
-                fullAddress={
-                  (property.data.address as Record<string, unknown> | undefined)?.fullAddress as string
-                  ?? (property.data.fullAddress as string | undefined)
-                  ?? ''
-                }
-              />
-            )}
             {(() => {
               const status = String(d.listingStatus ?? '').toLowerCase();
               return (status === 'for-sale' || status === 'active') ? (
@@ -893,13 +883,6 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 </span>
               ) : null;
             })()}
-            <button
-              onClick={() => setDownloadModalOpen(true)}
-              className="flex items-center gap-2 rounded-xl border border-[#E7E9EE] px-4 py-2.5 text-sm font-medium text-[#4A4E57] transition-colors hover:border-[#2E5470] hover:text-[#2E5470]"
-            >
-              <FileDown className="h-4 w-4" />
-              Download Report
-            </button>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-[#E7E9EE] bg-white px-4 py-2">
                 <EditableStat
                   field="bedrooms"
@@ -964,6 +947,13 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                   onEditValueChange={setEditValue}
                 />
             </div>
+            <button
+              onClick={() => setDownloadModalOpen(true)}
+              className="ml-auto flex items-center gap-2 rounded-xl border border-[#E7E9EE] px-4 py-2.5 text-sm font-medium text-[#4A4E57] transition-colors hover:border-[#2E5470] hover:text-[#2E5470]"
+            >
+              <FileDown className="h-4 w-4" />
+              Download Report
+            </button>
             {!isVacantLand && (d.bedrooms == null || (d.landArea ?? d.landAreaSqm) == null) && (
               <p className="w-full text-xs text-[#8A6425]">
                 Some property details are unknown, so the estimate below is less
