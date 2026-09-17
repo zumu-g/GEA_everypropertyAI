@@ -7,13 +7,18 @@ name: Nightly sale-attributes backfill
 # estimator with bedrooms NULL and dodged bed-match weighting (12 Basalt Dr
 # investigation, 2026-08-18).
 #
-# 200 rows/night, most-recent sales first, 4s between fetches — ~27 min/run,
-# ~30k backlog cleared in a few months with the freshest (most comp-relevant)
-# rows fixed first. Idempotent: only NULL columns are ever written.
+# 120 rows/run, most-recent sales first. A Web Unlocker fetch of a listing page
+# takes ~15-20s (not 4s), so 120 rows ≈ 40 min; the script stops itself at the
+# --max-minutes budget rather than being killed by timeout-minutes. Vacant land
+# is skipped and pages without bedrooms are marked in raw_data so the drip
+# advances instead of refetching the same rows nightly (2026-09-10 fix: 13 rows
+# filled in 3 weeks before that). Idempotent: only NULL columns are ever written.
 #
-# Schedule: 14:41 UTC ≈ 00:41 Melbourne (12:41am AEST / 1:41am AEDT), minute
-# deliberately OFF the top of the hour (GitHub drops :00-queued runs — see
-# daily-domain-scrape.yml note).
+# Schedule: 00:53 UTC ≈ 10:53 Melbourne, after daily-domain-scrape. The old
+# 14:41 UTC (00:41 Melbourne) slot hit Domain's protection wall on every row,
+# every night from 24 Aug to 9 Sep 2026 — the same URLs fetch fine by day.
+# Minute deliberately OFF the top of the hour (GitHub drops :00-queued runs —
+# see daily-domain-scrape.yml note).
 #
 # Required repo secrets (all already present for the Domain feeds):
 #   BRIGHTDATA_WEB_UNLOCKER_TOKEN, BRIGHTDATA_WEB_UNLOCKER_ZONE,
@@ -21,7 +26,7 @@ name: Nightly sale-attributes backfill
 
 on:
   schedule:
-    - cron: '41 14 * * *'
+    - cron: '53 0 * * *'
   workflow_dispatch: {}
 
 concurrency:
@@ -43,5 +48,5 @@ jobs:
         with:
           node-version: '20'
       # Node built-ins only — no npm install needed.
-      - name: Backfill 200 rows (most recent first)
-        run: node scripts/backfill-sale-attrs-from-domain.mjs --limit 200 --delay 4000
+      - name: Backfill 120 rows (most recent first)
+        run: node scripts/backfill-sale-attrs-from-domain.mjs --limit 120 --delay 2000 --max-minutes 40
