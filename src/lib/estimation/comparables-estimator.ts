@@ -458,6 +458,36 @@ export function estimateFromComparables(
     }
   }
 
+  // Step B1b — bed-exact anchoring. The ±1-bed similarity weight (0.6) is a
+  // discount, not exclusion: a 5-bed subject in a 4-bed-dominated pool sees
+  // 15 four-bed comps out-vote 5 five-bed comps in the weighted median and
+  // lands in the 4-bed price band (8 Goodall Ct: $1.05M against a $1.3M
+  // five-bed segment). When enough exact-bed comps exist, estimate from those
+  // alone — same shape as the null-attr set-aside above, and it puts the
+  // outlier-trim anchor on the right segment.
+  //
+  // Never trade the land-similar guarantee for bed-exactness: an acreage
+  // subject's widened-radius acreage comps are typically ±1 bed from it, and
+  // landSimilarSparse was computed on the pool BEFORE this step — dropping
+  // them here would silently regress the acreage path (PR #51). Anchor only
+  // when the exact-bed subset keeps as many land-similar comps as the
+  // guarantee requires (or the pool never had that many to begin with).
+  let bedMismatchSetAside = 0;
+  if (subject.bedrooms != null) {
+    const exact = pool.filter((c) => c.bedrooms === subject.bedrooms);
+    const landSimilarCount = (cs: WeightedComp[]) =>
+      cs.filter((c) => isLandSimilar(subject.landAreaSqm, c.landAreaSqm)).length;
+    const keepsLandGuarantee =
+      isUnit ||
+      !subject.landAreaSqm ||
+      landSimilarCount(pool) < MIN_LAND_SIMILAR_COMPS ||
+      landSimilarCount(exact) >= MIN_LAND_SIMILAR_COMPS;
+    if (exact.length >= IDEAL_COMPS && exact.length < pool.length && keepsLandGuarantee) {
+      bedMismatchSetAside = pool.length - exact.length;
+      pool = exact;
+    }
+  }
+
   // Step B2 — price-outlier trim around the pool's weighted median.
   let outliersTrimmed = 0;
   if (pool.length > MIN_COMPS) {
@@ -628,6 +658,9 @@ export function estimateFromComparables(
       : '') +
     (nullAttrSetAside > 0
       ? ` ${nullAttrSetAside} nearby sale${nullAttrSetAside === 1 ? '' : 's'} without recorded attributes ${nullAttrSetAside === 1 ? 'was' : 'were'} set aside.`
+      : '') +
+    (bedMismatchSetAside > 0
+      ? ` ${bedMismatchSetAside} sale${bedMismatchSetAside === 1 ? '' : 's'} with a different bedroom count ${bedMismatchSetAside === 1 ? 'was' : 'were'} set aside.`
       : '') +
     (outliersTrimmed > 0
       ? ` ${outliersTrimmed} price outlier${outliersTrimmed === 1 ? '' : 's'} trimmed.`

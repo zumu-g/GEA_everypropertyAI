@@ -214,7 +214,15 @@ export async function getEstimate(
           ? true
           : [...comps.values()].filter((c) => isLandSimilar(subject.landAreaSqm, c.landAreaSqm)).length >=
             MIN_LAND_SIMILAR_COMPS;
-      if (recentEnough && landSimilarEnough) break;
+      // Likewise for bedrooms: a pool with no exact-bed comps prices the
+      // subject off the neighbouring segment (8 Goodall Ct, 5-bed in 4-bed
+      // stock) — keep widening until there are enough exact-bed comps for the
+      // estimator's bed-exact anchoring (IDEAL_COMPS) to fire.
+      const bedsMatchedEnough =
+        subject.bedrooms == null
+          ? true
+          : [...comps.values()].filter((c) => c.bedrooms === subject.bedrooms).length >= IDEAL_COMPS;
+      if (recentEnough && landSimilarEnough && bedsMatchedEnough) break;
     }
 
     // ── Acreage widening ─────────────────────────────────────────────────────

@@ -644,3 +644,61 @@ describe('building-area similarity (wBuild)', () => {
     expect(unknown / same).toBeLessThan(0.9);
   });
 });
+
+describe('bed-exact anchoring (8 Goodall Ct shape)', () => {
+  // 5-bed subject in a 4-bed-dominated pool: the ±1-bed weight (0.6) is a
+  // discount, not exclusion, so 15 four-bed comps out-vote 5 five-bed comps in
+  // the weighted median and the estimate settles in the 4-bed price band.
+  const FIVE_BED_SUBJECT: ComparableSubject = { ...SUBJECT, bedrooms: 5, bathrooms: 3, landAreaSqm: 850 };
+
+  it('enough exact-bed comps → estimate from those alone, not the 4-bed majority', () => {
+    const comps = [
+      ...Array.from({ length: 8 }, (_, i) => comp(1_300_000 + i * 20_000, { beds: 5, baths: 3, land: 650 }, i)),
+      ...Array.from({ length: 15 }, (_, i) => comp(950_000 + i * 10_000, { beds: 4, baths: 2, land: 650 }, 100 + i)),
+    ];
+    const result = estimateFromComparables(FIVE_BED_SUBJECT, comps, MARKET, NOW)!;
+    expect(result.priceMid).toBeGreaterThan(1_250_000);
+    expect(result.compCount).toBe(8);
+    expect(result.methodology).toContain('15 sales with a different bedroom count were set aside');
+  });
+
+  it('too few exact-bed comps → no anchoring, weighted pool used as before', () => {
+    const comps = [
+      ...Array.from({ length: 4 }, (_, i) => comp(1_300_000, { beds: 5, baths: 3, land: 650 }, i)),
+      ...Array.from({ length: 15 }, (_, i) => comp(950_000, { beds: 4, baths: 2, land: 650 }, 100 + i)),
+    ];
+    const result = estimateFromComparables(FIVE_BED_SUBJECT, comps, MARKET, NOW)!;
+    expect(result.compCount).toBe(19);
+    expect(result.methodology).not.toContain('different bedroom count');
+  });
+});
+
+describe('bed-exact anchoring x land-similar guarantee (review finding #1)', () => {
+  // Acreage subject: the widened-radius acreage comps are ±1 bed from the
+  // subject, while 8+ same-bed SUBURBAN comps sit nearby. B1b must not throw
+  // the land-similar comps away — that silently regresses the acreage path
+  // (PR #51) because landSimilarSparse was computed on the pre-B1b pool.
+  const ACREAGE_5BED: ComparableSubject = { ...SUBJECT, bedrooms: 5, bathrooms: 3, landAreaSqm: 78_000 };
+
+  it('exact-bed subset has no land-similar comps → anchoring is skipped', () => {
+    const comps = [
+      ...Array.from({ length: 8 }, (_, i) => comp(1_300_000 + i * 20_000, { beds: 5, baths: 3, land: 800, distanceKm: 0.8 }, i)),
+      ...Array.from({ length: 3 }, (_, i) => comp(3_500_000 + i * 100_000, { beds: 4, baths: 2, land: 70_000, distanceKm: 12 }, 100 + i)),
+    ];
+    const result = estimateFromComparables(ACREAGE_5BED, comps, MARKET, NOW)!;
+    expect(result.methodology).not.toContain('different bedroom count');
+    // The acreage comps stay in the pool and (via the wide acreage sigma)
+    // carry the weighted median — the suburban 5-beds fall out as outliers.
+    expect(result.priceMid).toBeGreaterThan(3_000_000);
+  });
+
+  it('exact-bed subset still holds the land-similar comps → anchoring fires as normal', () => {
+    const comps = [
+      ...Array.from({ length: 8 }, (_, i) => comp(3_400_000 + i * 50_000, { beds: 5, baths: 3, land: 70_000, distanceKm: 8 }, i)),
+      ...Array.from({ length: 5 }, (_, i) => comp(1_000_000, { beds: 4, baths: 2, land: 700, distanceKm: 0.5 }, 100 + i)),
+    ];
+    const result = estimateFromComparables(ACREAGE_5BED, comps, MARKET, NOW)!;
+    expect(result.methodology).toContain('5 sales with a different bedroom count were set aside');
+    expect(result.compCount).toBe(8);
+  });
+});

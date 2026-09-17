@@ -212,3 +212,58 @@ describe('getEstimate — cross-source address dedup (#8)', () => {
     expect('compCount' in result! ? result.compCount : undefined).toBe(4);
   });
 });
+
+describe('getEstimate — bed-matched comp guarantee (8 Goodall Ct shape)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const FIVE_BED_SUBJECT: EstimateSubjectInput = {
+    ...HOUSE_SUBJECT,
+    bedrooms: 5,
+    bathrooms: 3,
+    landAreaSqm: 700,
+  };
+
+  function bedRow(bedrooms: number, i: number, distKm: number) {
+    return saleRow(
+      { property_type: 'House', bedrooms, bathrooms: 2, land_area_sqm: 700, latitude: LAT + distKm / 111 },
+      i,
+    );
+  }
+
+  it('recent + land-similar satisfied at 1km but no exact-bed comps → ladder widens to 2km then stops', async () => {
+    vi.mocked(getRowsNearby).mockImplementation(async (_table, _lat, _lng, radius) => {
+      if (radius === 1) return Array.from({ length: 8 }, (_, i) => bedRow(4, i, 0.8)) as never;
+      if (radius === 2) return Array.from({ length: 8 }, (_, i) => bedRow(5, 10 + i, 1.5)) as never;
+      return [] as never;
+    });
+
+    const result = await getEstimate(FIVE_BED_SUBJECT, NOW);
+    expect(result).not.toBeNull();
+    expect(getRowsNearby).toHaveBeenCalledTimes(2);
+    expect('compCount' in result! ? result.compCount : undefined).toBe(8);
+    expect('methodology' in result! ? result.methodology : '').toContain('8 sales with a different bedroom count were set aside');
+  });
+
+  it('exact-bed comps never reach IDEAL_COMPS → ladder exhausts all rungs, estimate still returns without bed anchoring', async () => {
+    vi.mocked(getRowsNearby).mockImplementation(async (_table, _lat, _lng, radius) => {
+      if (radius === 1) return [...Array.from({ length: 8 }, (_, i) => bedRow(4, i, 0.8)), bedRow(5, 20, 0.6)] as never;
+      if (radius === 2) return [bedRow(5, 21, 1.5), bedRow(5, 22, 1.6)] as never;
+      if (radius === 5) return [bedRow(5, 23, 3.0)] as never;
+      return [] as never;
+    });
+
+    const result = await getEstimate(FIVE_BED_SUBJECT, NOW);
+    expect(result).not.toBeNull();
+    expect(getRowsNearby).toHaveBeenCalledTimes(3);
+    expect('compCount' in result! ? result.compCount : undefined).toBe(12);
+    expect('methodology' in result! ? result.methodology : '').not.toContain('different bedroom count');
+  });
+
+  it('subject bedrooms unknown → ladder behaviour unchanged', async () => {
+    vi.mocked(getRowsNearby).mockResolvedValue(
+      Array.from({ length: 8 }, (_, i) => bedRow(4, i, 0.8)) as never,
+    );
+    await getEstimate({ ...FIVE_BED_SUBJECT, bedrooms: undefined }, NOW);
+    expect(getRowsNearby).toHaveBeenCalledTimes(1);
+  });
+});
