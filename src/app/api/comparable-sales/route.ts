@@ -352,8 +352,16 @@ export async function GET(request: NextRequest) {
         if (!vg.sale_price) continue;
 
         let score = 90; // Slightly lower base than property_cache matches
-        // Note: VG data rarely carries bedroom/bathroom counts so those signals
-        // are not available for scoring here — property type and recency only.
+        // Feed sales now carry bed/bath/car attributes (Domain attrs backfill),
+        // so score on them the same way as property_cache rows when present.
+        if (beds !== undefined && vg.bedrooms != null) {
+          if (vg.bedrooms === beds) score += 20;
+          else if (Math.abs(vg.bedrooms - beds) === 1) score += 10;
+        }
+        if (baths !== undefined && vg.bathrooms != null) {
+          if (vg.bathrooms === baths) score += 10;
+          else if (Math.abs(vg.bathrooms - baths) === 1) score += 5;
+        }
         if (propertyType && vg.property_type &&
             vg.property_type.toLowerCase() === propertyType.toLowerCase()) {
           score += 10;
@@ -370,6 +378,9 @@ export async function GET(request: NextRequest) {
           suburb: vg.suburb ?? suburb,
           price: vg.sale_price,
           saleDate: vg.sale_date ?? '',
+          beds: vg.bedrooms ?? undefined,
+          baths: vg.bathrooms ?? undefined,
+          cars: vg.car_spaces ?? undefined,
           landAreaSqm: vg.land_area_sqm ?? undefined,
           similarityScore: score,
           imageUrl: vg.image_url ?? undefined,
