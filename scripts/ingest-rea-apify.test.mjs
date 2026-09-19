@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapOnMarket } from './ingest-rea-apify.mjs';
+import { mapOnMarket, buildInput } from './ingest-rea-apify.mjs';
 
 const base = {
   Street: '6 Lauradan Avenue',
@@ -32,5 +32,16 @@ describe('mapOnMarket image_url', () => {
 
   it('null image_url for a non-URL Photos value', () => {
     expect(mapOnMarket({ ...base, Photos: 21 }).image_url).toBeNull();
+  });
+});
+
+describe('buildInput cost controls', () => {
+  it('new mode: Newest sort, newListingOnly, small page', () => {
+    const i = buildInput(['Berwick, VIC 3806'], { mode: 'new', resultCount: 10, pages: 1 });
+    expect(i).toMatchObject({ sortOrder: 'Newest', newListingOnly: true, resultCount: 10, surroundingSuburbs: false });
+  });
+  it('full mode: Newest sort, no new-only filter, 25/page', () => {
+    const i = buildInput(['Berwick, VIC 3806'], { mode: 'full', resultCount: 25, pages: 1 });
+    expect(i).toMatchObject({ sortOrder: 'Newest', newListingOnly: false, resultCount: 25 });
   });
 });
