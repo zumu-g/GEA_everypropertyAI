@@ -25,13 +25,14 @@ name: Daily REA scrape (Casey/Cardinia)
 # COST (2026-09-19 review): the actor bills per result and has no memory of what we
 # hold, so a daily 25/suburb 'Recommended' sweep re-bought ~760 known listings a day
 # (~US$70/mo, ~4% new). Six days a week we now run REA_MODE=new (Newest sort +
-# newListingOnly, 10/suburb); the Saturday-UTC run (Sunday 7:37am Melbourne) is a
-# REA_MODE=full 25/suburb sweep to pick up removals and price changes.
+# newListingOnly, 10/suburb) Tue–Fri Melbourne; the Sunday-UTC run (Monday 7:37am
+# Melbourne) is a REA_MODE=full 25/suburb sweep for removals, price changes and the
+# weekend's new listings. No weekend runs.
 
 on:
   schedule:
-    - cron: '37 21 * * 0-5' # Mon–Sat Melbourne: new listings only
-    - cron: '37 21 * * 6'   # Sun Melbourne: full 25/suburb sweep
+    - cron: '37 21 * * 1-4' # Tue–Fri Melbourne (UTC is a day behind): new listings only
+    - cron: '37 21 * * 0'   # Mon Melbourne: full 25/suburb sweep, catches the weekend
   workflow_dispatch:      # manual "Run workflow" from the Actions tab
     inputs:
       mode:
@@ -53,7 +54,7 @@ jobs:
       APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      REA_MODE: ${{ github.event.inputs.mode || (github.event.schedule == '37 21 * * 6' && 'full' || 'new') }}
+      REA_MODE: ${{ github.event.inputs.mode || (github.event.schedule == '37 21 * * 0' && 'full' || 'new') }}
       REA_RESULT_COUNT: ${{ vars.REA_RESULT_COUNT || '' }}
       REA_PAGES: ${{ vars.REA_PAGES || '1' }}
       # Healthchecks.io dead-man's-switch; the script no-ops the ping if this is empty.
