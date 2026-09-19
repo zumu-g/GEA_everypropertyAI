@@ -21,7 +21,13 @@
 // Env (from .env.local or process.env): NEXT_PUBLIC_SUPABASE_URL,
 //   SUPABASE_SERVICE_ROLE_KEY, APIFY_API_TOKEN.
 // Optional tuning env: REA_RESULT_COUNT (default 25), REA_PAGES (default 1),
-//   SLUGS (comma-separated suburb slugs to override the full set).
+//   REA_MODE = 'new' (default) | 'full', SLUGS (comma-separated slugs to override the set).
+//
+// COST: the actor bills US$0.003 per dataset item and has no memory of what we hold,
+// so a 'Recommended'-sorted 25/suburb page re-bills ~760 already-known listings daily
+// (~4% new). 'new' mode sorts Newest + newListingOnly with a small page so we mostly
+// pay for genuinely new listings; 'full' mode (weekly) re-sweeps 25/suburb to catch
+// removals and price changes. See docs/reviews (2026-09-19 Apify cost review).
 // ============================================================
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -46,7 +52,8 @@ const APIFY_TOKEN = process.env.APIFY_API_TOKEN;
 const APIFY_BASE = 'https://api.apify.com/v2';
 const ACTOR_ID = 'one-api~realestate-com-au-scraper';
 const SOURCE = 'rea-apify-one-api';
-const RESULT_COUNT = Number(process.env.REA_RESULT_COUNT) || 25;
+const MODE = process.env.REA_MODE === 'full' ? 'full' : 'new';
+const RESULT_COUNT = Number(process.env.REA_RESULT_COUNT) || (MODE === 'new' ? 10 : 25);
 const PAGES = Number(process.env.REA_PAGES) || 1;
 // Each scheduled service (e.g. Railway cron) sets its own Healthchecks.io check UUID.
 const HEALTHCHECK_UUID = process.env.HEALTHCHECK_UUID;
@@ -135,6 +142,19 @@ export function mapOnMarket(x) {
   };
 }
 
+/** Actor input for the run. 'new' = Newest sort + REA's new-listing filter, small page. */
+export function buildInput(searchInputs, { mode = MODE, resultCount = RESULT_COUNT, pages = PAGES } = {}) {
+  return {
+    search_inputs: searchInputs,
+    searchType: 'For_Sale',
+    surroundingSuburbs: false,
+    pages,
+    resultCount,
+    sortOrder: 'Newest',
+    newListingOnly: mode === 'new',
+  };
+}
+
 // ─── Apify run + dataset paging ──────────────────────────────────────────────
 async function startRun(input) {
   const res = await fetch(`${APIFY_BASE}/acts/${ACTOR_ID}/runs?token=${APIFY_TOKEN}&waitForFinish=60`, {
@@ -214,18 +234,12 @@ async function main() {
   const slugs = process.env.SLUGS ? process.env.SLUGS.split(',').map(s=>s.trim()).filter(Boolean) : SUBURB_SLUGS.slice(0, maxSuburbs);
   const searchInputs = slugs.map(slugToSearchInput);
 
-  console.log(`\n=== REA on-market via Apify ${ACTOR_ID} (${searchInputs.length} suburbs, ${RESULT_COUNT}/pg × ${PAGES}pg) ===`);
+  console.log(`\n=== REA on-market via Apify ${ACTOR_ID} (${searchInputs.length} suburbs, mode=${MODE}, ${RESULT_COUNT}/pg × ${PAGES}pg) ===`);
 
   await pingStart(HEALTHCHECK_UUID);
   const sbCfg = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
 
-  const input = {
-    search_inputs: searchInputs,
-    searchType: 'For_Sale',
-    surroundingSuburbs: false,
-    pages: PAGES,
-    resultCount: RESULT_COUNT,
-  };
+  const input = buildInput(searchInputs);
 
   console.log('Starting actor run...');
   const started = await startRun(input);

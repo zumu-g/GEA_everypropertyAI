@@ -20,12 +20,25 @@ name: Daily REA scrape (Casey/Cardinia)
 #   APIFY_API_TOKEN, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 #   HEALTHCHECK_REA_UUID (Healthchecks.io dead-man's-switch check ID; the script no-ops
 #     the ping when HEALTHCHECK_UUID is unset, so this is safe to add before it exists.)
-# Optional repo variables: REA_RESULT_COUNT (default 25), REA_PAGES (default 1)
+# Optional repo variables: REA_RESULT_COUNT (default 10 new / 25 full), REA_PAGES (default 1)
+#
+# COST (2026-09-19 review): the actor bills per result and has no memory of what we
+# hold, so a daily 25/suburb 'Recommended' sweep re-bought ~760 known listings a day
+# (~US$70/mo, ~4% new). Six days a week we now run REA_MODE=new (Newest sort +
+# newListingOnly, 10/suburb); the Saturday-UTC run (Sunday 7:37am Melbourne) is a
+# REA_MODE=full 25/suburb sweep to pick up removals and price changes.
 
 on:
   schedule:
-    - cron: '37 21 * * *'   # off-peak minute, NOT ':00' — see note above
-  workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
+    - cron: '37 21 * * 0-5' # Mon–Sat Melbourne: new listings only
+    - cron: '37 21 * * 6'   # Sun Melbourne: full 25/suburb sweep
+  workflow_dispatch:      # manual "Run workflow" from the Actions tab
+    inputs:
+      mode:
+        description: "new (cheap, newest+newListingOnly) or full (25/suburb sweep)"
+        default: new
+        type: choice
+        options: [new, full]
 
 concurrency:
   group: daily-rea-apify-scrape
@@ -40,7 +53,8 @@ jobs:
       APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      REA_RESULT_COUNT: ${{ vars.REA_RESULT_COUNT || '25' }}
+      REA_MODE: ${{ github.event.inputs.mode || (github.event.schedule == '37 21 * * 6' && 'full' || 'new') }}
+      REA_RESULT_COUNT: ${{ vars.REA_RESULT_COUNT || '' }}
       REA_PAGES: ${{ vars.REA_PAGES || '1' }}
       # Healthchecks.io dead-man's-switch; the script no-ops the ping if this is empty.
       HEALTHCHECK_UUID: ${{ secrets.HEALTHCHECK_REA_UUID }}
