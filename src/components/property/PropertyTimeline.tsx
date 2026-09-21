@@ -102,13 +102,30 @@ interface PropertyTimelineProps {
   rentals: RentalHistoryEntry[];
   /** When provided, an "Add record" form is shown. Should throw on failure. */
   onAdd?: (record: NewHistoryRecord) => Promise<void>;
+  /** Parses pasted history text into records for review (POST …/history/parse). */
+  onParse?: (text: string) => Promise<ParsedHistoryRow[]>;
+}
+
+/** One row back from the parser; listings are shown but cannot be stored. */
+export interface ParsedHistoryRow {
+  kind: "sale" | "rental" | "listing";
+  date: string;
+  amount?: number;
+  agency?: string;
 }
 
 const INPUT_CLASS =
   "h-10 w-full rounded-lg border border-[#E7E9EE] bg-white px-3 text-sm text-[#16181D] focus:border-[#2E5470] focus:outline-none focus:ring-2 focus:ring-[#2E5470]/20";
 
-function AddRecordForm({ onAdd }: { onAdd: (record: NewHistoryRecord) => Promise<void> }) {
+function AddRecordForm({
+  onAdd,
+  onParse,
+}: {
+  onAdd: (record: NewHistoryRecord) => Promise<void>;
+  onParse?: (text: string) => Promise<ParsedHistoryRow[]>;
+}) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<"single" | "paste">("single");
   const [kind, setKind] = useState<NewHistoryRecord["kind"]>("sale");
   const [date, setDate] = useState("");
   const [amount, setAmount] = useState("");
@@ -151,12 +168,39 @@ function AddRecordForm({ onAdd }: { onAdd: (record: NewHistoryRecord) => Promise
     }
   };
 
+  const modeSwitch = onParse ? (
+    <div role="tablist" className="mb-3 flex gap-1 text-xs font-medium">
+      {(["single", "paste"] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          role="tab"
+          aria-selected={mode === m}
+          onClick={() => setMode(m)}
+          className={`rounded-md px-2.5 py-1 ${mode === m ? "bg-[#2E5470] text-white" : "text-[#6B7077] hover:bg-[#F4F5F7]"}`}
+        >
+          {m === "single" ? "One record" : "Paste history"}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  if (onParse && mode === "paste") {
+    return (
+      <div className="rounded-xl border border-[#E7E9EE] bg-white p-4">
+        {modeSwitch}
+        <PasteHistoryForm onAdd={onAdd} onParse={onParse} onDone={() => setOpen(false)} />
+      </div>
+    );
+  }
+
   return (
     <form
       onSubmit={submit}
       aria-label="Add property record"
       className="rounded-xl border border-[#E7E9EE] bg-white p-4"
     >
+      {modeSwitch}
       <div className="grid gap-3 sm:grid-cols-4">
         <label className="text-xs font-medium text-[#6B7077]">
           Record
@@ -227,7 +271,169 @@ function AddRecordForm({ onAdd }: { onAdd: (record: NewHistoryRecord) => Promise
   );
 }
 
-export function PropertyTimeline({ sales, rentals, onAdd }: PropertyTimelineProps) {
+/** Paste an REA/Domain history panel → parse → tick rows → save each via onAdd. */
+function PasteHistoryForm({
+  onAdd,
+  onParse,
+  onDone,
+}: {
+  onAdd: (record: NewHistoryRecord) => Promise<void>;
+  onParse: (text: string) => Promise<ParsedHistoryRow[]>;
+  onDone: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [rows, setRows] = useState<(ParsedHistoryRow & { checked: boolean })[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const parse = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const parsed = await onParse(text);
+      if (parsed.length === 0) setError("No sales or leases found in that text");
+      setRows(parsed.map((r) => ({ ...r, checked: r.kind !== "listing" && !!r.amount })));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not parse the text");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const save = async () => {
+    if (!rows) return;
+    const todo = rows.filter((r) => r.checked && r.kind !== "listing" && r.amount);
+    setBusy(true);
+    setError(null);
+    let saved = 0;
+    try {
+      for (const r of todo) {
+        await onAdd({ kind: r.kind as "sale" | "rental", date: r.date, amount: r.amount!, agency: r.agency });
+        saved++;
+      }
+      onDone();
+    } catch (err) {
+      setError(`${err instanceof Error ? err.message : "Save failed"} (${saved} of ${todo.length} saved)`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const update = (i: number, patch: Partial<ParsedHistoryRow & { checked: boolean }>) =>
+    setRows((prev) => prev && prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  const selectable = rows?.filter((r) => r.checked && r.kind !== "listing" && r.amount).length ?? 0;
+
+  return (
+    <div aria-label="Paste property history">
+      {!rows ? (
+        <>
+          <label className="text-xs font-medium text-[#6B7077]">
+            Paste the property history from realestate.com.au, Domain or PriceFinder
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={8}
+              placeholder={"Sold\n$450,000\n10 Jan 2013 by Grant's Estate Agents - Berwick\n…"}
+              className={`${INPUT_CLASS} mt-1 h-auto py-2 font-mono text-xs`}
+            />
+          </label>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={busy || !text.trim()}
+              onClick={parse}
+              className="h-10 rounded-lg bg-[#2E5470] px-4 text-sm font-medium text-white transition-colors hover:bg-[#24435A] disabled:opacity-60"
+            >
+              {busy ? "Parsing…" : "Parse"}
+            </button>
+            <button type="button" onClick={onDone} className="h-10 rounded-lg px-4 text-sm font-medium text-[#6B7077] hover:text-[#33363D]">
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <table className="w-full text-sm">
+            <thead className="text-left text-xs font-medium text-[#6B7077]">
+              <tr>
+                <th className="pb-2 pr-2"><span className="sr-only">Save</span></th>
+                <th className="pb-2 pr-2">Record</th>
+                <th className="pb-2 pr-2">Date</th>
+                <th className="pb-2 pr-2">Amount ($)</th>
+                <th className="pb-2">Agency</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => {
+                const storable = r.kind !== "listing";
+                return (
+                  <tr key={i} className={storable ? "" : "text-[#9A9EA5]"}>
+                    <td className="py-1 pr-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Save ${r.kind} ${r.date}`}
+                        checked={r.checked && storable}
+                        disabled={!storable}
+                        onChange={(e) => update(i, { checked: e.target.checked })}
+                      />
+                    </td>
+                    <td className="py-1 pr-2">
+                      {storable ? (
+                        <select value={r.kind} onChange={(e) => update(i, { kind: e.target.value as ParsedHistoryRow["kind"] })} className={`${INPUT_CLASS} h-8`}>
+                          <option value="sale">Sale</option>
+                          <option value="rental">Lease</option>
+                        </select>
+                      ) : (
+                        "Listed (not stored)"
+                      )}
+                    </td>
+                    <td className="py-1 pr-2">
+                      <input type="date" value={r.date} disabled={!storable} onChange={(e) => update(i, { date: e.target.value })} className={`${INPUT_CLASS} h-8`} />
+                    </td>
+                    <td className="py-1 pr-2">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={r.amount ?? ""}
+                        disabled={!storable}
+                        onChange={(e) => update(i, { amount: Number(e.target.value.replace(/[^0-9.]/g, "")) || undefined })}
+                        className={`${INPUT_CLASS} h-8 tabular-nums`}
+                      />
+                    </td>
+                    <td className="py-1">
+                      <input type="text" value={r.agency ?? ""} disabled={!storable} onChange={(e) => update(i, { agency: e.target.value })} className={`${INPUT_CLASS} h-8`} />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              disabled={busy || selectable === 0}
+              onClick={save}
+              className="h-10 rounded-lg bg-[#2E5470] px-4 text-sm font-medium text-white transition-colors hover:bg-[#24435A] disabled:opacity-60"
+            >
+              {busy ? "Saving…" : `Save ${selectable} record${selectable === 1 ? "" : "s"}`}
+            </button>
+            <button type="button" onClick={() => { setRows(null); setError(null); }} className="h-10 rounded-lg px-4 text-sm font-medium text-[#6B7077] hover:text-[#33363D]">
+              Back
+            </button>
+          </div>
+        </>
+      )}
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-[#C5544A]">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function PropertyTimeline({ sales, rentals, onAdd, onParse }: PropertyTimelineProps) {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
 
   const prefersReducedMotion =
@@ -249,7 +455,7 @@ export function PropertyTimeline({ sales, rentals, onAdd }: PropertyTimelineProp
         </p>
         {onAdd && (
           <div className="mt-5 w-full max-w-2xl text-left">
-            <AddRecordForm onAdd={onAdd} />
+            <AddRecordForm onAdd={onAdd} onParse={onParse} />
           </div>
         )}
       </div>
@@ -415,7 +621,7 @@ export function PropertyTimeline({ sales, rentals, onAdd }: PropertyTimelineProp
         ))}
       </div>
 
-      {onAdd && <AddRecordForm onAdd={onAdd} />}
+      {onAdd && <AddRecordForm onAdd={onAdd} onParse={onParse} />}
     </div>
   );
 }
