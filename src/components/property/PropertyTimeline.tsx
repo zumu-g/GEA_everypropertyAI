@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Clock, TrendingUp, TrendingDown, Home, DollarSign, Plus } from "lucide-react";
 import {
@@ -100,7 +100,7 @@ export interface NewHistoryRecord {
 interface PropertyTimelineProps {
   sales: SaleHistoryEntry[];
   rentals: RentalHistoryEntry[];
-  /** When provided, an "Add record" form is shown. Should throw on failure. */
+  /** With onParse, a paste-to-add box is shown. Should throw on failure. */
   onAdd?: (record: NewHistoryRecord) => Promise<void>;
   /** Parses pasted history text into records for review (POST …/history/parse). */
   onParse?: (text: string) => Promise<ParsedHistoryRow[]>;
@@ -122,17 +122,9 @@ function AddRecordForm({
   onParse,
 }: {
   onAdd: (record: NewHistoryRecord) => Promise<void>;
-  onParse?: (text: string) => Promise<ParsedHistoryRow[]>;
+  onParse: (text: string) => Promise<ParsedHistoryRow[]>;
 }) {
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<"single" | "paste">("single");
-  const [kind, setKind] = useState<NewHistoryRecord["kind"]>("sale");
-  const [date, setDate] = useState("");
-  const [amount, setAmount] = useState("");
-  const [agency, setAgency] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   if (!open) {
     return (
       <button
@@ -141,133 +133,14 @@ function AddRecordForm({
         className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-[#E7E9EE] bg-white px-3 text-sm font-medium text-[#2E5470] transition-colors hover:bg-[#F4F5F7]"
       >
         <Plus className="h-4 w-4" aria-hidden="true" />
-        Add a sale or lease record
+        Add sale or lease records
       </button>
     );
   }
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    const n = Number(amount.replace(/[^0-9.]/g, ""));
-    if (!date || !n) {
-      setError("Date and amount are required");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await onAdd({ kind, date, amount: n, agency: agency.trim() || undefined });
-      setOpen(false);
-      setDate("");
-      setAmount("");
-      setAgency("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const modeSwitch = onParse ? (
-    <div role="tablist" className="mb-3 flex gap-1 text-xs font-medium">
-      {(["single", "paste"] as const).map((m) => (
-        <button
-          key={m}
-          type="button"
-          role="tab"
-          aria-selected={mode === m}
-          onClick={() => setMode(m)}
-          className={`rounded-md px-2.5 py-1 ${mode === m ? "bg-[#2E5470] text-white" : "text-[#6B7077] hover:bg-[#F4F5F7]"}`}
-        >
-          {m === "single" ? "One record" : "Paste history"}
-        </button>
-      ))}
-    </div>
-  ) : null;
-
-  if (onParse && mode === "paste") {
-    return (
-      <div className="rounded-xl border border-[#E7E9EE] bg-white p-4">
-        {modeSwitch}
-        <PasteHistoryForm onAdd={onAdd} onParse={onParse} onDone={() => setOpen(false)} />
-      </div>
-    );
-  }
-
   return (
-    <form
-      onSubmit={submit}
-      aria-label="Add property record"
-      className="rounded-xl border border-[#E7E9EE] bg-white p-4"
-    >
-      {modeSwitch}
-      <div className="grid gap-3 sm:grid-cols-4">
-        <label className="text-xs font-medium text-[#6B7077]">
-          Record
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as NewHistoryRecord["kind"])}
-            className={`${INPUT_CLASS} mt-1`}
-          >
-            <option value="sale">Sale</option>
-            <option value="rental">Lease</option>
-          </select>
-        </label>
-        <label className="text-xs font-medium text-[#6B7077]">
-          Date
-          <input
-            type="date"
-            required
-            value={date}
-            max={new Date().toISOString().slice(0, 10)}
-            onChange={(e) => setDate(e.target.value)}
-            className={`${INPUT_CLASS} mt-1`}
-          />
-        </label>
-        <label className="text-xs font-medium text-[#6B7077]">
-          {kind === "sale" ? "Sale price ($)" : "Weekly rent ($)"}
-          <input
-            type="text"
-            inputMode="numeric"
-            required
-            placeholder={kind === "sale" ? "850000" : "650"}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className={`${INPUT_CLASS} mt-1 tabular-nums`}
-          />
-        </label>
-        <label className="text-xs font-medium text-[#6B7077]">
-          Agency (optional)
-          <input
-            type="text"
-            value={agency}
-            onChange={(e) => setAgency(e.target.value)}
-            className={`${INPUT_CLASS} mt-1`}
-          />
-        </label>
-      </div>
-      {error && (
-        <p role="alert" className="mt-2 text-sm text-[#C5544A]">
-          {error}
-        </p>
-      )}
-      <div className="mt-3 flex gap-2">
-        <button
-          type="submit"
-          disabled={saving}
-          className="h-10 rounded-lg bg-[#2E5470] px-4 text-sm font-medium text-white transition-colors hover:bg-[#24435A] disabled:opacity-60"
-        >
-          {saving ? "Saving…" : "Save record"}
-        </button>
-        <button
-          type="button"
-          onClick={() => { setOpen(false); setError(null); }}
-          className="h-10 rounded-lg px-4 text-sm font-medium text-[#6B7077] hover:text-[#33363D]"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+    <div className="rounded-xl border border-[#E7E9EE] bg-white p-4">
+      <PasteHistoryForm onAdd={onAdd} onParse={onParse} onDone={() => setOpen(false)} />
+    </div>
   );
 }
 
@@ -329,12 +202,12 @@ function PasteHistoryForm({
       {!rows ? (
         <>
           <label className="text-xs font-medium text-[#6B7077]">
-            Paste the property history from realestate.com.au, Domain or PriceFinder
+            Sales and leases (paste from realestate.com.au, Domain, PriceFinder, or type one)
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={8}
-              placeholder={"Sold\n$450,000\n10 Jan 2013 by Grant's Estate Agents - Berwick\n…"}
+              placeholder={"Paste the full history panel, or one line like:\nSold $850,000 12 Mar 2024 by Grant's Estate Agents\nLeased $650 pw 3 Mar 2024"}
               className={`${INPUT_CLASS} mt-1 h-auto py-2 font-mono text-xs`}
             />
           </label>
@@ -453,7 +326,7 @@ export function PropertyTimeline({ sales, rentals, onAdd, onParse }: PropertyTim
         <p className="mt-1 text-sm text-[#6B7077]">
           Sales and rental records will appear here when available.
         </p>
-        {onAdd && (
+        {onAdd && onParse && (
           <div className="mt-5 w-full max-w-2xl text-left">
             <AddRecordForm onAdd={onAdd} onParse={onParse} />
           </div>
@@ -621,7 +494,7 @@ export function PropertyTimeline({ sales, rentals, onAdd, onParse }: PropertyTim
         ))}
       </div>
 
-      {onAdd && <AddRecordForm onAdd={onAdd} onParse={onParse} />}
+      {onAdd && onParse && <AddRecordForm onAdd={onAdd} onParse={onParse} />}
     </div>
   );
 }
