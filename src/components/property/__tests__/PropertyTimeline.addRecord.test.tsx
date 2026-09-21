@@ -14,43 +14,24 @@ vi.stubGlobal('matchMedia', () => ({
   removeEventListener: () => {},
 }));
 
-describe('PropertyTimeline — add record', () => {
-  it('shows no add form without onAdd', () => {
-    render(<PropertyTimeline sales={[]} rentals={[]} />);
-    expect(screen.queryByText('Add a sale or lease record')).toBeNull();
-  });
-
-  it('submits a lease record and closes the form', async () => {
-    const onAdd = vi.fn().mockResolvedValue(undefined);
-    render(<PropertyTimeline sales={[]} rentals={[]} onAdd={onAdd} />);
-
-    fireEvent.click(screen.getByText('Add a sale or lease record'));
-    fireEvent.change(screen.getByLabelText('Record'), { target: { value: 'rental' } });
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-08-01' } });
-    fireEvent.change(screen.getByLabelText('Weekly rent ($)'), { target: { value: '$650' } });
-    fireEvent.change(screen.getByLabelText('Agency (optional)'), { target: { value: 'Grants EA' } });
-    fireEvent.submit(screen.getByRole('form', { name: 'Add property record' }));
-
-    await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
-    expect(onAdd).toHaveBeenCalledWith({ kind: 'rental', date: '2026-08-01', amount: 650, agency: 'Grants EA' });
-    await waitFor(() => expect(screen.queryByRole('form')).toBeNull());
-  });
-
-  it('surfaces a save failure instead of closing', async () => {
-    const onAdd = vi.fn().mockRejectedValue(new Error('Sign in to add property records'));
-    render(<PropertyTimeline sales={[{ date: '2020-01-01', price: 500000 }]} rentals={[]} onAdd={onAdd} />);
-
-    fireEvent.click(screen.getByText('Add a sale or lease record'));
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-08-01' } });
-    fireEvent.change(screen.getByLabelText('Sale price ($)'), { target: { value: '850000' } });
-    fireEvent.submit(screen.getByRole('form', { name: 'Add property record' }));
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Sign in to add property records');
-    expect(screen.getByRole('form')).toBeTruthy();
-  });
-});
-
 describe('PropertyTimeline — paste history', () => {
+  it('shows no add box without onAdd/onParse', () => {
+    render(<PropertyTimeline sales={[]} rentals={[]} />);
+    expect(screen.queryByText('Add sale or lease records')).toBeNull();
+  });
+
+  it('surfaces a save failure with progress instead of closing', async () => {
+    const onAdd = vi.fn().mockRejectedValue(new Error('Sign in to add property records'));
+    const onParse = vi.fn().mockResolvedValue([{ kind: 'sale', date: '2024-03-12', amount: 850000 }]);
+    render(<PropertyTimeline sales={[]} rentals={[]} onAdd={onAdd} onParse={onParse} />);
+    fireEvent.click(screen.getByText('Add sale or lease records'));
+    fireEvent.change(screen.getByLabelText(/Sales and leases/), { target: { value: 'Sold $850,000 12 Mar 2024' } });
+    fireEvent.click(screen.getByText('Parse'));
+    fireEvent.click(await screen.findByText('Save 1 record'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Sign in to add property records (0 of 1 saved)');
+    expect(screen.getByLabelText('Paste property history')).toBeTruthy();
+  });
+
   it('parses pasted text, ticks storable rows, and saves each via onAdd', async () => {
     const onAdd = vi.fn().mockResolvedValue(undefined);
     const onParse = vi.fn().mockResolvedValue([
@@ -60,9 +41,8 @@ describe('PropertyTimeline — paste history', () => {
     ]);
     render(<PropertyTimeline sales={[]} rentals={[]} onAdd={onAdd} onParse={onParse} />);
 
-    fireEvent.click(screen.getByText('Add a sale or lease record'));
-    fireEvent.click(screen.getByRole('tab', { name: 'Paste history' }));
-    fireEvent.change(screen.getByLabelText(/Paste the property history/), { target: { value: 'Sold $450,000 10 Jan 2013' } });
+    fireEvent.click(screen.getByText('Add sale or lease records'));
+    fireEvent.change(screen.getByLabelText(/Sales and leases/), { target: { value: 'Sold $450,000 10 Jan 2013' } });
     fireEvent.click(screen.getByText('Parse'));
 
     await waitFor(() => expect(onParse).toHaveBeenCalledWith('Sold $450,000 10 Jan 2013'));
