@@ -1633,6 +1633,18 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
               }
               await fetchProperty();
             } : undefined}
+            onParse={addressSlug ? async (text) => {
+              const res = await fetch(`/api/property/${addressSlug}/history/parse`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text }),
+              });
+              if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error ?? 'Could not parse the text');
+              }
+              return (await res.json()).records;
+            } : undefined}
           />
         </section>
 

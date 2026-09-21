@@ -49,3 +49,30 @@ describe('PropertyTimeline — add record', () => {
     expect(screen.getByRole('form')).toBeTruthy();
   });
 });
+
+describe('PropertyTimeline — paste history', () => {
+  it('parses pasted text, ticks storable rows, and saves each via onAdd', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    const onParse = vi.fn().mockResolvedValue([
+      { kind: 'sale', date: '2013-01-10', amount: 450000, agency: "Grant's Estate Agents - Berwick" },
+      { kind: 'listing', date: '2013-01-07' },
+      { kind: 'sale', date: '2004-05-29', amount: 165000 },
+    ]);
+    render(<PropertyTimeline sales={[]} rentals={[]} onAdd={onAdd} onParse={onParse} />);
+
+    fireEvent.click(screen.getByText('Add a sale or lease record'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Paste history' }));
+    fireEvent.change(screen.getByLabelText(/Paste the property history/), { target: { value: 'Sold $450,000 10 Jan 2013' } });
+    fireEvent.click(screen.getByText('Parse'));
+
+    await waitFor(() => expect(onParse).toHaveBeenCalledWith('Sold $450,000 10 Jan 2013'));
+    expect(await screen.findByText('Listed (not stored)')).toBeTruthy();
+    expect(screen.getByLabelText('Save listing 2013-01-07')).toBeDisabled();
+
+    fireEvent.click(screen.getByText('Save 2 records'));
+    await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(2));
+    expect(onAdd).toHaveBeenNthCalledWith(1, { kind: 'sale', date: '2013-01-10', amount: 450000, agency: "Grant's Estate Agents - Berwick" });
+    expect(onAdd).toHaveBeenNthCalledWith(2, { kind: 'sale', date: '2004-05-29', amount: 165000, agency: undefined });
+    await waitFor(() => expect(screen.queryByLabelText('Paste property history')).toBeNull());
+  });
+});

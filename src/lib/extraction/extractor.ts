@@ -37,7 +37,7 @@ const HAS_LLM = Boolean(MINIMAX_API_KEY || OPENROUTER_API_KEY || ANTHROPIC_API_K
  * Call an LLM via OpenRouter or direct Anthropic API.
  * Returns the text response.
  */
-async function callLLM(
+export async function callLLM(
   system: string,
   userMessage: string,
   maxTokens: number = 8192
