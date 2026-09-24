@@ -4,6 +4,7 @@ import { getSalesForSuburb } from '@/lib/db/queries';
 import { propertyCache } from '@/lib/cache';
 import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
 import { parseAddress, toSlug } from '@/lib/utils/address';
+import { sameClass } from '@/lib/comps/property-class';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -156,6 +157,7 @@ function findComparablesFromCache(
     const rowBeds = typeof d.bedrooms === 'number' ? d.bedrooms : undefined;
     const rowBaths = typeof d.bathrooms === 'number' ? d.bathrooms : undefined;
     const rowType = typeof d.propertyType === 'string' ? d.propertyType : '';
+    if (!sameClass(propertyType, rowType)) continue; // land ≠ house ≠ unit
 
     if (beds !== undefined && rowBeds !== undefined) {
       if (rowBeds === beds) score += 20;
@@ -301,6 +303,7 @@ export async function GET(request: NextRequest) {
       const rowBeds = typeof innerData.bedrooms === 'number' ? innerData.bedrooms : undefined;
       const rowBaths = typeof innerData.bathrooms === 'number' ? innerData.bathrooms : undefined;
       const rowType = typeof innerData.propertyType === 'string' ? innerData.propertyType : '';
+      if (!sameClass(propertyType, rowType)) continue; // land ≠ house ≠ unit
 
       if (beds !== undefined && rowBeds !== undefined) {
         if (rowBeds === beds) score += 20;
@@ -350,6 +353,7 @@ export async function GET(request: NextRequest) {
 
       for (const vg of vgSales) {
         if (!vg.sale_price) continue;
+        if (!sameClass(propertyType, vg.property_type)) continue; // land ≠ house ≠ unit
 
         let score = 90; // Slightly lower base than property_cache matches
         // Feed sales now carry bed/bath/car attributes (Domain attrs backfill),
