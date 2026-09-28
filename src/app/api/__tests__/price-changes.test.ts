@@ -10,6 +10,10 @@ vi.mock('@/lib/db/stats-queries', () => ({
   fetchListingsForStats: vi.fn(async () => []),
   fetchRentalsForStats: vi.fn(async () => []),
 }));
+vi.mock('@/lib/db/price-history', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/lib/db/price-history')>();
+  return { ...mod, getPriceChanges: vi.fn(mod.getPriceChanges) };
+});
 vi.mock('@/lib/db/supabase', () => ({
   isSupabaseConfigured: () => true,
   getSupabaseServerClient: () => ({
@@ -49,6 +53,16 @@ describe('GET /api/price-changes', () => {
     expect((await callRoute('')).res.status).toBe(400);
     expect((await callRoute('suburb=Berwick&sinceDays=0')).res.status).toBe(400);
     expect((await callRoute('suburb=Berwick&sinceDays=999')).res.status).toBe(400);
+  });
+
+  it('404 for a suburb outside the service area (wildcard included) without querying', async () => {
+    const { getPriceChanges } = await import('@/lib/db/price-history');
+    for (const s of ['%25', 'Toorak']) {
+      const { res, body } = await callRoute(`suburb=${s}`);
+      expect(res.status).toBe(404);
+      expect(body.error).toMatch(/service area/);
+    }
+    expect(getPriceChanges).not.toHaveBeenCalled();
   });
 
   it('AE2: two observations 14 days apart → one result with changePct -4.0', async () => {

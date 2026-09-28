@@ -59,7 +59,9 @@ export async function GET(request: NextRequest) {
     await Promise.all(SERVICE_AREA_SUBURBS.slice(i, i + CONCURRENCY).map(freezeSuburb));
   }
   if (errors.length) console.error('[cron/suburb-stats] errors:', errors);
-  return NextResponse.json({ suburbs: SERVICE_AREA_SUBURBS.length, periodsFrozen, skipped, errors });
+  // 207 = partial (some periods froze, some failed); 500 = nothing froze. Workflow fails on >= 300.
+  const status = errors.length === 0 ? 200 : periodsFrozen > 0 ? 207 : 500;
+  return NextResponse.json({ suburbs: SERVICE_AREA_SUBURBS.length, periodsFrozen, skipped, errors }, { status });
 }
 
 export async function POST(request: NextRequest) {

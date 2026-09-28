@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
   if (period !== 'month' && period !== 'week') {
     return NextResponse.json({ error: 'period must be month or week' }, { status: 400, headers: CORS_HEADERS });
   }
+  if (state !== 'VIC') return NextResponse.json({ error: 'state must be VIC' }, { status: 400, headers: CORS_HEADERS });
   if (!isValidIsoDate(asOf) || asOf < MIN_AS_OF || asOf > today) {
     return NextResponse.json({ error: `asOf must be an ISO date between ${MIN_AS_OF} and today` }, { status: 400, headers: CORS_HEADERS });
   }

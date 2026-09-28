@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPriceChanges } from '@/lib/db/price-history';
+import { isServiceAreaSuburb } from '@/lib/utils/service-area';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -16,6 +17,7 @@ export async function OPTIONS() {
  *
  * Asking-price changes (sale and rental listings) in a suburb inside the window
  * (R13). sinceDays is an integer 1..365, default 30; outside → 400.
+ * Suburbs outside Casey/Cardinia → 404.
  * Auth: middleware-gated (Authorization: Bearer <epai_ key>).
  */
 export async function GET(request: NextRequest) {
@@ -27,6 +29,9 @@ export async function GET(request: NextRequest) {
   if (!suburb) return NextResponse.json({ error: 'suburb is required' }, { status: 400, headers: CORS_HEADERS });
   if (!Number.isFinite(sinceDays) || sinceDays < 1 || sinceDays > 365) {
     return NextResponse.json({ error: 'sinceDays must be an integer between 1 and 365' }, { status: 400, headers: CORS_HEADERS });
+  }
+  if (!isServiceAreaSuburb(suburb)) {
+    return NextResponse.json({ error: 'suburb outside the Casey/Cardinia service area' }, { status: 404, headers: CORS_HEADERS });
   }
 
   try {

@@ -3,6 +3,10 @@ import { NextRequest } from 'next/server';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+vi.mock('@/lib/stats/suburb-stats', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/lib/stats/suburb-stats')>();
+  return { ...mod, computeAndPersist: vi.fn(mod.computeAndPersist) };
+});
 vi.mock('@/lib/db/stats-queries', () => ({
   fetchListingsForStats: vi.fn(async () => []),
   fetchRentalsForStats: vi.fn(async () => []),
@@ -34,6 +38,14 @@ describe('GET /api/suburb-stats', () => {
     expect((await callRoute('suburb=Berwick&asOf=15-08-2026')).res.status).toBe(400);
     expect((await callRoute('suburb=Berwick&asOf=2010-01-01')).res.status).toBe(400);
     expect((await callRoute('suburb=Berwick&asOf=2999-01-01')).res.status).toBe(400);
+  });
+
+  it('400 for state=NSW without computing', async () => {
+    const { computeAndPersist } = await import('@/lib/stats/suburb-stats');
+    const { res, body } = await callRoute('suburb=Berwick&state=NSW');
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('state must be VIC');
+    expect(computeAndPersist).not.toHaveBeenCalled();
   });
 
   it('404 for a suburb outside the service area', async () => {

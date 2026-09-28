@@ -70,7 +70,7 @@ server.tool(
 
 server.tool(
   "on_market_listings",
-  "Current on-market (for-sale) listings in a suburb or around a lat/lng point (Domain feed). sinceDays filters to listings listed within the last N days.",
+  "Current on-market (for-sale) listings in a suburb or around a lat/lng point (Domain feed). sinceDays filters to listings listed within the last N days. Each row carries lifecycleStatus, daysOnMarket, daysOnMarketBasis, priceHistory, saleMethod and auctionDate. includeInactive=true also returns closed (withdrawn/sold) rows.",
   {
     suburb: z.string().optional(),
     state: z.string().optional(),
@@ -78,6 +78,7 @@ server.tool(
     lng: z.number().optional(),
     radius: z.number().optional(),
     sinceDays: z.number().optional(),
+    includeInactive: z.boolean().optional().default(false),
     limit: z.number().optional(),
   },
   (args) => safe(() => client.onMarketListings(args)),
@@ -85,7 +86,7 @@ server.tool(
 
 server.tool(
   "rental_listings",
-  "Current on-market rental listings in a suburb or around a lat/lng point (Domain feed). Filter by weekly rent (minRent/maxRent) and recency (sinceDays = listed within the last N days).",
+  "Current on-market rental listings in a suburb or around a lat/lng point (Domain feed). Filter by weekly rent (minRent/maxRent) and recency (sinceDays = listed within the last N days). Each row carries lifecycleStatus, daysOnMarket, daysOnMarketBasis, priceHistory and leasedAt. includeInactive=true also returns closed (leased/withdrawn) rows.",
   {
     suburb: z.string().optional(),
     state: z.string().optional(),
@@ -95,6 +96,7 @@ server.tool(
     sinceDays: z.number().optional(),
     minRent: z.number().optional(),
     maxRent: z.number().optional(),
+    includeInactive: z.boolean().optional().default(false),
     limit: z.number().optional(),
   },
   (args) => safe(() => client.rentalListings(args)),

@@ -14,7 +14,7 @@
 // Supabase creds read from .env.local (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).
 // ============================================================
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { recordRun } from './lib/feed-write.mjs';
 
@@ -31,6 +31,35 @@ export function retirePatch(nowIso) {
   return { active: false, removed_at: nowIso, lifecycle_status: 'withdrawn' };
 }
 
+/**
+ * Count the active unswept rows; with apply, PATCH them closed and record one feed_runs row.
+ * fetch/env injectable so tests use a fake (mirrors reconcile-lifecycle.mjs).
+ * @returns {Promise<{ total: number, closed: number }>}
+ */
+export async function retire({ apply = false, fetch = globalThis.fetch, env = process.env, now = new Date() } = {}) {
+  const base = env.NEXT_PUBLIC_SUPABASE_URL, key = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!base || !key) throw new Error('[retire] missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY');
+  const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+  const runStart = now.toISOString();
+  const url = `${base}/rest/v1/${TABLE}?${encodeURI(retireFilter())}`;
+
+  const countRes = await fetch(`${url}&select=id`, { headers: { ...headers, Prefer: 'count=exact', Range: '0-0' }, signal: AbortSignal.timeout(60_000) });
+  if (!countRes.ok) throw new Error(`count failed ${countRes.status}: ${(await countRes.text()).slice(0, 200)}`);
+  const total = Number((countRes.headers.get('content-range') || '').split('/')[1]) || 0;
+  console.log(`${apply ? 'Retiring' : 'DRY RUN — would retire'} ${total} active ${TABLE} rows of source in (${UNSWEPT_SOURCES.join(', ')})`);
+  if (!apply) return { total, closed: 0 };
+
+  const res = await fetch(url, { method: 'PATCH', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify(retirePatch(runStart)), signal: AbortSignal.timeout(60_000) });
+  if (!res.ok) throw new Error(`patch failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const closed = (await res.json()).length;
+  await recordRun({
+    category: 'on-market', source: UNSWEPT_SOURCES.join('+'), mode: 'retire', run_start: runStart, status: 'ok',
+    closed, notes: { reason: 'go-live retirement of unswept sources', sources: UNSWEPT_SOURCES },
+  }, { fetch, env });
+  console.log(`Retired ${closed} rows; feed_runs row written.`);
+  return { total, closed };
+}
+
 async function main() {
   const __dirname = dirname(fileURLToPath(import.meta.url));
   try {
@@ -39,29 +68,10 @@ async function main() {
       if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
     }
   } catch { /* ignore */ }
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!base || !key) { console.error('Missing Supabase env'); process.exit(1); }
-  const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
-  const apply = process.argv.includes('--apply');
-  const runStart = new Date().toISOString();
-  const url = `${base}/rest/v1/${TABLE}?${encodeURI(retireFilter())}`;
-
-  const countRes = await fetch(`${url}&select=id`, { headers: { ...headers, Prefer: 'count=exact', Range: '0-0' } });
-  if (!countRes.ok) throw new Error(`count failed ${countRes.status}: ${(await countRes.text()).slice(0, 200)}`);
-  const total = Number((countRes.headers.get('content-range') || '').split('/')[1]) || 0;
-  console.log(`${apply ? 'Retiring' : 'DRY RUN — would retire'} ${total} active ${TABLE} rows of source in (${UNSWEPT_SOURCES.join(', ')})`);
-  if (!apply) return;
-
-  const res = await fetch(url, { method: 'PATCH', headers: { ...headers, Prefer: 'return=representation' }, body: JSON.stringify(retirePatch(runStart)) });
-  if (!res.ok) throw new Error(`patch failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const closed = (await res.json()).length;
-  await recordRun({
-    category: 'on-market', source: UNSWEPT_SOURCES.join('+'), mode: 'retire', run_start: runStart, status: 'ok',
-    closed, notes: { reason: 'go-live retirement of unswept sources', sources: UNSWEPT_SOURCES },
-  });
-  console.log(`Retired ${closed} rows; feed_runs row written.`);
+  await retire({ apply: process.argv.includes('--apply') });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (invokedDirectly) {
   main().catch((e) => { console.error(e); process.exit(1); });
 }

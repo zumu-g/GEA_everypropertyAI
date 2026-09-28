@@ -214,9 +214,10 @@ export class PropertyIQClient {
     lng?: number;
     radius?: number;
     sinceDays?: number;
+    includeInactive?: boolean;
     limit?: number;
   }): Promise<{ suburb: string | null; state: string; count: number; results: OnMarketListing[] }> {
-    return this.request("/api/on-market-listings", { query: { state: "VIC", ...params } });
+    return this.request("/api/on-market-listings", { query: { state: "VIC", ...params, includeInactive: params.includeInactive || undefined } });
   }
 
   rentalListings(params: {
@@ -228,9 +229,10 @@ export class PropertyIQClient {
     sinceDays?: number;
     minRent?: number;
     maxRent?: number;
+    includeInactive?: boolean;
     limit?: number;
   }): Promise<{ suburb: string | null; state: string; count: number; results: RentalListing[] }> {
-    return this.request("/api/rental-listings", { query: { state: "VIC", ...params } });
+    return this.request("/api/rental-listings", { query: { state: "VIC", ...params, includeInactive: params.includeInactive || undefined } });
   }
 
   enrich(params: {

@@ -73,6 +73,21 @@ Required env: `EVERYPROPERTY_API_URL` (prod URL above) and `EVERYPROPERTY_API_TO
 consumer's `epai_…` key, which must be present in the server's `EVERYPROPERTY_API_KEYS`
 allowlist). Never commit the token.
 
+### `on_market_listings`
+
+Each row now carries the lifecycle fields `lifecycleStatus` (active | under_offer | sold |
+withdrawn), `daysOnMarket` with `daysOnMarketBasis` (which date it was counted from),
+`priceHistory` (asking-price observations, oldest first), `saleMethod` and `auctionDate`.
+Closed rows are excluded by default; pass `includeInactive: true` (CLI `--include-inactive`)
+to return them as well.
+
+### `rental_listings`
+
+Rows carry `lifecycleStatus` (active | leased | withdrawn), `daysOnMarket` with
+`daysOnMarketBasis`, `priceHistory` (weekly-rent observations, oldest first) and `leasedAt`.
+Closed rows are excluded by default; pass `includeInactive: true` (CLI `--include-inactive`)
+to return them as well.
+
 ### `price_changes`
 
 Asking-price changes in a suburb over a window (sale and rental listings). Each result pairs

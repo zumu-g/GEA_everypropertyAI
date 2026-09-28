@@ -62,17 +62,31 @@ describe('freeze window', () => {
     }
   });
 
-  it('collects a single-suburb failure and continues', async () => {
+  it('collects a single-suburb failure and continues → 207 partial', async () => {
     vi.useFakeTimers({ now: new Date('2026-10-01T15:41:00Z'), toFake: ['Date'] });
     try {
       computeAndPersist.mockImplementationOnce(async () => { throw new Error('boom'); });
       const { res, body } = await call(undefined);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(207);
       expect(body.periodsFrozen).toBe(3);
       expect(body.errors).toHaveLength(1);
       expect(body.errors[0]).toMatch(/boom/);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('every suburb failing → 500 with all errors collected', async () => {
+    vi.useFakeTimers({ now: new Date('2026-10-01T15:41:00Z'), toFake: ['Date'] });
+    try {
+      computeAndPersist.mockImplementation(async () => { throw new Error('db down'); });
+      const { res, body } = await call(undefined);
+      expect(res.status).toBe(500);
+      expect(body.periodsFrozen).toBe(0);
+      expect(body.errors).toHaveLength(4);
+    } finally {
+      vi.useRealTimers();
+      computeAndPersist.mockImplementation(async () => ({ block: {}, provisional: false, reconstructed: false, computedAt: '' }));
     }
   });
 });

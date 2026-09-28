@@ -111,10 +111,12 @@ program
   .option("--lng <n>", "centre longitude (radius mode)", Number)
   .option("--radius <n>", "radius in km (radius mode)", Number)
   .option("--listed-within <bucket>", "only listings listed within 1m|3m|6m|12m|2y")
+  .option("--include-inactive", "also return closed (withdrawn/sold) rows")
   .option("--limit <n>", "max rows", Number)
   .action((o) =>
     run(() =>
       client.onMarketListings({
+        includeInactive: o.includeInactive,
         suburb: o.suburb,
         state: o.state,
         lat: o.lat,
@@ -154,10 +156,12 @@ program
   .option("--min-rent <n>", "min weekly rent", Number)
   .option("--max-rent <n>", "max weekly rent", Number)
   .option("--listed-within <bucket>", "only rentals listed within 1m|3m|6m|12m|2y")
+  .option("--include-inactive", "also return closed (leased/withdrawn) rows")
   .option("--limit <n>", "max rows", Number)
   .action((o) =>
     run(() =>
       client.rentalListings({
+        includeInactive: o.includeInactive,
         suburb: o.suburb,
         state: o.state,
         lat: o.lat,
