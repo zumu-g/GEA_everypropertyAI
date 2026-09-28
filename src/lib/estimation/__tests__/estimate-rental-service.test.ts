@@ -115,3 +115,31 @@ describe('getRentalEstimate — comp imageUrl passthrough', () => {
     expect(comps.every((c) => c.imageUrl == null)).toBe(true);
   });
 });
+
+describe('getRentalEstimate — leased (inactive) rentals are comps', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('admits active=false rows: a leased rental is achieved-rent evidence', async () => {
+    vi.mocked(getRowsNearby).mockResolvedValue(
+      Array.from({ length: 5 }, (_, i) => ({
+        raw_address: `${i} Fairhazel Ct, Beaconsfield Upper VIC 3808`,
+        suburb: 'Beaconsfield Upper',
+        weekly_rent: 800 + i * 10,
+        created_at: '2026-06-01',
+        bedrooms: 4,
+        bathrooms: 2,
+        property_type: 'House',
+        latitude: -38.02,
+        longitude: 145.44,
+        active: false,
+      })) as never,
+    );
+    const result = await getRentalEstimate(
+      { latitude: -38.02, longitude: 145.44, suburb: 'Beaconsfield Upper', state: 'VIC', propertyType: 'house', bedrooms: 4 },
+      NOW,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.priceSource).not.toBe('suburb-median-rent');
+    expect((result as { comparablesUsed: unknown[] }).comparablesUsed.length).toBe(5);
+  });
+});

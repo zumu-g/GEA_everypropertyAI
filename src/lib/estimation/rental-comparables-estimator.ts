@@ -140,7 +140,15 @@ export function rentalSimilarityWeight(subject: RentalSubject, comp: RentalCompa
   // Recency: rentals perish fast — decay over ~9 months.
   const wRecency = Math.exp(-monthsSince(comp.asOf) / 9);
 
-  return Math.max(WEIGHT_EPSILON, wDistance * wType * wBeds * wBaths * wLand * wRecency);
+  // Same suburb: a semi-rural suburb (Beaconsfield Upper) can sit 3km from a
+  // growth-corridor estate (Pakenham) with 40× the rental turnover; distance
+  // alone lets the estate swamp the local evidence. Unknown suburb → no penalty.
+  const wSuburb =
+    comp.suburb && subject.suburb && comp.suburb.trim().toLowerCase() !== subject.suburb.trim().toLowerCase()
+      ? 0.7
+      : 1.0;
+
+  return Math.max(WEIGHT_EPSILON, wDistance * wType * wBeds * wBaths * wLand * wRecency * wSuburb);
 }
 
 // ── Main entry point ───────────────────────────────────────────────────────────
