@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSalesForSuburb, type PropertySaleRecord } from '@/lib/db/queries';
 import { PUBLIC_GET_CACHE_HEADERS } from '@/lib/http/cache-headers';
+import { median } from '@/lib/stats/median';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,12 +67,6 @@ function matchesBucket(sale: PropertySaleRecord, bucket: SegmentBucket): boolean
   return bucket.bedroomsPlus ? sale.bedrooms >= bucket.bedrooms : sale.bedrooms === bucket.bedrooms;
 }
 
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
 function roundToThousand(n: number): number {
   return Math.round(n / 1000) * 1000;
 }
@@ -90,7 +85,7 @@ function aggregateBucket(bucket: SegmentBucket, sales: PropertySaleRecord[]): Ma
     name: bucket.name,
     low: roundToThousand(Math.min(...prices)),
     avg: roundToThousand(prices.reduce((a, b) => a + b, 0) / prices.length),
-    median: roundToThousand(median(prices)),
+    median: roundToThousand(median(prices)!),
     sufficientData: prices.length >= MIN_SALES_FOR_SUFFICIENT_DATA,
   };
 }
