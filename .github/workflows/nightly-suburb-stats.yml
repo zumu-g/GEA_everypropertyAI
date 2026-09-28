@@ -1,0 +1,40 @@
+name: Nightly suburb stats freeze
+
+# Freezes suburb_stats_history periods whose 60-day settle date has passed by
+# calling GET /api/cron/suburb-stats on the live Railway service (KTD6, R17).
+# The route covers the last two settle days, so a missed night catches up.
+#
+# Schedule: 15:41 UTC ≈ 01:41 Melbourne AEST (02:41 AEDT) — after the Melbourne
+# day rolls over and well after the 01:17 UTC lifecycle reconcile. Minute
+# deliberately OFF the top of the hour (see daily-domain-scrape.yml note).
+#
+# Required repo secrets:
+#   EVERYPROPERTY_BASE_URL — the live Railway service base URL
+#   CRON_SECRET            — same value as the CRON_SECRET env var on Railway
+
+on:
+  schedule:
+    - cron: '41 15 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly-suburb-stats
+  cancel-in-progress: false
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Trigger suburb stats freeze
+        run: |
+          set -euo pipefail
+          status=$(curl -sS -o /tmp/response.json -w "%{http_code}" \
+            "${{ secrets.EVERYPROPERTY_BASE_URL }}/api/cron/suburb-stats" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}")
+          echo "HTTP status: $status"
+          cat /tmp/response.json
+          if [ "$status" -ge 300 ]; then
+            echo "::error::suburb-stats freeze failed (HTTP $status)"
+            exit 1
+          fi
