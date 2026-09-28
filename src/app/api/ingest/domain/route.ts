@@ -5,6 +5,7 @@ import {
   mapItem,
   applyBedBathMatches,
   CATEGORY_TABLE,
+  SOURCE as DOMAIN_SOURCE,
   type IngestCategory,
 } from '@/lib/ingest/domain-mapper';
 import { retriggerDomainRun, MAX_RUN_ATTEMPTS } from '@/lib/ingest/domain-run';
@@ -225,10 +226,11 @@ export async function POST(request: NextRequest) {
   // Augment addresses (ignore-duplicates on slug).
   if (addressBySlug.size) await insertAddresses([...addressBySlug.values()]);
 
-  // Expire on-market rows no longer seen (listings/rentals only).
+  // Expire on-market rows no longer seen (listings/rentals only) — scoped to the
+  // 'domain-apify' rows mapItem stamps, never another feed's (KTD2).
   let expired = 0;
   if (category !== 'sold') {
-    expired = await expireNotSeen(table as 'property_listings' | 'property_rentals', [...suburbs], runStart);
+    expired = await expireNotSeen(table as 'property_listings' | 'property_rentals', DOMAIN_SOURCE, [...suburbs], runStart);
   }
 
   await writeFeedHealth({

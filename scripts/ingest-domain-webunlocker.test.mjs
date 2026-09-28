@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { looksLikeData, extractListings, mapListing, inArea, shouldExpireRentals, SUBURB_SLUGS } from './ingest-domain-webunlocker.mjs';
+import { looksLikeData, extractListings, mapListing, inArea, shouldSweep, buildCoverage, slugToSuburb } from './ingest-domain-webunlocker.mjs';
+import { paginateUntilShort } from './lib/paginate.mjs';
 
 const rentNode = (overrides = {}) => ({
   listingModel: {
@@ -61,9 +62,10 @@ describe('mapListing (rent)', () => {
       display_price: '$550 per week',
       status: 'New',
       source: 'domain-web-unlocker',
-      active: true,
     });
-    expect(row.last_seen_at).toEqual(expect.any(String));
+    // feed-write.mjs owns these; a mapper must not pre-set them
+    expect(row).not.toHaveProperty('last_seen_at');
+    expect(row).not.toHaveProperty('active');
   });
 
   it('takes the lowest amount from a rent range', () => {
@@ -96,30 +98,79 @@ describe('mapListing (rent)', () => {
   });
 });
 
-describe('shouldExpireRentals (expiry gate)', () => {
-  const FULL = SUBURB_SLUGS.length;
+describe('mapListing listed_date (on-market + rent)', () => {
+  it('sets listed_date + source domain-search when dateListed is present and differs from dateUpdated', () => {
+    const row = mapListing('on-market', rentNode({ dateListed: '2026-09-01T00:00:00Z', dateUpdated: '2026-09-20T03:00:00Z' }));
+    expect(row).toMatchObject({ listed_date: '2026-09-01T00:00:00Z', listed_date_source: 'domain-search' });
+  });
+  it('leaves listed_date null when dateListed equals dateUpdated (Domain re-stamps on edit)', () => {
+    const row = mapListing('rent', rentNode({ dateListed: '2026-09-20T03:00:00Z', dateUpdated: '2026-09-20T03:00:00Z' }));
+    expect(row).toMatchObject({ listed_date: null, listed_date_source: null });
+  });
+  it('leaves listed_date null when dateListed is absent, but the keys are still present (uniform batch keys)', () => {
+    const row = mapListing('on-market', rentNode({ dateUpdated: '2026-09-20T03:00:00Z' }));
+    expect(row).toHaveProperty('listed_date', null);
+    expect(row).toHaveProperty('listed_date_source', null);
+  });
+});
 
-  it('expires only on a full run where every suburb fetched OK', () => {
-    expect(shouldExpireRentals({ category: 'rent', blockedCount: 0, slugsEnv: undefined, suburbCount: FULL })).toBe(true);
+describe('mapListing sale_method (on-market)', () => {
+  it('auction text in the price sets auction + auction_date', () => {
+    const row = mapListing('on-market', rentNode({ price: 'Auction Sat 14 Nov' }));
+    expect(row.sale_method).toBe('auction');
+    expect(row.auction_date).toMatch(/-11-14$/);
   });
-  it('never expires a fully blocked run', () => {
-    expect(shouldExpireRentals({ category: 'rent', blockedCount: FULL, slugsEnv: undefined, suburbCount: FULL })).toBe(false);
+  it('a dollar range is private; rent rows carry no sale_method (property_rentals has no such column)', () => {
+    expect(mapListing('on-market', rentNode({ price: '$800,000 - $880,000' }))).toMatchObject({ sale_method: 'private', auction_date: null });
+    expect(mapListing('rent', rentNode())).not.toHaveProperty('sale_method');
   });
-  it('never expires a PARTIALLY blocked run — even one failed suburb vetoes expiry', () => {
-    expect(shouldExpireRentals({ category: 'rent', blockedCount: 1, slugsEnv: undefined, suburbCount: FULL })).toBe(false);
+});
+
+describe('paginateUntilShort', () => {
+  const pages = (sizes) => async (n) => Array.from({ length: sizes[n - 1] ?? 0 }, (_, i) => `p${n}-${i}`);
+  it('stops on the first page shorter than the previous one', async () => {
+    const r = await paginateUntilShort(pages([20, 20, 7, 20]));
+    expect(r.items).toHaveLength(47);
+    expect(r).toMatchObject({ pages: 3, truncated: false });
   });
-  it('never expires a SLUGS-restricted run, even if every named suburb succeeded', () => {
-    expect(shouldExpireRentals({ category: 'rent', blockedCount: 0, slugsEnv: 'berwick-vic-3806', suburbCount: 1 })).toBe(false);
+  it('stops on an empty page', async () => {
+    const r = await paginateUntilShort(pages([20, 0]));
+    expect(r).toMatchObject({ pages: 2, truncated: false });
   });
-  it('never expires a maxSuburbs-restricted run (e.g. the single-suburb smoke run)', () => {
-    expect(shouldExpireRentals({ category: 'rent', blockedCount: 0, slugsEnv: undefined, suburbCount: 1 })).toBe(false);
+  it('stops when a page adds nothing new (portal repeats the last page past the end)', async () => {
+    const r = await paginateUntilShort(async () => ['a', 'b'], { key: (x) => x });
+    expect(r.items).toEqual(['a', 'b']);
+    expect(r).toMatchObject({ pages: 2, truncated: false });
   });
-  it('DOES expire when maxSuburbs is passed explicitly but covers the full suburb count', () => {
-    // e.g. an operator re-running `node ingest-domain-webunlocker.mjs rent 29` explicitly
-    expect(shouldExpireRentals({ category: 'rent', blockedCount: 0, slugsEnv: undefined, suburbCount: FULL })).toBe(true);
+  it('marks a suburb that hits the page cap as truncated', async () => {
+    const r = await paginateUntilShort(async (n) => [`x${n}`], { cap: 20, key: (x) => x });
+    expect(r).toMatchObject({ pages: 20, truncated: true });
   });
-  it('never expires for sold or on-market', () => {
-    expect(shouldExpireRentals({ category: 'sold', blockedCount: 0, slugsEnv: undefined, suburbCount: FULL })).toBe(false);
-    expect(shouldExpireRentals({ category: 'on-market', blockedCount: 0, slugsEnv: undefined, suburbCount: FULL })).toBe(false);
+  it('a failure after page 1 keeps the rows but marks the suburb truncated', async () => {
+    const r = await paginateUntilShort(async (n) => { if (n === 2) throw new Error('boom'); return ['a', 'b']; }, { key: (x) => x });
+    expect(r.items).toEqual(['a', 'b']);
+    expect(r).toMatchObject({ truncated: true, error: 'boom' });
+  });
+  it('a failure on page 1 propagates (the suburb was never fetched → blocked)', async () => {
+    await expect(paginateUntilShort(async () => { throw new Error('nope'); })).rejects.toThrow('nope');
+  });
+});
+
+describe('sweep gating + coverage', () => {
+  it('sweeps on-market and rent, never sold, never a blocked run', () => {
+    expect(shouldSweep({ category: 'on-market', blocked: false })).toBe(true);
+    expect(shouldSweep({ category: 'rent', blocked: false })).toBe(true);
+    expect(shouldSweep({ category: 'sold', blocked: false })).toBe(false);
+    expect(shouldSweep({ category: 'on-market', blocked: true })).toBe(false);
+  });
+  it('coverage counts rows per crawled suburb and excludes truncated / failed slugs from a clean sweep', () => {
+    expect(slugToSuburb('narre-warren-south-vic-3805')).toBe('Narre Warren South');
+    const rows = [{ suburb: 'Berwick' }, { suburb: 'Berwick' }, { suburb: 'Harkaway' }, { suburb: 'Clyde' }];
+    const cov = buildCoverage([
+      { slug: 'berwick-vic-3806', truncated: false },
+      { slug: 'harkaway-vic-3806', truncated: true },
+      { slug: 'clyde-vic-3978', error: 'blocked' },
+    ], rows);
+    expect(cov).toEqual({ Berwick: { seen: 2, truncated: false }, Harkaway: { seen: 1, truncated: true } });
   });
 });

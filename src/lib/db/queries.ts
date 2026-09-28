@@ -1303,12 +1303,15 @@ async function upsertRows(table: string, rows: object[], onConflict: string): Pr
   }
 }
 
+// Every crawl that sees a row stamps it active in the lifecycle (R3). The scripts'
+// shared feed-write path does the full stamping; this webhook path only needs the
+// uniform 'active' so the row never carries a stale lifecycle from a prior sweep.
 export function insertPropertyListings(rows: PropertyListingRecord[]): Promise<void> {
-  return upsertRows('property_listings', rows, 'raw_address,source');
+  return upsertRows('property_listings', rows.map((r) => ({ ...r, lifecycle_status: 'active' })), 'raw_address,source');
 }
 
 export function insertPropertyRentals(rows: PropertyRentalRecord[]): Promise<void> {
-  return upsertRows('property_rentals', rows, 'raw_address,source');
+  return upsertRows('property_rentals', rows.map((r) => ({ ...r, lifecycle_status: 'active' })), 'raw_address,source');
 }
 
 // ─── Feed-seed lookup (per-property profile fallback) ────────────────────────
@@ -1497,21 +1500,24 @@ export async function getAgentListings(opts: {
 }
 
 /**
- * Expire on-market rows not seen in the latest sync: set active=false for rows in
- * the given suburbs whose last_seen_at predates the run start. Scoped to the
- * scraped suburbs so it never touches unrelated areas. `table` is
- * 'property_listings' | 'property_rentals'.
+ * Expire on-market rows not seen in the latest sync: set active=false for rows of
+ * ONE source in the given suburbs whose last_seen_at predates the run start. Scoped
+ * to the source (KTD2 — a Domain run must never deactivate REA/Homely rows) and to
+ * the scraped suburbs. `table` is 'property_listings' | 'property_rentals'.
  */
 export async function expireNotSeen(
   table: 'property_listings' | 'property_rentals',
+  source: string,
   suburbs: string[],
   sinceIso: string,
   state = 'VIC'
 ): Promise<number> {
+  if (!source) throw new Error('[expireNotSeen] source is required');
   if (!isSupabaseConfigured() || suburbs.length === 0) return 0;
   const { data, error } = await supabase()
     .from(table)
     .update({ active: false })
+    .eq('source', source)
     .in('suburb', suburbs)
     .eq('state', state.toUpperCase())
     .eq('active', true)
