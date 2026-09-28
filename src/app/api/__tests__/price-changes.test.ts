@@ -18,11 +18,13 @@ vi.mock('@/lib/db/supabase', () => ({
   isSupabaseConfigured: () => true,
   getSupabaseServerClient: () => ({
     from: () => {
-      let table: unknown;
+      let table: unknown; let page = 0;
       const b = {
         select: () => b, in: () => b, order: () => b,
+        // Pagination: first page returns everything, later pages are empty so the loop ends.
+        range: (from: number) => { page = from; return b; },
         eq: (k: string, v: unknown) => { if (k === 'table_name') table = v; return b; },
-        then: (resolve: (r: unknown) => void) => resolve({ data: HISTORY.filter((h) => h.table_name === table), error: null }),
+        then: (resolve: (r: unknown) => void) => resolve({ data: page > 0 ? [] : HISTORY.filter((h) => h.table_name === table), error: null }),
       };
       return b;
     },
