@@ -576,36 +576,44 @@ export async function getCachedProfilesBySlugs(
   }
 }
 
+/** One listing campaign's days-on-market basis for a sold-row match (R9/R21). */
+export interface ListedDateCandidate {
+  date: string;
+  basis: 'listed' | 'first_seen';
+}
+
 /**
- * Batch-fetch ALL candidate property_listings.listed_date values for many
- * slugs in one query (an address can have multiple listing campaigns).
- * Reads the raw listed_date column only — no created_at COALESCE, since
- * first-seen would approximate rather than record a listing date. Campaign
- * selection (closest preceding the sale) happens in src/lib/sold/enrich.ts.
+ * Batch lookup of listing campaigns by address slug for the sold-feed join.
+ * Basis per row = listed_date ?? campaign_started_at ?? created_at, labelled
+ * 'listed' when a real listed_date exists, else 'first_seen'.
  */
 export async function getListedDatesBySlugs(
   slugs: string[]
-): Promise<Map<string, string[]>> {
-  const result = new Map<string, string[]>();
+): Promise<Map<string, ListedDateCandidate[]>> {
+  const result = new Map<string, ListedDateCandidate[]>();
   if (!isSupabaseConfigured() || slugs.length === 0) return result;
 
   try {
-    const { data, error } = await supabase()
-      .from('property_listings')
-      .select('address_slug, listed_date')
-      .in('address_slug', slugs)
-      .not('listed_date', 'is', null);
+    const select = (cols: string) =>
+      supabase().from('property_listings').select(cols).in('address_slug', slugs);
+    let { data, error } = await select('address_slug, listed_date, campaign_started_at, created_at');
+    // Before migration 015 campaign_started_at does not exist (42703); fall back to created_at.
+    if (error?.code === '42703') {
+      ({ data, error } = await select('address_slug, listed_date, created_at'));
+    }
 
     if (error) {
       console.error('[getListedDatesBySlugs] Supabase error:', error.message);
       return result;
     }
 
-    for (const row of data ?? []) {
-      const slug = row.address_slug as string;
-      const dates = result.get(slug) ?? [];
-      dates.push(row.listed_date as string);
-      result.set(slug, dates);
+    for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+      const slug = row.address_slug as string | null;
+      const date = (row.listed_date ?? row.campaign_started_at ?? row.created_at) as string | null;
+      if (!slug || !date) continue;
+      const list = result.get(slug) ?? [];
+      list.push({ date, basis: row.listed_date ? 'listed' : 'first_seen' });
+      result.set(slug, list);
     }
     return result;
   } catch (err) {

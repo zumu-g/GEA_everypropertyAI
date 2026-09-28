@@ -71,6 +71,9 @@ export interface SoldSaleResult {
   agencyName?: string | null;
   agentName?: string | null;
   source?: string | null;
+  firstListedDate?: string | null;
+  daysOnMarket?: number | null;
+  firstListedDateBasis?: 'listed' | 'first_seen' | null;
 }
 
 export interface OnMarketListing {

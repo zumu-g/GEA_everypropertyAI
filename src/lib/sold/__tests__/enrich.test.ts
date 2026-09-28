@@ -83,6 +83,21 @@ describe('toEnrichedSoldResult', () => {
     expect(joined.daysOnMarket).toBe(47);
   });
 
+  it('matching listing 45 days earlier gives 45 days and that date (first_seen basis)', () => {
+    const out = toEnrichedSoldResult(baseRow, null, [{ date: '2026-03-17', basis: 'first_seen' }]);
+    expect(out.firstListedDate).toBe('2026-03-17');
+    expect(out.daysOnMarket).toBe(45);
+    expect(out.firstListedDateBasis).toBe('first_seen');
+  });
+
+  it('own listed_date reports basis listed; no match leaves basis null', () => {
+    expect(toEnrichedSoldResult({ ...baseRow, listed_date: '2026-04-01' }).firstListedDateBasis).toBe('listed');
+    const none = toEnrichedSoldResult(baseRow, null, ['2026-06-01', '2024-01-01']);
+    expect(none.firstListedDate).toBeNull();
+    expect(none.daysOnMarket).toBeNull();
+    expect(none.firstListedDateBasis).toBeNull();
+  });
+
   it('existing fields pass through unchanged (envelope regression)', () => {
     const out = toEnrichedSoldResult({
       ...baseRow,
@@ -111,26 +126,49 @@ describe('toEnrichedSoldResult', () => {
       imageUrl: 'https://example.com/x.jpg',
       source: 'domain-apify',
     });
+    // Response snapshot compatibility: every pre-existing key still present.
+    const preExisting = [
+      'rawAddress', 'suburb', 'postcode', 'salePrice', 'saleDate', 'settlementDate', 'landAreaSqm',
+      'buildingAreaSqm', 'propertyType', 'bedrooms', 'bathrooms', 'carSpaces', 'firstListedDate',
+      'daysOnMarket', 'latitude', 'longitude', 'agencyName', 'agentName', 'listingUrl', 'imageUrl', 'source',
+    ];
+    for (const k of preExisting) expect(out).toHaveProperty(k);
   });
 });
 
 describe('selectFirstListedDate', () => {
   it('selects the preceding campaign among multiple candidates', () => {
-    expect(selectFirstListedDate('2026-05-01', ['2026-06-10', '2026-03-20'])).toBe('2026-03-20');
+    expect(selectFirstListedDate('2026-05-01', ['2026-06-10', '2026-03-20'])?.date).toBe('2026-03-20');
   });
 
-  it('selects the latest candidate that is still ≤ sale date', () => {
-    expect(selectFirstListedDate('2026-05-01', ['2025-01-01', '2026-04-10'])).toBe('2026-04-10');
+  it('two matches pick the closest preceding one', () => {
+    expect(selectFirstListedDate('2026-05-01', ['2025-06-01', '2026-04-10'])?.date).toBe('2026-04-10');
   });
 
   it('returns null when all candidates post-date the sale', () => {
     expect(selectFirstListedDate('2026-05-01', ['2026-06-10'])).toBeNull();
   });
 
+  it('ignores a basis more than 400 days before the sale', () => {
+    // 500 days before 2026-05-01 is 2024-12-17
+    expect(selectFirstListedDate('2026-05-01', ['2024-12-17'])).toBeNull();
+    // 400 days before is 2025-03-27 — still within the window
+    expect(selectFirstListedDate('2026-05-01', ['2025-03-27'])?.date).toBe('2025-03-27');
+  });
+
   it('returns null with no sale date or no candidates', () => {
     expect(selectFirstListedDate(null, ['2026-03-20'])).toBeNull();
     expect(selectFirstListedDate('2026-05-01', [])).toBeNull();
     expect(selectFirstListedDate('2026-05-01', undefined)).toBeNull();
+  });
+
+  it('carries the basis label of the chosen candidate', () => {
+    const picked = selectFirstListedDate('2026-05-01', [
+      { date: '2026-03-17', basis: 'first_seen' },
+      { date: '2026-01-01', basis: 'listed' },
+    ]);
+    expect(picked).toEqual({ date: '2026-03-17', basis: 'first_seen' });
+    expect(selectFirstListedDate('2026-05-01', ['2026-03-17'])?.basis).toBe('listed');
   });
 });
 

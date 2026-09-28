@@ -9,20 +9,24 @@
  *  - bedrooms/bathrooms/carSpaces: sold record → cached profile → null
  *  - firstListedDate: own listed_date → property_listings join (by slug) → null
  *  - daysOnMarket:   saleDate − firstListedDate, only when both exist and ≥ 0
+ *  - firstListedDateBasis: 'listed' (a real listed_date) or 'first_seen'
+ *                    (campaign start / first crawl) — R9 provenance label
  *
  * Precedence is strict "profile fills blanks": a non-null sold-record value is
  * never overridden, and nothing is ever fabricated — no source ⇒ null.
  * Profile key fallback mirrors src/app/api/street-details/route.ts
  * (landAreaSqm ?? landArea, buildingAreaSqm ?? buildingArea, garages ?? carSpaces).
  *
- * The listings join receives ALL candidate listed_dates per slug (an address
- * can have multiple campaigns) and selects the latest date that is ≤ sale_date;
- * when every candidate post-dates the sale, the join contributes nothing.
+ * The listings join receives ALL candidate basis dates per slug (an address
+ * can have multiple campaigns; basis = listed_date ?? campaign_started_at ??
+ * created_at) and selects the latest one within the R21 window: not after the
+ * sale and no more than 400 days before it. Nothing qualifying ⇒ null.
  */
 
 import {
   getCachedProfilesBySlugs,
   getListedDatesBySlugs,
+  type ListedDateCandidate,
   type PropertySaleRecord,
 } from '@/lib/db/queries';
 import type { MergedPropertyProfile } from '@/types/property';
@@ -43,6 +47,7 @@ export interface EnrichedSoldResult {
   carSpaces: number | null;
   firstListedDate: string | null;
   daysOnMarket: number | null;
+  firstListedDateBasis?: 'listed' | 'first_seen' | null;
   latitude: number | null;
   longitude: number | null;
   agencyName: string | null;
@@ -70,26 +75,36 @@ function ymd(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+/** R21: a listing basis further back than this cannot be the sold campaign. */
+const MAX_LISTED_BEFORE_SALE_DAYS = 400;
+
 /**
  * Select the campaign that most plausibly led to this sale: the latest
- * candidate listed_date that does not post-date the sale. Candidates that all
- * post-date the sale yield null (cross-listing noise, not the sold campaign).
+ * candidate basis date that does not post-date the sale and is no more than
+ * 400 days before it (R21). Plain strings are treated as basis 'listed'.
+ * Nothing in the window (cross-listing noise, stale campaigns) yields null.
  * With no sale_date we cannot attribute a campaign — return null rather than guess.
  */
 export function selectFirstListedDate(
   saleDate: string | null | undefined,
-  candidates: readonly string[] | undefined
-): string | null {
+  candidates: readonly (string | ListedDateCandidate)[] | undefined
+): ListedDateCandidate | null {
   if (!candidates?.length) return null;
   const saleMs = dayMs(saleDate);
   if (saleMs === null) return null;
-  let best: number | null = null;
+  const floorMs = saleMs - MAX_LISTED_BEFORE_SALE_DAYS * 86_400_000;
+  let best: ListedDateCandidate | null = null;
+  let bestMs = -Infinity;
   for (const c of candidates) {
-    const t = dayMs(c);
-    if (t === null || t > saleMs) continue;
-    if (best === null || t > best) best = t;
+    const cand: ListedDateCandidate = typeof c === 'string' ? { date: c, basis: 'listed' } : c;
+    const t = dayMs(cand.date);
+    if (t === null || t > saleMs || t < floorMs) continue;
+    if (t > bestMs) {
+      bestMs = t;
+      best = { date: ymd(t), basis: cand.basis };
+    }
   }
-  return best === null ? null : ymd(best);
+  return best;
 }
 
 /** Whole days between listed and sold; null when either is missing or diff < 0. */
@@ -112,7 +127,7 @@ export function deriveDaysOnMarket(
 export function toEnrichedSoldResult(
   s: PropertySaleRecord,
   profile?: MergedPropertyProfile | null,
-  listedDateCandidates?: readonly string[]
+  listedDateCandidates?: readonly (string | ListedDateCandidate)[]
 ): EnrichedSoldResult {
   const data = (profile?.data ?? {}) as Record<string, unknown>;
 
@@ -122,9 +137,11 @@ export function toEnrichedSoldResult(
     sqmOrNull(s.building_area_sqm) ??
     sqmOrNull(asNumber(data.buildingAreaSqm) ?? asNumber(data.buildingArea));
 
-  const ownListed = s.listed_date ? (dayMs(s.listed_date) !== null ? ymd(dayMs(s.listed_date)!) : null) : null;
-  const firstListedDate =
-    ownListed ?? selectFirstListedDate(s.sale_date ?? null, listedDateCandidates);
+  const ownMs = dayMs(s.listed_date);
+  const picked: ListedDateCandidate | null = ownMs !== null
+    ? { date: ymd(ownMs), basis: 'listed' }
+    : selectFirstListedDate(s.sale_date ?? null, listedDateCandidates);
+  const firstListedDate = picked?.date ?? null;
 
   return {
     rawAddress: s.raw_address,
@@ -141,6 +158,7 @@ export function toEnrichedSoldResult(
     carSpaces: s.car_spaces ?? asNumber(data.garages) ?? asNumber(data.carSpaces),
     firstListedDate,
     daysOnMarket: deriveDaysOnMarket(s.sale_date ?? null, firstListedDate),
+    firstListedDateBasis: picked?.basis ?? null,
     latitude: s.latitude ?? null,
     longitude: s.longitude ?? null,
     agencyName: s.agency_name ?? null,
@@ -268,7 +286,7 @@ export async function enrichSoldRowsFromDb(
 export function enrichSoldRows(
   rows: readonly PropertySaleRecord[],
   profiles: ReadonlyMap<string, MergedPropertyProfile>,
-  listedDates: ReadonlyMap<string, readonly string[]>
+  listedDates: ReadonlyMap<string, readonly (string | ListedDateCandidate)[]>
 ): EnrichedSoldResult[] {
   return rows.map((s) => {
     const slug = s.address_slug;
