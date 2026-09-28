@@ -6,7 +6,7 @@
 //   LOCKED  tables: anon INSERT must return 42501; anon SELECT must return 0 rows or 401
 //   PUBLIC  tables: anon SELECT must succeed (listed for reference; adjust if intentionally opened)
 //
-// Run BEFORE and AFTER applying migration 011 to confirm the fix.
+// Run BEFORE and AFTER applying migration 011 (and 015) to confirm the fix.
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const ANON_KEY    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -31,6 +31,9 @@ const LOCKED = [
   'property_cache',
   'property_listings',
   'property_rentals',
+  'listing_price_history',
+  'feed_runs',
+  'suburb_stats_history',
 ];
 
 async function checkTable(table) {
