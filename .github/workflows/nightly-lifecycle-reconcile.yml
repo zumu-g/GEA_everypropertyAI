@@ -1,0 +1,42 @@
+name: Nightly lifecycle reconcile (closed listings → sold)
+
+# Marks closed property_listings (withdrawn / under_offer) as sold when a
+# property_sales row on the same address_slug is dated between the listing's
+# basis date and 400 days after it (R5, R21). Pure DB job — no paid fetches.
+# Incremental: sales created since the last successful 'lifecycle-reconcile'
+# feed_runs row, plus listings closed or seen in the last 400 days.
+#
+# Schedule: 01:17 UTC ≈ 11:17 Melbourne, after daily-domain-scrape (sold feed)
+# and the sale-attrs backfill (:53). Minute deliberately OFF the top of the hour
+# (GitHub drops :00-queued runs — see daily-domain-scrape.yml note).
+#
+# Required repo secrets (already present for the feeds):
+#   NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# Optional: HEALTHCHECK_LIFECYCLE_RECONCILE_UUID (the script no-ops the ping
+#   when HEALTHCHECK_UUID is unset, so this is safe to add before it exists).
+
+on:
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly-lifecycle-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HEALTHCHECK_UUID: ${{ secrets.HEALTHCHECK_LIFECYCLE_RECONCILE_UUID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      # Node built-ins only — no npm install needed.
+      - name: Reconcile closed listings against sales
+        run: node scripts/reconcile-lifecycle.mjs
