@@ -5,6 +5,9 @@ import {
   haversineKm,
   type PropertyListingRecord,
 } from '@/lib/db/queries';
+import { getListingsForSuburbAll } from '@/lib/db/listings-inactive';
+import { getPriceHistoryFor, priceHistoryKey, type PriceHistoryEntry } from '@/lib/db/price-history';
+import { daysOnMarket, type DaysOnMarketBasis, type LifecycleColumns } from '@/lib/listings/days-on-market';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -62,7 +65,22 @@ interface OnMarketListingResult {
   createdAt: string | null;
   lastSeenAt: string | null;
   listedDate: string | null;
+  // Lifecycle (migration 015; R6, R9, R12). Additive only.
+  lifecycleStatus: string | null;
+  removedAt: string | null;
+  daysOnMarket: number | null;
+  daysOnMarketBasis: DaysOnMarketBasis;
+  priceHistory: PriceHistoryEntry[];
+  saleMethod: string | null;
+  auctionDate: string | null;
 }
+
+// Migration-015 columns; typed here until PropertyListingRecord carries them.
+type ListingRow = PropertyListingRecord & LifecycleColumns & {
+  lifecycle_status?: string | null;
+  sale_method?: string | null;
+  auction_date?: string | null;
+};
 
 /**
  * GET /api/on-market-listings
@@ -77,6 +95,7 @@ interface OnMarketListingResult {
  *   lat,lng — radius mode: centre point
  *   radius  — radius mode: km (default 2)
  *   sinceDays — optional: only listings first seen within the last N days ("just listed")
+ *   includeInactive — optional ('true' | '1'): also return closed rows (active=false)
  *   limit   — optional, max rows (default 200, capped at 1000)
  */
 export async function GET(request: NextRequest) {
@@ -90,6 +109,7 @@ export async function GET(request: NextRequest) {
   const sinceDaysRaw = searchParams.get('sinceDays') !== null ? Number(searchParams.get('sinceDays')) : undefined;
   const sinceDays = sinceDaysRaw !== undefined && Number.isFinite(sinceDaysRaw) && sinceDaysRaw >= 0 ? sinceDaysRaw : undefined;
   const limit = Math.min(searchParams.get('limit') ? Number(searchParams.get('limit')) : 200, 1000);
+  const includeInactive = ['true', '1'].includes(searchParams.get('includeInactive') ?? '');
 
   // "Just listed" window: keep only rows listed within sinceDays. Prefer the real
   // listed_date, falling back to created_at (first-seen) for rows predating it.
@@ -115,7 +135,7 @@ export async function GET(request: NextRequest) {
     if (hasGeo) {
       const box = await getRowsNearby<PropertyListingRecord>('property_listings', lat!, lng!, radius);
       rows = box
-        .filter((r) => r.active !== false)
+        .filter((r) => includeInactive || r.active !== false)
         .filter(withinWindow)
         .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number'
           && haversineKm(lat!, lng!, r.latitude, r.longitude) <= radius)
@@ -124,19 +144,24 @@ export async function GET(request: NextRequest) {
         .sort((a, b) =>
           haversineKm(lat!, lng!, a.latitude as number, a.longitude as number) -
           haversineKm(lat!, lng!, b.latitude as number, b.longitude as number));
+    } else if (includeInactive) {
+      rows = (await getListingsForSuburbAll(suburb, state, limit)).filter(withinWindow);
     } else {
       // Suburb mode pushes the sinceDays window into the DB query (before the limit).
       rows = await getListingsForSuburb(suburb, state, limit, { sinceDays });
     }
 
-    const results: OnMarketListingResult[] = dedupeByAddress(rows)
+    const page = dedupeByAddress(rows)
       // Lighter touch than sold-sales: only drop garbage price outliers; keep
       // price-less listings ("Contact Agent") since those are legitimate.
       .filter((r) => !(typeof r.price_low === 'number' && r.price_low > MAX_PLAUSIBLE_PRICE))
       // Limit last — after distance sort, dedupe and price sanity — so the N
       // closest distinct listings are returned, not the first N DB rows.
-      .slice(0, limit)
-      .map((r) => ({
+      .slice(0, limit) as ListingRow[];
+    const history = await getPriceHistoryFor('listings', page);
+    const now = new Date();
+
+    const results: OnMarketListingResult[] = page.map((r) => ({
       rawAddress: r.raw_address,
       suburb: r.suburb ?? null,
       postcode: r.postcode ?? null,
@@ -159,6 +184,12 @@ export async function GET(request: NextRequest) {
       createdAt: r.created_at ?? null,
       lastSeenAt: r.last_seen_at ?? null,
       listedDate: r.listed_date ?? null,
+      lifecycleStatus: r.lifecycle_status ?? null,
+      removedAt: r.removed_at ?? null,
+      ...daysOnMarket(r, now),
+      priceHistory: history.get(priceHistoryKey(r)) ?? [],
+      saleMethod: r.sale_method ?? null,
+      auctionDate: r.auction_date ?? null,
     }));
 
     return NextResponse.json(

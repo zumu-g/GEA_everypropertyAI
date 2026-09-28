@@ -99,6 +99,22 @@ export interface OnMarketListing {
   createdAt: string | null;
   lastSeenAt: string | null;
   listedDate: string | null;
+  /** Lifecycle fields (additive; absent from servers predating migration 015). */
+  lifecycleStatus?: string | null;
+  removedAt?: string | null;
+  daysOnMarket?: number | null;
+  daysOnMarketBasis?: 'listed' | 'first_seen';
+  priceHistory?: ListingPriceObservation[];
+  saleMethod?: string | null;
+  auctionDate?: string | null;
+}
+
+export interface ListingPriceObservation {
+  observedAt: string;
+  displayPrice: string | null;
+  /** weekly rent for rentals */
+  priceLow: number | null;
+  priceHigh: number | null;
 }
 
 export interface RentalListing {
@@ -121,6 +137,13 @@ export interface RentalListing {
   imageUrl: string | null;
   source: string;
   listedDate: string | null;
+  /** Lifecycle fields (additive; absent from servers predating migration 015). */
+  lifecycleStatus?: string | null;
+  removedAt?: string | null;
+  leasedAt?: string | null;
+  daysOnMarket?: number | null;
+  daysOnMarketBasis?: 'listed' | 'first_seen';
+  priceHistory?: ListingPriceObservation[];
 }
 
 export interface StreetRow {
