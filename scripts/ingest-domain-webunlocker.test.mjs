@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { looksLikeData, extractListings, mapListing, inArea, shouldSweep, buildCoverage, slugToSuburb } from './ingest-domain-webunlocker.mjs';
+import { looksLikeData, extractListings, mapListing, inArea, shouldSweep, buildCoverage, slugToSuburb, listingsPage } from './ingest-domain-webunlocker.mjs';
 import { paginateUntilShort } from './lib/paginate.mjs';
 
 const rentNode = (overrides = {}) => ({
@@ -172,5 +172,27 @@ describe('sweep gating + coverage', () => {
       { slug: 'clyde-vic-3978', error: 'blocked' },
     ], rows);
     expect(cov).toEqual({ Berwick: { seen: 2, truncated: false }, Harkaway: { seen: 1, truncated: true } });
+  });
+  it('rows from an uncrawled in-area suburb get a coverage entry when every crawled slug is clean', () => {
+    const rows = [{ suburb: 'Berwick' }, { suburb: 'Harkaway' }, { suburb: 'Harkaway' }];
+    expect(buildCoverage([{ slug: 'berwick-vic-3806', truncated: false }], rows))
+      .toEqual({ Berwick: { seen: 1, truncated: false }, Harkaway: { seen: 2, truncated: false } });
+  });
+  it('uncrawled suburbs are not added when any slug is truncated or errored', () => {
+    const rows = [{ suburb: 'Berwick' }, { suburb: 'Harkaway' }];
+    expect(buildCoverage([{ slug: 'berwick-vic-3806', truncated: true }], rows)).toEqual({ Berwick: { seen: 1, truncated: true } });
+    expect(buildCoverage([{ slug: 'berwick-vic-3806', truncated: false }, { slug: 'clyde-vic-3978', error: 'x' }], rows)).toEqual({ Berwick: { seen: 1, truncated: false } });
+  });
+  it('out-of-area rows never create a coverage entry', () => {
+    expect(buildCoverage([{ slug: 'berwick-vic-3806', truncated: false }], [{ suburb: 'Dandenong' }])).toEqual({ Berwick: { seen: 0, truncated: false } });
+  });
+});
+
+describe('listingsPage (soft-block guard)', () => {
+  it('throws on non-listings HTML instead of returning an empty page', () => {
+    expect(() => listingsPage(CHALLENGE_PAGE)).toThrow(/not a listings page/);
+  });
+  it('returns the nodes of a genuine page', () => {
+    expect(listingsPage(NEXT_DATA({ a: rentNode() }))).toHaveLength(1);
   });
 });

@@ -181,6 +181,21 @@ describe('writeFeedBatch — stamping and price history', () => {
   });
 });
 
+describe('writeFeedBatch — listed_date carry-forward', () => {
+  it('a null incoming listed_date never overwrites a stored one; the stored source rides along', async () => {
+    const db = fakeDb({ property_listings: [{ id: 1, raw_address: '1 A St, Berwick VIC 3806', suburb: 'Berwick', source: SRC, active: true, campaign_started_at: RUN, listed_date: '2026-09-01', listed_date_source: 'portal' }] });
+    await write(db, [listing('1 A St, Berwick VIC 3806', '$800,000', { listed_date: null, listed_date_source: null })]);
+    const sel = db.calls.find((c) => c.method === 'GET' && c.table === 'property_listings');
+    expect(sel.url).toMatch(/select=[^&]*listed_date,listed_date_source/);
+    expect(db.tables.property_listings[0]).toMatchObject({ listed_date: '2026-09-01', listed_date_source: 'portal' });
+  });
+  it('a non-null incoming listed_date wins', async () => {
+    const db = fakeDb({ property_listings: [{ id: 1, raw_address: '1 A St, Berwick VIC 3806', suburb: 'Berwick', source: SRC, active: true, campaign_started_at: RUN, listed_date: '2026-09-01', listed_date_source: 'portal' }] });
+    await write(db, [listing('1 A St, Berwick VIC 3806', '$800,000', { listed_date: '2026-09-20', listed_date_source: 'first_seen' })]);
+    expect(db.tables.property_listings[0]).toMatchObject({ listed_date: '2026-09-20', listed_date_source: 'first_seen' });
+  });
+});
+
 describe('writeFeedBatch — reopen (AE5) and sticky auction', () => {
   it('a closed row seen again reopens with a new campaign start and cleared removal', async () => {
     const march = '2026-03-10T04:00:00.000Z';

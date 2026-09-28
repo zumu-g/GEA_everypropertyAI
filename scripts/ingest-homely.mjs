@@ -34,7 +34,7 @@ import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
 import { mapPool } from './lib/pool.mjs';
 import { paginateUntilShort } from './lib/paginate.mjs';
-import { writeFeedBatch, sweepSource, recordRun, assertMigration } from './lib/feed-write.mjs';
+import { writeFeedBatch, sweepSource, recordRun, assertMigration, client as feedDb, inChunks } from './lib/feed-write.mjs';
 import { lifecycleFromSource, saleMethodFromText } from './lib/lifecycle-status.mjs';
 import { slugToSuburb, titleCase } from './lib/slugs.mjs';
 export { slugToSuburb };
@@ -127,6 +127,24 @@ export function parseDetailLinks(html) {
     out.push(`https://www.homely.com.au${path}`);
   }
   return out;
+}
+
+// Index page → detail links, or throw when the HTML is not a Homely page (soft block
+// served as 200). paginateUntilShort turns a throw on page >= 2 into truncated:true
+// instead of reading it as end-of-results.
+export function indexLinks(html) {
+  if (!parseNextData(html)) throw new Error('not a listings page');
+  return parseDetailLinks(html);
+}
+
+// An index hit is evidence the listing is live even when its detail fetch failed:
+// stamp last_seen_at so the sweep does not miss-count it.
+export async function stampSeenForFailedDetails({ failedUrls, runStart, fetch, env }) {
+  if (!failedUrls.length) return;
+  const db = feedDb({ fetch, env });
+  for (const filter of inChunks(failedUrls)) {
+    await db.patch(`${TABLE}?source=eq.${SOURCE}&active=eq.true&listing_url=${filter}`, { last_seen_at: runStart });
+  }
 }
 
 // Photo URLs from a detail listing node (prefer the default-variant URI).
@@ -284,7 +302,7 @@ async function main() {
     try {
       // Follow ?page=N until a short page (full sweep) or PAGE_CAP (truncated → not swept).
       const { items, pages, truncated, error } = await paginateUntilShort(
-        async (page) => parseDetailLinks(await fetchPage(page === 1 ? indexUrl : `${indexUrl}?page=${page}`)),
+        async (page) => indexLinks(await fetchPage(page === 1 ? indexUrl : `${indexUrl}?page=${page}`)),
         { cap: PAGE_CAP, key: (u) => u },
       );
       const links = items.slice(0, MAX_PER_SUBURB);
@@ -319,7 +337,7 @@ async function main() {
       return { ok: true, row };
     } catch (e) {
       console.error(`    ${url}: detail FAILED ${e.message}`);
-      return { ok: false };
+      return { ok: false, url };
     }
   });
 
@@ -341,6 +359,7 @@ async function main() {
   // Source-scoped miss-counting sweep (KTD2) over the suburbs this run covered completely.
   let sweep = { miss1: 0, closed: 0, sweptSuburbs: [], skippedSuburbs: [] };
   if (shouldSweep({ blocked })) {
+    await stampSeenForFailedDetails({ failedUrls: detailResults.filter((r) => !r.ok).map((r) => r.url), runStart });
     sweep = await sweepSource({ table: TABLE, source: SOURCE, runStart, coverage: buildCoverage(indexResults, rows) });
     console.log(`Sweep: miss1=${sweep.miss1} closed=${sweep.closed} swept=${sweep.sweptSuburbs.length} skipped=${sweep.skippedSuburbs.length}`);
   }

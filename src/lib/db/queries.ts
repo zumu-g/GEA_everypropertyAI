@@ -1307,11 +1307,11 @@ async function upsertRows(table: string, rows: object[], onConflict: string): Pr
 // shared feed-write path does the full stamping; this webhook path only needs the
 // uniform 'active' so the row never carries a stale lifecycle from a prior sweep.
 export function insertPropertyListings(rows: PropertyListingRecord[]): Promise<void> {
-  return upsertRows('property_listings', rows.map((r) => ({ ...r, lifecycle_status: 'active' })), 'raw_address,source');
+  return upsertRows('property_listings', rows.map((r) => ({ ...r, lifecycle_status: 'active', active: true, miss_count: 0, removed_at: null })), 'raw_address,source');
 }
 
 export function insertPropertyRentals(rows: PropertyRentalRecord[]): Promise<void> {
-  return upsertRows('property_rentals', rows.map((r) => ({ ...r, lifecycle_status: 'active' })), 'raw_address,source');
+  return upsertRows('property_rentals', rows.map((r) => ({ ...r, lifecycle_status: 'active', active: true, miss_count: 0, removed_at: null, leased_at: null })), 'raw_address,source');
 }
 
 // ─── Feed-seed lookup (per-property profile fallback) ────────────────────────
@@ -1516,7 +1516,7 @@ export async function expireNotSeen(
   if (!isSupabaseConfigured() || suburbs.length === 0) return 0;
   const { data, error } = await supabase()
     .from(table)
-    .update({ active: false })
+    .update({ active: false, lifecycle_status: 'withdrawn', [table === 'property_rentals' ? 'leased_at' : 'removed_at']: sinceIso })
     .eq('source', source)
     .in('suburb', suburbs)
     .eq('state', state.toUpperCase())

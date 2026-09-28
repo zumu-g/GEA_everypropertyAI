@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { looksLikeData, parseDetailLinks, parseNextData, mapDetail, shouldSweep, buildCoverage } from './ingest-homely.mjs';
+import { describe, it, expect, vi } from 'vitest';
+import { looksLikeData, parseDetailLinks, parseNextData, mapDetail, shouldSweep, buildCoverage, indexLinks, stampSeenForFailedDetails } from './ingest-homely.mjs';
 
 const NEXT_DATA = (listing) =>
   `<!doctype html><html><body><script id="__NEXT_DATA__" type="application/json">` +
@@ -134,5 +134,34 @@ describe('sweep gating + coverage', () => {
       { slug: 'harkaway-vic-3806', truncated: true },
       { slug: 'clyde-vic-3978', error: 'x' },
     ], rows)).toEqual({ Berwick: { seen: 1, truncated: false }, Harkaway: { seen: 1, truncated: true } });
+  });
+});
+
+describe('indexLinks (soft-block guard)', () => {
+  it('throws on a page with no __NEXT_DATA__ so paginate marks the suburb truncated instead of ended', () => {
+    expect(() => indexLinks(CHALLENGE_PAGE)).toThrow(/not a listings page/);
+  });
+  it('returns the detail links of a genuine index page', () => {
+    const html = NEXT_DATA({}).replace('</body>', '<a href="/homes/1-a-st-berwick/123">x</a></body>');
+    expect(indexLinks(html)).toEqual(['https://www.homely.com.au/homes/1-a-st-berwick/123']);
+  });
+});
+
+describe('stampSeenForFailedDetails', () => {
+  const env = { NEXT_PUBLIC_SUPABASE_URL: 'https://x.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'svc' };
+  const run = '2026-09-28T04:00:00.000Z';
+  it('PATCHes last_seen_at on active homely rows whose detail fetch failed (index hit = still live)', async () => {
+    const calls = [];
+    const fetch = vi.fn(async (url, opts) => { calls.push({ url: decodeURIComponent(url), body: JSON.parse(opts.body), method: opts.method }); return { ok: true, json: async () => [] }; });
+    await stampSeenForFailedDetails({ failedUrls: ['https://www.homely.com.au/homes/a/1', 'https://www.homely.com.au/homes/b/2'], runStart: run, fetch, env });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe('PATCH');
+    expect(calls[0].url).toBe('https://x.supabase.co/rest/v1/property_listings?source=eq.homely&active=eq.true&listing_url=in.("https://www.homely.com.au/homes/a/1","https://www.homely.com.au/homes/b/2")');
+    expect(calls[0].body).toEqual({ last_seen_at: run });
+  });
+  it('issues no PATCH when nothing failed', async () => {
+    const fetch = vi.fn();
+    await stampSeenForFailedDetails({ failedUrls: [], runStart: run, fetch, env });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

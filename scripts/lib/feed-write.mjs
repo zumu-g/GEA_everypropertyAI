@@ -32,7 +32,7 @@ const TABLE_META = {
   property_rentals: { historyName: 'rentals', closeCol: 'leased_at', saleMethod: false },
 };
 
-function client({ fetch = globalThis.fetch, env = process.env } = {}) {
+export function client({ fetch = globalThis.fetch, env = process.env } = {}) {
   const base = env.NEXT_PUBLIC_SUPABASE_URL;
   const key = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!base || !key) throw new Error('[feed-write] missing NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY');
@@ -103,7 +103,7 @@ export async function writeFeedBatch({ table, source, runStart, rows, fetch, env
   if (!batch.length) return { seen: 0, newRows: 0, reopened: 0, priced: 0 };
   const addresses = batch.map((r) => r.raw_address);
 
-  const existCols = ['raw_address', 'active', 'campaign_started_at', ...(meta.saleMethod ? ['sale_method', 'auction_date'] : [])].join(',');
+  const existCols = ['raw_address', 'active', 'campaign_started_at', 'listed_date', 'listed_date_source', ...(meta.saleMethod ? ['sale_method', 'auction_date'] : [])].join(',');
   const [existingRows, historyRows] = await Promise.all([
     selectByAddress(db, `${table}?select=${existCols}&source=eq.${encodeURIComponent(source)}`, addresses),
     // Every history row for the batch, newest first; first per address is the latest observation.
@@ -136,6 +136,11 @@ export async function writeFeedBatch({ table, source, runStart, rows, fetch, env
       // Same campaign keeps its start; new identity or reopen starts at this run (R24).
       campaign_started_at: prev?.active && prev.campaign_started_at ? prev.campaign_started_at : runStart,
     };
+    // Never overwrite a stored listed_date with null (a mapper that could not find one this run).
+    if (row.listed_date == null && prev?.listed_date != null) {
+      payload.listed_date = prev.listed_date;
+      payload.listed_date_source = prev.listed_date_source ?? null;
+    }
     if (meta.saleMethod) {
       const sm = saleMethodFromText(row.display_price, row.status, now);
       // Once auction, the method sticks for the campaign (KTD3) — not across a reopen.

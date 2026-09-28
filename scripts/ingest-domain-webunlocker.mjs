@@ -146,6 +146,14 @@ export function extractListings(html) {
   return lm && typeof lm === 'object' ? Object.values(lm) : [];
 }
 
+// Page → listing nodes, or throw when the HTML is not a Domain page (soft block served
+// as 200). paginateUntilShort turns a throw on page >= 2 into truncated:true instead
+// of reading it as end-of-results.
+export function listingsPage(html) {
+  if (!looksLikeData(html)) throw new Error('not a listings page');
+  return extractListings(html);
+}
+
 // Body-validation gate: a genuine Domain search page embeds the __NEXT_DATA__
 // script. An anti-bot challenge / interstitial returned as HTTP 200 does NOT, so it
 // must be treated as a failure to retry — never as a (false) empty-but-successful
@@ -238,6 +246,11 @@ export function buildCoverage(perSlug, rows) {
     const suburb = slugToSuburb(r.slug);
     cov[suburb] = { seen: counts.get(suburb) || 0, truncated: !!r.truncated };
   }
+  // Clean run (no slug errored or truncated): in-area rows that surfaced under a
+  // neighbouring slug's crawl belong to suburbs we did not crawl — sweep those too.
+  if (perSlug.every((r) => !r.error && !r.truncated)) {
+    for (const [suburb, seen] of counts) if (!(suburb in cov) && inArea(suburb)) cov[suburb] = { seen, truncated: false };
+  }
   return cov;
 }
 
@@ -270,7 +283,7 @@ async function main() {
     try {
       // Follow ?page=N until a short page (full sweep) or PAGE_CAP (truncated → not swept).
       const { items: nodes, pages, truncated, error } = await paginateUntilShort(
-        async (page) => extractListings(await fetchPage(page === 1 ? url : `${url}?page=${page}`)),
+        async (page) => listingsPage(await fetchPage(page === 1 ? url : `${url}?page=${page}`)),
         { cap: PAGE_CAP, key: (n) => n?.listingModel?.url ?? JSON.stringify(n?.listingModel?.address ?? n) },
       );
       const mapped = nodes.map(n=>mapListing(category, n)).filter(Boolean).filter(r=>inArea(r.suburb));
