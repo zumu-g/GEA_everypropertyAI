@@ -15,6 +15,7 @@ vi.mock('@/lib/db/stats-queries', () => ({
   getFrozenMonthlyRows: vi.fn(async () => []),
   getStatsHistoryRow: vi.fn(async () => null),
   upsertStatsHistory: vi.fn(async () => undefined),
+  hasRecentOkFeedRun: vi.fn(async () => true),
 }));
 
 const R15_FIELDS = [
@@ -56,7 +57,7 @@ describe('GET /api/suburb-stats', () => {
     const { res, body } = await callRoute('suburb=Berwick&period=month&asOf=2026-08-15');
     expect(res.status).toBe(200);
     expect(Object.keys(body).sort()).toEqual([
-      'computedAt', 'current', 'period', 'periodEnd', 'periodStart', 'prior', 'provisional', 'reconstructed',
+      'computedAt', 'current', 'freezeGate', 'period', 'periodEnd', 'periodStart', 'prior', 'provisional', 'reconstructed',
       'schemaVersion', 'state', 'suburb', 'yearAgo',
     ]);
     expect(body).toMatchObject({ suburb: 'Berwick', state: 'VIC', period: 'month', periodStart: '2026-08-01', periodEnd: '2026-08-31' });
@@ -89,7 +90,9 @@ describe('serve rule (AE3)', () => {
     // Later call: the frozen row is served byte-for-byte; no recompute, no upsert.
     vi.mocked(q.getStatsHistoryRow).mockResolvedValueOnce(stored);
     const third = await computeAndPersist('Berwick', 'VIC', 'month', '2026-08-01', '2026-08-31', new Date('2027-01-01T00:00:00Z'));
-    expect(JSON.stringify(third.block)).toBe(JSON.stringify(stored.stats));
+    const { freezeGate, ...storedBlock } = stored.stats;
+    expect(freezeGate).toEqual({ feedsOk: true, notEmpty: true });
+    expect(JSON.stringify(third.block)).toBe(JSON.stringify(storedBlock));
     expect(third.reconstructed).toBe(true);
     expect(q.fetchListingsForStats).toHaveBeenCalledTimes(2);
     expect(q.upsertStatsHistory).toHaveBeenCalledTimes(2);

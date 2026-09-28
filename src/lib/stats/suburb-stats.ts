@@ -14,7 +14,7 @@ import {
 } from './periods';
 import {
   fetchListingsForStats, fetchPriceHistory, fetchRentalsForStats, fetchSalesForStats,
-  getFrozenMonthlyRows, getStatsHistoryRow, upsertStatsHistory,
+  getFrozenMonthlyRows, getStatsHistoryRow, hasRecentOkFeedRun, upsertStatsHistory,
   type PriceHistoryRow, type StatsListingRow, type StatsRentalRow, type StatsSaleRow, type SuburbStatsHistoryRow,
 } from '@/lib/db/stats-queries';
 
@@ -235,11 +235,17 @@ export function sentimentInputs(b: Omit<SuburbStatsBlock, 'sentimentIndex' | 'se
 
 // ─── Serve / persist ──────────────────────────────────────────────────────────
 
+/** Why a settled period was (or was not) frozen; absent while the period is still inside the settle window. */
+export interface FreezeGate { feedsOk: boolean; notEmpty: boolean }
+/** Feeds must have had an ok on-market run within this many days before the settle instant. */
+export const FREEZE_FEED_WINDOW_DAYS = 7;
+
 export interface ServedBlock {
   block: SuburbStatsBlock;
   provisional: boolean;
   reconstructed: boolean;
   computedAt: string;
+  freezeGate?: FreezeGate;
 }
 
 export interface SuburbStatsResponse {
@@ -255,6 +261,7 @@ export interface SuburbStatsResponse {
   reconstructed: boolean;
   computedAt: string;
   schemaVersion: number;
+  freezeGate: FreezeGate | null;
 }
 
 async function computeFromDb(suburb: string, state: string, start: string, end: string): Promise<SuburbStatsBlock> {
@@ -276,23 +283,45 @@ export async function computeAndPersist(
 ): Promise<ServedBlock> {
   const existing = await getStatsHistoryRow(suburb, state, periodType, start);
   if (existing && !existing.provisional) {
-    return { block: existing.stats as unknown as SuburbStatsBlock, provisional: false, reconstructed: existing.reconstructed, computedAt: existing.computed_at };
+    const { freezeGate, ...block } = existing.stats as unknown as SuburbStatsBlock & { freezeGate?: FreezeGate };
+    return { block, provisional: false, reconstructed: existing.reconstructed, computedAt: existing.computed_at, freezeGate };
   }
   const block = await computeFromDb(suburb, state, start, end);
   const settleMs = melbourneEndExclusive(end).getTime() + SETTLE_DAYS * DAY_MS;
-  const provisional = settleMs > now.getTime();
+  const settled = settleMs <= now.getTime();
+  // A settled period freezes only if feeds were alive when it settled and the block
+  // is not a suspicious blank after a populated prior period; otherwise it stays
+  // provisional so the next call recomputes once the feeds catch up.
+  const freezeGate = settled ? await checkFreezeGate(suburb, state, periodType, start, block, settleMs) : undefined;
+  const provisional = !settled || !(freezeGate!.feedsOk && freezeGate!.notEmpty);
   const reconstructed = end < addDays(LIFECYCLE_GO_LIVE, SWEEP_EXCLUSION_DAYS);
   const computedAt = now.toISOString();
   const row: SuburbStatsHistoryRow = {
     suburb, state, period_type: periodType, period_start: start, period_end: end,
-    stats: block as unknown as Record<string, unknown>,
+    stats: { ...block, ...(freezeGate && { freezeGate }) } as unknown as Record<string, unknown>,
     provisional, reconstructed, computed_at: computedAt, schema_version: STATS_SCHEMA_VERSION,
   };
   await upsertStatsHistory(row);
-  return { block, provisional, reconstructed, computedAt };
+  return { block, provisional, reconstructed, computedAt, freezeGate };
 }
 
 const isEmpty = (b: SuburbStatsBlock) => b.activeListings === 0 && b.salesCount === 0 && b.rentalListings === 0 && b.newListings === 0;
+
+const priorPeriodStart = (periodType: PeriodType, start: string) =>
+  periodType === 'week' ? addDays(start, -7) : addDays(start, -1).slice(0, 7) + '-01';
+
+async function checkFreezeGate(
+  suburb: string, state: string, periodType: PeriodType, start: string, block: SuburbStatsBlock, settleMs: number,
+): Promise<FreezeGate> {
+  const until = new Date(settleMs).toISOString();
+  const since = new Date(settleMs - FREEZE_FEED_WINDOW_DAYS * DAY_MS).toISOString();
+  const [feedsOk, prior] = await Promise.all([
+    hasRecentOkFeedRun('on-market', since, until),
+    isEmpty(block) ? getStatsHistoryRow(suburb, state, periodType, priorPeriodStart(periodType, start)) : null,
+  ]);
+  const notEmpty = !(isEmpty(block) && prior != null && !prior.provisional && !isEmpty(prior.stats as unknown as SuburbStatsBlock));
+  return { feedsOk, notEmpty };
+}
 
 export async function getSuburbStats(
   suburbRaw: string, state: string, period: PeriodType, asOf: string = melbourneDate(), now: Date = new Date(),
@@ -313,5 +342,6 @@ export async function getSuburbStats(
     reconstructed: current.reconstructed,
     computedAt: current.computedAt,
     schemaVersion: STATS_SCHEMA_VERSION,
+    freezeGate: current.freezeGate ?? null,
   };
 }

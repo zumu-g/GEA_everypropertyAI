@@ -134,3 +134,13 @@ export async function upsertStatsHistory(row: SuburbStatsHistoryRow): Promise<vo
     .upsert(row, { onConflict: 'suburb,state,period_type,period_start' });
   if (error) console.error('[upsertStatsHistory]', error.message);
 }
+
+/** True when feed_runs has an `ok` run of `category` with run_start in [sinceIso, untilIso]. */
+export async function hasRecentOkFeedRun(category: string, sinceIso: string, untilIso: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  const { data, error } = await supabase().from('feed_runs').select('id')
+    .eq('category', category).eq('status', 'ok')
+    .gte('run_start', sinceIso).lte('run_start', untilIso).limit(1);
+  if (error) { console.error('[hasRecentOkFeedRun]', error.message); return false; }
+  return (data?.length ?? 0) > 0;
+}

@@ -1,7 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { computeBlock, type BlockInput } from '../suburb-stats';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { computeBlock, computeAndPersist, type BlockInput } from '../suburb-stats';
 import { resolvePeriod } from '../periods';
 import type { StatsListingRow, StatsRentalRow, PriceHistoryRow, StatsSaleRow } from '@/lib/db/stats-queries';
+
+vi.mock('@/lib/db/stats-queries', () => ({
+  fetchListingsForStats: vi.fn(async () => []),
+  fetchRentalsForStats: vi.fn(async () => []),
+  fetchPriceHistory: vi.fn(async () => []),
+  fetchSalesForStats: vi.fn(async () => []),
+  getFrozenMonthlyRows: vi.fn(async () => []),
+  getStatsHistoryRow: vi.fn(async () => null),
+  upsertStatsHistory: vi.fn(async () => undefined),
+  hasRecentOkFeedRun: vi.fn(async () => true),
+}));
 
 // August 2026, go-live far enough back that nothing is inside the exclusion window.
 const bounds = resolvePeriod('month', '2026-08-15');
@@ -209,5 +220,56 @@ describe('computeBlock — rentals', () => {
     ] }));
     expect(blk.rentalListings).toBe(2);
     expect(blk.medianRent).toBe(550);
+  });
+});
+
+describe('computeAndPersist — freeze gate', () => {
+  const SETTLED = new Date('2026-12-15T00:00:00Z'); // August + 60 days settled
+  const call = () => computeAndPersist('Berwick', 'VIC', 'month', '2026-08-01', '2026-08-31', SETTLED);
+  const nonEmptyPriorRow = {
+    suburb: 'Berwick', state: 'VIC', period_type: 'month' as const, period_start: '2026-07-01', period_end: '2026-07-31',
+    stats: { activeListings: 12, newListings: 3, salesCount: 2, rentalListings: 4 },
+    provisional: false, reconstructed: false, computed_at: '2026-10-01T00:00:00Z', schema_version: 1,
+  };
+  beforeEach(() => vi.clearAllMocks());
+
+  it('settled + feeds ok + non-empty block → frozen, gate recorded in stats JSON', async () => {
+    const q = await import('@/lib/db/stats-queries');
+    vi.mocked(q.fetchSalesForStats).mockResolvedValueOnce([sale()]);
+    const r = await call();
+    expect(r.provisional).toBe(false);
+    expect(r.freezeGate).toEqual({ feedsOk: true, notEmpty: true });
+    expect(q.hasRecentOkFeedRun).toHaveBeenCalledWith('on-market', expect.any(String), expect.any(String));
+    const [category, since, until] = vi.mocked(q.hasRecentOkFeedRun).mock.calls[0];
+    expect(category).toBe('on-market');
+    expect(new Date(until).getTime() - new Date(since).getTime()).toBe(7 * 86_400_000);
+    expect(until).toBe('2026-10-30T14:00:00.000Z'); // 31 Aug end-exclusive (AEST) + 60 days
+    expect(vi.mocked(q.upsertStatsHistory).mock.calls[0][0]).toMatchObject({ provisional: false, stats: { freezeGate: { feedsOk: true, notEmpty: true } } });
+  });
+
+  it('settled but no ok on-market feed run in the window → stays provisional', async () => {
+    const q = await import('@/lib/db/stats-queries');
+    vi.mocked(q.hasRecentOkFeedRun).mockResolvedValueOnce(false);
+    vi.mocked(q.fetchSalesForStats).mockResolvedValueOnce([sale()]);
+    const r = await call();
+    expect(r.provisional).toBe(true);
+    expect(r.freezeGate).toEqual({ feedsOk: false, notEmpty: true });
+    expect(vi.mocked(q.upsertStatsHistory).mock.calls[0][0].provisional).toBe(true);
+  });
+
+  it('settled + empty block with a non-empty frozen prior row → stays provisional', async () => {
+    const q = await import('@/lib/db/stats-queries');
+    vi.mocked(q.getStatsHistoryRow).mockImplementation(async (_s, _st, _p, start) => (start === '2026-07-01' ? nonEmptyPriorRow : null));
+    const r = await call();
+    expect(r.provisional).toBe(true);
+    expect(r.freezeGate).toEqual({ feedsOk: true, notEmpty: false });
+    vi.mocked(q.getStatsHistoryRow).mockReset();
+    vi.mocked(q.getStatsHistoryRow).mockResolvedValue(null);
+  });
+
+  it('settled + empty block with no prior row → frozen', async () => {
+    const r = await call();
+    expect(r.provisional).toBe(false);
+    expect(r.freezeGate).toEqual({ feedsOk: true, notEmpty: true });
   });
 });
