@@ -116,6 +116,9 @@ export async function getRentalEstimate(
     grossYield: segment?.grossYield,
   };
 
+  // Leased (active=false) rentals are admitted on purpose: a listing that has come
+  // off the market is achieved-rent evidence, and ~60% of property_rentals is
+  // inactive. Recency weighting + the 24-month window handle staleness.
   const comps = new Map<string, RentalComparable>();
 
   if (hasGeo) {
@@ -124,7 +127,6 @@ export async function getRentalEstimate(
     for (const radius of RADIUS_LADDER_KM) {
       const box = await getRowsNearby<PropertyRentalRecord>('property_rentals', lat, lng, radius, 500);
       for (const r of box) {
-        if (r.active === false) continue;
         if (typeof r.latitude !== 'number' || typeof r.longitude !== 'number') continue;
         const dist = haversineKm(lat, lng, r.latitude, r.longitude);
         if (dist > radius) continue;
@@ -141,7 +143,6 @@ export async function getRentalEstimate(
   if (comps.size < MIN_COMPS) {
     const suburbRentals = await getRentalsForSuburb(subject.suburb, state, 300);
     for (const r of suburbRentals) {
-      if (r.active === false) continue;
       if (!rentSane(r.weekly_rent)) continue;
       if (!withinMonths(r.created_at ?? r.last_seen_at, MAX_WINDOW_MONTHS, now)) continue;
       if (!passesPrefilter(subject, r)) continue;

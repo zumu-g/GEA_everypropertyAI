@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  rentalSimilarityWeight,
   estimateRentFromComparables,
   type RentalComparable,
   type RentalSubject,
@@ -173,5 +174,18 @@ describe('proxy disclosure (review fix)', () => {
     const comps = Array.from({ length: 6 }, (_, i) => comp(520, { monthsAgo: 4 }, i));
     const res = estimateRentFromComparables(SUBJECT, comps, market, NOW);
     expect(res!.methodology).toContain('(dampened from 8.0% suburb growth)');
+  });
+});
+
+describe('rentalSimilarityWeight — same suburb preferred', () => {
+  it('an equidistant comp in the subject suburb outweighs one from a neighbouring estate', () => {
+    const local = { ...comp(600, { distanceKm: 3.2 }), suburb: SUBJECT.suburb };
+    const estate = { ...comp(600, { distanceKm: 3.2 }), suburb: 'Pakenham' };
+    expect(rentalSimilarityWeight(SUBJECT, local)).toBeGreaterThan(rentalSimilarityWeight(SUBJECT, estate));
+  });
+  it('no suburb on the comp → no penalty', () => {
+    const unknown = { ...comp(600, { distanceKm: 3.2 }), suburb: undefined };
+    const local = { ...comp(600, { distanceKm: 3.2 }), suburb: SUBJECT.suburb };
+    expect(rentalSimilarityWeight(SUBJECT, unknown)).toBe(rentalSimilarityWeight(SUBJECT, local));
   });
 });
