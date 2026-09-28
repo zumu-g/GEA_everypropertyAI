@@ -21,14 +21,13 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import { recordRun } from './lib/feed-write.mjs';
+import { inChunks, recordRun } from './lib/feed-write.mjs';
 import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 
 export const CATEGORY = 'lifecycle-reconcile';
 export const WINDOW_DAYS = 400;
 const PAGE = 1000;
 const MAX_PAGES = 50; // ponytail: 50k rows/run cap; raise or window by suburb if it ever trips
-const URL_BUDGET = 6000;
 const CLOSED = ['withdrawn', 'under_offer', 'sold'];
 const DAY_MS = 86_400_000;
 
@@ -62,18 +61,6 @@ export function salesSinceQuery(sinceIso, pageNo) {
 export function closedListingsQuery(cutoffIso, pageNo) {
   const c = encodeURIComponent(cutoffIso);
   return `property_listings?select=${LISTING_COLS}&address_slug=not.is.null&lifecycle_status=in.(${CLOSED.join(',')})&or=(removed_at.gte.${c},last_seen_at.gte.${c})&order=id.asc&${page(pageNo)}`;
-}
-
-/** PostgREST in.(...) values, quoted + encoded, chunked by URL length (as feed-write.mjs). */
-function inChunks(values) {
-  const enc = [...new Set(values)].map((v) => encodeURIComponent(`"${String(v).replace(/"/g, '\\"')}"`));
-  const chunks = []; let cur = [], len = 0;
-  for (const e of enc) {
-    if (cur.length && len + e.length > URL_BUDGET) { chunks.push(cur); cur = []; len = 0; }
-    cur.push(e); len += e.length + 1;
-  }
-  if (cur.length) chunks.push(cur);
-  return chunks.map((c) => `in.(${c.join(',')})`);
 }
 
 function client({ fetch = globalThis.fetch, env = process.env }) {
@@ -117,13 +104,20 @@ export async function reconcile({ fetch, env, runStart = new Date().toISOString(
   ]);
   // Cross-fill: closed listings for the new sales' slugs, and sales for the closed listings' slugs.
   const listings = new Map(closedListings.map((r) => [r.id, r]));
-  for (const f of inChunks(newSales.map((s) => s.address_slug))) {
-    for (const r of await db.get(`property_listings?select=${LISTING_COLS}&lifecycle_status=in.(${CLOSED.join(',')})&address_slug=${f}`)) listings.set(r.id, r);
-  }
   const sales = new Map(newSales.map((s) => [s.id, s]));
-  for (const f of inChunks(closedListings.map((l) => l.address_slug))) {
-    for (const s of await db.get(`property_sales?select=${SALE_COLS}&sale_date=not.is.null&address_slug=${f}`)) sales.set(s.id, s);
-  }
+  const uniq = (xs) => [...new Set(xs)];
+  await Promise.all([
+    (async () => {
+      for (const f of inChunks(uniq(newSales.map((s) => s.address_slug)))) {
+        for (const r of await db.get(`property_listings?select=${LISTING_COLS}&lifecycle_status=in.(${CLOSED.join(',')})&address_slug=${f}`)) listings.set(r.id, r);
+      }
+    })(),
+    (async () => {
+      for (const f of inChunks(uniq(closedListings.map((l) => l.address_slug)))) {
+        for (const s of await db.get(`property_sales?select=${SALE_COLS}&sale_date=not.is.null&address_slug=${f}`)) sales.set(s.id, s);
+      }
+    })(),
+  ]);
   const bySlug = new Map();
   for (const s of sales.values()) (bySlug.get(s.address_slug) ?? bySlug.set(s.address_slug, []).get(s.address_slug)).push(s);
 

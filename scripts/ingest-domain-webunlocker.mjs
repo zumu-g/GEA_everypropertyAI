@@ -22,6 +22,8 @@ import { mapPool } from './lib/pool.mjs';
 import { paginateUntilShort } from './lib/paginate.mjs';
 import { writeFeedBatch, sweepSource, recordRun, assertMigration } from './lib/feed-write.mjs';
 import { saleMethodFromText } from './lib/lifecycle-status.mjs';
+import { slugToSuburb, titleCase } from './lib/slugs.mjs';
+export { slugToSuburb };
 
 // Fetch suburbs concurrently (was serial → 45-min timeout cancellations). Kept
 // modest: Web Unlocker returns 0-byte challenge pages when hit too hard, so 4-wide
@@ -75,11 +77,8 @@ const SERVICE_AREA = new Set([
   'toomuc valley','tynong','tynong north','vervale','yannathan',
 ]);
 export const inArea = (s) => !!s && SERVICE_AREA.has(String(s).trim().toLowerCase());
-/** 'narre-warren-south-vic-3805' → 'Narre Warren South' (the DB suburb value). */
-export const slugToSuburb = (slug) => titleCase(slug.split('-').slice(0, -2).join(' '));
 
 const MONTHS = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12' };
-const titleCase = (s) => s ? String(s).trim().split(/\s+/).map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():'').join(' ') : null;
 const parseSaleDate = (t) => { const m=String(t||'').match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/); if(!m)return null; const mm=MONTHS[m[2].toLowerCase()]; return mm?`${m[3]}-${mm}-${m[1].padStart(2,'0')}`:null; };
 const parsePrice = (d) => { const n=Number(String(d||'').replace(/[^0-9]/g,'')); return Number.isFinite(n)&&n>0?n:null; };
 const dollarAmts = (d) => [...String(d||'').matchAll(/\$\s?([\d,]+)/g)].map(m=>Number(m[1].replace(/,/g,''))).filter(n=>Number.isFinite(n)&&n>0);

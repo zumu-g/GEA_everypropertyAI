@@ -58,7 +58,7 @@ function client({ fetch = globalThis.fetch, env = process.env } = {}) {
 }
 
 /** PostgREST `in.(...)` filter values: quoted (commas/parens safe) and URL-encoded, chunked by URL length. */
-function inChunks(values) {
+export function inChunks(values) {
   const enc = values.map((v) => encodeURIComponent(`"${String(v).replace(/"/g, '\\"')}"`));
   const chunks = []; let cur = [], len = 0;
   for (const e of enc) {

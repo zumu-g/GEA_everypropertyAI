@@ -1,4 +1,5 @@
 import type { PropertySaleRecord, SuburbMedianRecord } from '@/lib/db/queries';
+import { median } from '@/lib/stats/median';
 import { isServiceAreaSuburb, SERVICE_AREA_SUBURBS } from '@/lib/utils/service-area';
 
 // ─── Constants (KTD2) ────────────────────────────────────────────────────────
@@ -144,12 +145,6 @@ function daysBetween(isoA: string, isoB: string): number {
   return Math.abs(a - b) / (1000 * 60 * 60 * 24);
 }
 
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
 // ─── Labels ────────────────────────────────────────────────────────────────
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -291,7 +286,7 @@ export function computeSuburbTypeValues(
   let computedFailReason: ValuesReason | null = null;
   if (qualifyingSales.length >= MIN_SALES_FOR_COMPUTED_PERIOD) {
     const prices = qualifyingSales.map((s) => s.sale_price as number);
-    const computedMedian = median(prices);
+    const computedMedian = median(prices) as number; // prices.length >= MIN_SALES_FOR_COMPUTED_PERIOD, never empty
     const newestQuarterMedian = newestQuarter?.median ?? null;
     if (newestQuarterMedian != null) {
       const divergence = Math.abs(computedMedian - newestQuarterMedian) / newestQuarterMedian;

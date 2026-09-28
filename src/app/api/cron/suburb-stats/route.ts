@@ -47,16 +47,14 @@ export async function GET(request: NextRequest) {
   let periodsFrozen = 0, skipped = 0;
   const errors: string[] = [];
 
-  const freezeSuburb = async (suburb: string) => {
-    for (const p of periods) {
-      try {
-        const r = await computeAndPersist(suburb, 'VIC', p.type, p.start, p.end, now);
-        if (r.provisional) skipped++; else periodsFrozen++;
-      } catch (e) {
-        errors.push(`${suburb} ${p.type} ${p.start}: ${e instanceof Error ? e.message : String(e)}`);
-      }
+  const freezeSuburb = (suburb: string) => Promise.all(periods.map(async (p) => {
+    try {
+      const r = await computeAndPersist(suburb, 'VIC', p.type, p.start, p.end, now);
+      if (r.provisional) skipped++; else periodsFrozen++;
+    } catch (e) {
+      errors.push(`${suburb} ${p.type} ${p.start}: ${e instanceof Error ? e.message : String(e)}`);
     }
-  };
+  }));
   for (let i = 0; i < SERVICE_AREA_SUBURBS.length; i += CONCURRENCY) {
     await Promise.all(SERVICE_AREA_SUBURBS.slice(i, i + CONCURRENCY).map(freezeSuburb));
   }

@@ -42,6 +42,8 @@ import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
 import { writeFeedBatch, sweepSource, recordRun, assertMigration } from './lib/feed-write.mjs';
 import { saleMethodFromText } from './lib/lifecycle-status.mjs';
+import { slugToSuburb, titleCase } from './lib/slugs.mjs';
+export { slugToSuburb };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -96,14 +98,11 @@ const SERVICE_AREA = new Set([
 ]);
 const inArea = (s) => !!s && SERVICE_AREA.has(String(s).trim().toLowerCase());
 
-const titleCase = (s) => s ? String(s).trim().split(/\s+/).map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():'').join(' ') : null;
 const dollarAmts = (d) => [...String(d||'').matchAll(/\$\s?([\d,]+)/g)].map(m=>Number(m[1].replace(/,/g,''))).filter(n=>Number.isFinite(n)&&n>0);
 const priceRange = (d) => { const a=dollarAmts(d); return a.length?{low:Math.min(...a),high:Math.max(...a)}:{low:null,high:null}; };
 const num = (v) => { const n=Number(v); return Number.isFinite(n)?n:null; };
 const smallint = (v) => { const n=Number(v); return Number.isInteger(n)?n:null; };
 
-/** 'narre-warren-south-vic-3805' → 'Narre Warren South' (the DB suburb value). */
-export const slugToSuburb = (slug) => titleCase(slug.split('-').slice(0, -2).join(' '));
 
 /** 'narre-warren-south-vic-3805' → 'Narre Warren South, VIC 3805' (actor search input). */
 function slugToSearchInput(slug) {

@@ -36,6 +36,8 @@ import { mapPool } from './lib/pool.mjs';
 import { paginateUntilShort } from './lib/paginate.mjs';
 import { writeFeedBatch, sweepSource, recordRun, assertMigration } from './lib/feed-write.mjs';
 import { lifecycleFromSource, saleMethodFromText } from './lib/lifecycle-status.mjs';
+import { slugToSuburb, titleCase } from './lib/slugs.mjs';
+export { slugToSuburb };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 try {
@@ -92,12 +94,9 @@ const SERVICE_AREA = new Set([
 ]);
 const inArea = (s) => !!s && SERVICE_AREA.has(String(s).trim().toLowerCase());
 
-const titleCase = (s) => s ? String(s).trim().split(/\s+/).map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():'').join(' ') : null;
 const num = (v) => typeof v==='number'&&Number.isFinite(v)?v:null;
 const smallint = (v) => Number.isInteger(v)?v:null;
 const str = (v) => (typeof v==='string'&&v.trim())?v.trim():null;
-/** 'narre-warren-south-vic-3805' → 'Narre Warren South' (the DB suburb value). */
-export const slugToSuburb = (slug) => titleCase(slug.split('-').slice(0, -2).join(' '));
 const dollarAmts = (d) => [...String(d||'').matchAll(/\$\s*([\d,]+)(?:\s*([kKmM]))?/g)].map(m=>{
   let n=Number(m[1].replace(/,/g,'')); const s=(m[2]||'').toLowerCase();
   if(s==='k')n*=1_000; else if(s==='m')n*=1_000_000; return n;
