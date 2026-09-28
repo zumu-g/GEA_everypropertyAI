@@ -33,6 +33,11 @@ import { dirname, join } from 'node:path';
 import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
 import { mapPool } from './lib/pool.mjs';
+import { paginateUntilShort } from './lib/paginate.mjs';
+import { writeFeedBatch, sweepSource, recordRun, assertMigration, client as feedDb, inChunks } from './lib/feed-write.mjs';
+import { lifecycleFromSource, saleMethodFromText } from './lib/lifecycle-status.mjs';
+import { slugToSuburb, titleCase } from './lib/slugs.mjs';
+export { slugToSuburb };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 try {
@@ -56,7 +61,8 @@ const MAX_PER_SUBURB = Number(process.env.MAX_PER_SUBURB) || Infinity;
 const INDEX_CONCURRENCY = Number(process.env.INDEX_CONCURRENCY) || 4;
 const DETAIL_CONCURRENCY = Number(process.env.DETAIL_CONCURRENCY) || 5;
 const TABLE = 'property_listings';
-const CONFLICT = 'raw_address,source';
+// KTD9: at most this many index pages per suburb per run through Web Unlocker.
+const PAGE_CAP = Number(process.env.PAGE_CAP) || 20;
 
 // Homely suburb-index slugs ({suburb}-{state}-{postcode}) — same Casey/Cardinia set
 // as the Domain feed. Homely's index path is /for-sale/{slug}.
@@ -88,7 +94,6 @@ const SERVICE_AREA = new Set([
 ]);
 const inArea = (s) => !!s && SERVICE_AREA.has(String(s).trim().toLowerCase());
 
-const titleCase = (s) => s ? String(s).trim().split(/\s+/).map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():'').join(' ') : null;
 const num = (v) => typeof v==='number'&&Number.isFinite(v)?v:null;
 const smallint = (v) => Number.isInteger(v)?v:null;
 const str = (v) => (typeof v==='string'&&v.trim())?v.trim():null;
@@ -124,6 +129,24 @@ export function parseDetailLinks(html) {
   return out;
 }
 
+// Index page → detail links, or throw when the HTML is not a Homely page (soft block
+// served as 200). paginateUntilShort turns a throw on page >= 2 into truncated:true
+// instead of reading it as end-of-results.
+export function indexLinks(html) {
+  if (!parseNextData(html)) throw new Error('not a listings page');
+  return parseDetailLinks(html);
+}
+
+// An index hit is evidence the listing is live even when its detail fetch failed:
+// stamp last_seen_at so the sweep does not miss-count it.
+export async function stampSeenForFailedDetails({ failedUrls, runStart, fetch, env }) {
+  if (!failedUrls.length) return;
+  const db = feedDb({ fetch, env });
+  for (const filter of inChunks(failedUrls)) {
+    await db.patch(`${TABLE}?source=eq.${SOURCE}&active=eq.true&listing_url=${filter}`, { last_seen_at: runStart });
+  }
+}
+
 // Photo URLs from a detail listing node (prefer the default-variant URI).
 function photoUrls(listing) {
   const photos = listing?.media?.photos;
@@ -138,8 +161,9 @@ export function mapDetail(html, detailUrl) {
   const listing = data?.props?.pageProps?.listing;
   if (!listing || typeof listing !== 'object') return null; // shell / 404
 
-  // Skip sold/leased records that surface in a for-sale index — this feed is on-market only.
-  if (listing.saleDetails?.soldDetails?.soldOn) return null;
+  // A sold record surfacing in the for-sale index is a sold signal (R7): keep the row
+  // and let the lifecycle say so, rather than dropping it and letting it age out.
+  const sold = !!listing.saleDetails?.soldDetails?.soldOn;
 
   const a = listing.address || {};
   const raw_address = str(a.longAddress) ?? str(a.shortAddress);
@@ -172,8 +196,30 @@ export function mapDetail(html, detailUrl) {
     price_low: low,
     price_high: high,
     status: str(listing.statusType),
+    lifecycle_status: lifecycleFromSource(str(listing.statusType), { sold }),
+    ...saleMethodFromText(priceText, str(listing.statusType)),
     source: SOURCE,
   };
+}
+
+// Sweep (KTD2) never off a blocked run.
+export function shouldSweep({ blocked }) {
+  return !blocked;
+}
+
+// Per-suburb coverage for sweepSource from the index results: every slug whose
+// index returned a valid page → rows seen in that suburb and whether pagination
+// hit the cap (or MAX_PER_SUBURB). Failed indexes are left out so they are never swept.
+export function buildCoverage(indexResults, rows) {
+  const counts = new Map();
+  for (const r of rows) counts.set(r.suburb, (counts.get(r.suburb) || 0) + 1);
+  const cov = {};
+  for (const r of indexResults) {
+    if (r.error) continue;
+    const suburb = slugToSuburb(r.slug);
+    cov[suburb] = { seen: counts.get(suburb) || 0, truncated: !!r.truncated };
+  }
+  return cov;
 }
 
 // Web Unlocker fetch with retry/backoff (mirrors the Domain runner). Throwing
@@ -224,31 +270,9 @@ async function fetchPage(url, maxAttempts = 6) {
   throw new Error(`Web Unlocker failed after ${maxAttempts} attempts: ${lastErr}`);
 }
 
-function dedupe(rows, conflict) {
-  const cols = conflict.split(',').map(c=>c.trim());
-  const by = new Map();
-  for (const r of rows) by.set(cols.map(c=>String(r[c]??'')).join(' '), r);
-  return [...by.values()];
-}
-
-async function upsert(rows) {
-  const deduped = dedupe(rows, CONFLICT);
-  let ok = 0;
-  for (let i=0;i<deduped.length;i+=500) {
-    const chunk = deduped.slice(i,i+500);
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?on_conflict=${CONFLICT}`, {
-      method:'POST',
-      headers:{ apikey:SERVICE_KEY, Authorization:`Bearer ${SERVICE_KEY}`, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates,missing=default,return=minimal' },
-      body: JSON.stringify(chunk),
-    });
-    if (!res.ok) console.error(`  upsert ${TABLE} chunk error ${res.status}: ${(await res.text()).slice(0,200)}`);
-    else ok += chunk.length;
-  }
-  return ok;
-}
-
 async function main() {
   const startedAt = Date.now();
+  const runStart = new Date(startedAt).toISOString();
   // OWN feed_health category. Homely is a SUPPLEMENTAL on-market feed that runs
   // last (:51, after Domain :23 and REA :37). feed_health upserts on_conflict=category,
   // so writing 'on-market' here would clobber the core feed's status — a blocked/zero
@@ -263,6 +287,7 @@ async function main() {
   const slugs = process.env.SLUGS ? process.env.SLUGS.split(',').map(s=>s.trim()).filter(Boolean) : SUBURB_SLUGS.slice(0, maxSuburbs);
   console.log(`\n=== homely on-market via Web Unlocker (${slugs.length} suburbs) ===`);
 
+  await assertMigration({ table: TABLE });
   await pingStart(HEALTHCHECK_UUID);
   const sbCfg = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
 
@@ -275,10 +300,15 @@ async function main() {
   const indexResults = await mapPool(slugs, INDEX_CONCURRENCY, async (slug) => {
     const indexUrl = `https://www.homely.com.au/for-sale/${slug}`;
     try {
-      const html = await fetchPage(indexUrl);
-      const links = parseDetailLinks(html).slice(0, MAX_PER_SUBURB);
-      console.log(`  ${slug}: ${links.length} detail links`);
-      return { slug, links };
+      // Follow ?page=N until a short page (full sweep) or PAGE_CAP (truncated → not swept).
+      const { items, pages, truncated, error } = await paginateUntilShort(
+        async (page) => indexLinks(await fetchPage(page === 1 ? indexUrl : `${indexUrl}?page=${page}`)),
+        { cap: PAGE_CAP, key: (u) => u },
+      );
+      const links = items.slice(0, MAX_PER_SUBURB);
+      const capped = truncated || links.length < items.length;
+      console.log(`  ${slug}: ${links.length} detail links over ${pages} page(s)${capped ? ` (TRUNCATED${error ? `: ${error}` : ''})` : ''}`);
+      return { slug, links, truncated: capped };
     } catch (e) {
       console.error(`  ${slug}: INDEX FAILED ${e.message}`);
       return { slug, error: e.message };
@@ -307,7 +337,7 @@ async function main() {
       return { ok: true, row };
     } catch (e) {
       console.error(`    ${url}: detail FAILED ${e.message}`);
-      return { ok: false };
+      return { ok: false, url };
     }
   });
 
@@ -321,12 +351,28 @@ async function main() {
   // Do NOT treat that as a real zero-yield day — flag blocked and alert.
   const blocked = indexOk === 0;
   console.log(`\nTotal in-area rows: ${rows.length}. Upserting into ${TABLE}...`);
-  const upserted = await upsert(rows);
-  console.log(`Upserted ${upserted} rows. Index ok: ${indexOk}/${slugs.length}, detail ok/fail: ${detailOk}/${detailFail}, blocked: ${blockedSlugs.length}.`);
+  // Shared feed-write path (KTD1): stamps last_seen_at/active/lifecycle, records price history.
+  const batch = await writeFeedBatch({ table: TABLE, source: SOURCE, runStart, rows });
+  const upserted = batch.seen;
+  console.log(`Upserted ${upserted} rows (new ${batch.newRows}, priced ${batch.priced}). Index ok: ${indexOk}/${slugs.length}, detail ok/fail: ${detailOk}/${detailFail}, blocked: ${blockedSlugs.length}.`);
+
+  // Source-scoped miss-counting sweep (KTD2) over the suburbs this run covered completely.
+  let sweep = { miss1: 0, closed: 0, sweptSuburbs: [], skippedSuburbs: [] };
+  if (shouldSweep({ blocked })) {
+    await stampSeenForFailedDetails({ failedUrls: detailResults.filter((r) => !r.ok).map((r) => r.url), runStart });
+    sweep = await sweepSource({ table: TABLE, source: SOURCE, runStart, coverage: buildCoverage(indexResults, rows) });
+    console.log(`Sweep: miss1=${sweep.miss1} closed=${sweep.closed} swept=${sweep.sweptSuburbs.length} skipped=${sweep.skippedSuburbs.length}`);
+  }
 
   const status = deriveStatus({ blocked, items: upserted });
   const newestRowAt = await fetchNewestRowAt(sbCfg, TABLE);
   await writeFeedHealth(sbCfg, { category, source_used: SOURCE, items: upserted, newest_row_at: newestRowAt, status });
+  await recordRun({
+    category, source: SOURCE, mode: 'daily', run_start: runStart, status,
+    seen: batch.seen, new_rows: batch.newRows, priced: batch.priced, miss1: sweep.miss1, closed: sweep.closed,
+    skipped_suburbs: sweep.skippedSuburbs.length, fetched: detailOk + detailFail, failed: detailFail,
+    notes: { blockedSlugs, skippedSuburbs: sweep.skippedSuburbs, sweptSuburbs: sweep.sweptSuburbs },
+  });
 
   const durationS = ((Date.now() - startedAt) / 1000).toFixed(0);
   const summary = `category=${category} status=${status} items=${upserted} index_ok=${indexOk}/${slugs.length} detail_ok=${detailOk} detail_fail=${detailFail} blocked=${blockedSlugs.length} duration=${durationS}s`;

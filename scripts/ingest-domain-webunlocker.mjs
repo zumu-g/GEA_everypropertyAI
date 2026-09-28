@@ -19,12 +19,19 @@ import { dirname, join } from 'node:path';
 import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
 import { mapPool } from './lib/pool.mjs';
+import { paginateUntilShort } from './lib/paginate.mjs';
+import { writeFeedBatch, sweepSource, recordRun, assertMigration } from './lib/feed-write.mjs';
+import { saleMethodFromText } from './lib/lifecycle-status.mjs';
+import { slugToSuburb, titleCase } from './lib/slugs.mjs';
+export { slugToSuburb };
 
 // Fetch suburbs concurrently (was serial → 45-min timeout cancellations). Kept
 // modest: Web Unlocker returns 0-byte challenge pages when hit too hard, so 4-wide
 // with a generous per-page retry budget (below) beats 6-wide with a tight one.
 // Worst case ≈ 29 suburbs / 4 × (6×90s) is still well under the 45-min job cap.
 const FETCH_CONCURRENCY = Number(process.env.FETCH_CONCURRENCY) || 4;
+// KTD9: at most this many search pages per suburb per run through Web Unlocker.
+const PAGE_CAP = Number(process.env.PAGE_CAP) || 20;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 try {
@@ -72,7 +79,6 @@ const SERVICE_AREA = new Set([
 export const inArea = (s) => !!s && SERVICE_AREA.has(String(s).trim().toLowerCase());
 
 const MONTHS = { jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12' };
-const titleCase = (s) => s ? String(s).trim().split(/\s+/).map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():'').join(' ') : null;
 const parseSaleDate = (t) => { const m=String(t||'').match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/); if(!m)return null; const mm=MONTHS[m[2].toLowerCase()]; return mm?`${m[3]}-${mm}-${m[1].padStart(2,'0')}`:null; };
 const parsePrice = (d) => { const n=Number(String(d||'').replace(/[^0-9]/g,'')); return Number.isFinite(n)&&n>0?n:null; };
 const dollarAmts = (d) => [...String(d||'').matchAll(/\$\s?([\d,]+)/g)].map(m=>Number(m[1].replace(/,/g,''))).filter(n=>Number.isFinite(n)&&n>0);
@@ -107,25 +113,29 @@ export function mapListing(category, node) {
     source: SOURCE,
   };
   const tag = m.tags?.tagText ?? null;
+  // R8: Domain re-stamps dateListed on edit, so it only counts as a real listed date
+  // when it differs from dateUpdated. Keys always present (uniform batch keys).
+  const dateListed = m.dateListed ?? null, dateUpdated = m.dateUpdated ?? null;
+  const listed = dateListed && dateListed !== dateUpdated
+    ? { listed_date: dateListed, listed_date_source: 'domain-search' }
+    : { listed_date: null, listed_date_source: null };
   if (category === 'sold') {
     const sale_price = parsePrice(m.price);
     if (sale_price == null) return null; // sold needs a price (skips "Price Withheld")
     return { ...common, sale_price, sale_date: parseSaleDate(tag) };
   }
   if (category === 'rent') {
-    const nowIso = new Date().toISOString();
     const amts = dollarAmts(m.price);
     return {
       ...common,
+      ...listed,
       display_price: m.price ?? null,
       weekly_rent: amts.length ? Math.min(...amts) : null, // mirrors parseWeeklyRent's "lowest amount" convention
       status: tag,
-      last_seen_at: nowIso,
-      active: true,
     };
   }
   const { low, high } = priceRange(m.price);
-  return { ...common, display_price: m.price ?? null, price_low: low, price_high: high, status: tag };
+  return { ...common, ...listed, display_price: m.price ?? null, price_low: low, price_high: high, status: tag, ...saleMethodFromText(m.price, tag) };
 }
 
 export function extractListings(html) {
@@ -134,6 +144,14 @@ export function extractListings(html) {
   let d; try { d = JSON.parse(mm[1]); } catch { return []; }
   const lm = d?.props?.pageProps?.componentProps?.listingsMap;
   return lm && typeof lm === 'object' ? Object.values(lm) : [];
+}
+
+// Page → listing nodes, or throw when the HTML is not a Domain page (soft block served
+// as 200). paginateUntilShort turns a throw on page >= 2 into truncated:true instead
+// of reading it as end-of-results.
+export function listingsPage(html) {
+  if (!looksLikeData(html)) throw new Error('not a listings page');
+  return extractListings(html);
 }
 
 // Body-validation gate: a genuine Domain search page embeds the __NEXT_DATA__
@@ -211,38 +229,34 @@ const CATEGORY = { sold:{ path:'sold-listings', table:'property_sales', conflict
                    'on-market':{ path:'sale', table:'property_listings', conflict:'raw_address,source' },
                    rent:{ path:'rent', table:'property_rentals', conflict:'raw_address,source' } };
 
-// Expire rent rows not re-seen on a full, unblocked run — otherwise a leased/withdrawn
-// property stays `active=true` forever (upsert only ever refreshes rows still on Domain).
-// Scoped to the full SERVICE_AREA (not just the 29 slugs) since a search page can surface
-// in-area listings from a neighbouring suburb — same scope `inArea` uses to accept rows in.
-// Only called for category='rent' on a full-suburb run where every suburb fetched OK (see
-// main()). Gating on "zero suburbs failed" rather than "not every suburb failed" matters: a
-// run where most suburbs succeed but a few transiently fail must NOT sweep expiry across the
-// suburbs it didn't actually re-scrape, or a still-live rental in a failed suburb gets wrongly
-// deactivated. Pure gate so this rule is testable without mocking the full scrape pipeline.
-export function shouldExpireRentals({ category, blockedCount, slugsEnv, suburbCount }) {
-  return category === 'rent' && blockedCount === 0 && !slugsEnv && suburbCount === SUBURB_SLUGS.length;
+// Sweep (KTD2) only the tables feed-write owns, and never off a blocked run.
+export function shouldSweep({ category, blocked }) {
+  return category !== 'sold' && !blocked;
 }
 
-// Scoped to source='domain-web-unlocker' — other feeds (e.g. ingest-view-apify.mjs) also
-// upsert into property_rentals, and this run must only ever expire rows it owns.
-export async function expireUnseenRentals(sinceIso) {
-  const suburbs = [...SERVICE_AREA].map(titleCase);
-  const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/property_rentals?suburb=in.(${suburbs.map(s => `"${s}"`).join(',')})&state=eq.VIC&source=eq.${SOURCE}&active=eq.true&last_seen_at=lt.${encodeURIComponent(sinceIso)}`,
-    {
-      method: 'PATCH',
-      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },
-      body: JSON.stringify({ active: false }),
-    },
-  );
-  if (!res.ok) { console.error(`  expire rentals error ${res.status}: ${(await res.text()).slice(0, 200)}`); return 0; }
-  const rows = await res.json().catch(() => []);
-  return Array.isArray(rows) ? rows.length : 0;
+// Per-suburb coverage for sweepSource: every slug that returned at least one valid
+// page → rows seen in that suburb (from any slug's page) and whether pagination hit
+// the cap. Failed (blocked) slugs are left out so they are never swept.
+export function buildCoverage(perSlug, rows) {
+  const counts = new Map();
+  for (const r of rows) counts.set(r.suburb, (counts.get(r.suburb) || 0) + 1);
+  const cov = {};
+  for (const r of perSlug) {
+    if (r.error) continue;
+    const suburb = slugToSuburb(r.slug);
+    cov[suburb] = { seen: counts.get(suburb) || 0, truncated: !!r.truncated };
+  }
+  // Clean run (no slug errored or truncated): in-area rows that surfaced under a
+  // neighbouring slug's crawl belong to suburbs we did not crawl — sweep those too.
+  if (perSlug.every((r) => !r.error && !r.truncated)) {
+    for (const [suburb, seen] of counts) if (!(suburb in cov) && inArea(suburb)) cov[suburb] = { seen, truncated: false };
+  }
+  return cov;
 }
 
 async function main() {
   const startedAt = Date.now();
+  const runStart = new Date(startedAt).toISOString();
   const category = process.argv[2] || 'sold';
   const maxSuburbs = Number(process.argv[3]) || SUBURB_SLUGS.length;
   const cfg = CATEGORY[category];
@@ -253,6 +267,7 @@ async function main() {
   const slugs = process.env.SLUGS ? process.env.SLUGS.split(',').map(s=>s.trim()).filter(Boolean) : SUBURB_SLUGS.slice(0, maxSuburbs);
   console.log(`\n=== ${category} via Web Unlocker (${slugs.length} suburbs) ===`);
 
+  if (category !== 'sold') await assertMigration({ table: cfg.table });
   await pingStart(HEALTHCHECK_UUID);
   const sbCfg = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
 
@@ -266,11 +281,14 @@ async function main() {
   const perSlug = await mapPool(slugs, FETCH_CONCURRENCY, async (slug) => {
     const url = `https://www.domain.com.au/${cfg.path}/${slug}/`;
     try {
-      const html = await fetchPage(url);
-      const nodes = extractListings(html);
+      // Follow ?page=N until a short page (full sweep) or PAGE_CAP (truncated → not swept).
+      const { items: nodes, pages, truncated, error } = await paginateUntilShort(
+        async (page) => listingsPage(await fetchPage(page === 1 ? url : `${url}?page=${page}`)),
+        { cap: PAGE_CAP, key: (n) => n?.listingModel?.url ?? JSON.stringify(n?.listingModel?.address ?? n) },
+      );
       const mapped = nodes.map(n=>mapListing(category, n)).filter(Boolean).filter(r=>inArea(r.suburb));
-      console.log(`  ${slug}: ${nodes.length} listings → ${mapped.length} in-area`);
-      return { slug, mapped };
+      console.log(`  ${slug}: ${nodes.length} listings over ${pages} page(s) → ${mapped.length} in-area${truncated ? ` (TRUNCATED${error ? `: ${error}` : ''})` : ''}`);
+      return { slug, mapped, truncated };
     } catch (e) {
       console.error(`  ${slug}: FAILED ${e.message}`);
       return { slug, error: e.message };
@@ -288,20 +306,30 @@ async function main() {
   // and (for on-market) never expire live listings off an empty scrape.
   const blocked = fetchedOk === 0;
   console.log(`\nTotal in-area rows: ${rows.length}. Upserting into ${cfg.table}...`);
-  const upserted = await upsert(cfg.table, cfg.conflict, rows);
-  console.log(`Upserted ${upserted} rows. Blocked: ${blockedSlugs.length}, empty: ${emptySlugs.length}, fetched-ok: ${fetchedOk}.`);
+  // Sold keeps the plain upsert (property_sales has no lifecycle); on-market and rent go
+  // through the shared feed-write path (KTD1) which stamps last_seen_at/active/lifecycle.
+  let upserted, batch = { seen: 0, newRows: 0, priced: 0 };
+  if (category === 'sold') upserted = await upsert(cfg.table, cfg.conflict, rows);
+  else { batch = await writeFeedBatch({ table: cfg.table, source: SOURCE, runStart, rows }); upserted = batch.seen; }
+  console.log(`Upserted ${upserted} rows (new ${batch.newRows}, priced ${batch.priced}). Blocked: ${blockedSlugs.length}, empty: ${emptySlugs.length}, fetched-ok: ${fetchedOk}.`);
 
-  // Only expire rent rows after a full run where every suburb fetched OK — a restricted
-  // SLUGS re-run, a maxSuburbs-limited run, or ANY per-suburb fetch failure (not just a
-  // fully blocked run) must never wrongly expire rentals in suburbs it didn't re-scrape.
-  if (shouldExpireRentals({ category, blockedCount: blockedSlugs.length, slugsEnv: process.env.SLUGS, suburbCount: slugs.length })) {
-    const expired = await expireUnseenRentals(new Date(startedAt).toISOString());
-    console.log(`Expired ${expired} rentals not re-seen this run.`);
+  // Source-scoped miss-counting sweep (KTD2) over the suburbs this run covered
+  // completely. Blocked (failed) and truncated slugs are excluded by construction.
+  let sweep = { miss1: 0, closed: 0, sweptSuburbs: [], skippedSuburbs: [] };
+  if (shouldSweep({ category, blocked })) {
+    sweep = await sweepSource({ table: cfg.table, source: SOURCE, runStart, coverage: buildCoverage(perSlug, rows) });
+    console.log(`Sweep: miss1=${sweep.miss1} closed=${sweep.closed} swept=${sweep.sweptSuburbs.length} skipped=${sweep.skippedSuburbs.length}`);
   }
 
   const status = deriveStatus({ blocked, items: upserted });
   const newestRowAt = await fetchNewestRowAt(sbCfg, cfg.table);
   await writeFeedHealth(sbCfg, { category, source_used: SOURCE, items: upserted, newest_row_at: newestRowAt, status });
+  await recordRun({
+    category, source: SOURCE, mode: 'daily', run_start: runStart, status,
+    seen: batch.seen, new_rows: batch.newRows, priced: batch.priced, miss1: sweep.miss1, closed: sweep.closed,
+    skipped_suburbs: sweep.skippedSuburbs.length, fetched: 0, failed: blockedSlugs.length,
+    notes: { blockedSlugs, skippedSuburbs: sweep.skippedSuburbs, sweptSuburbs: sweep.sweptSuburbs },
+  });
 
   const durationS = ((Date.now() - startedAt) / 1000).toFixed(0);
   const summary = `category=${category} status=${status} items=${upserted} fetched_ok=${fetchedOk}/${slugs.length} blocked=${blockedSlugs.length} empty=${emptySlugs.length} duration=${durationS}s`;

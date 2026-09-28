@@ -411,6 +411,17 @@ CREATE TABLE IF NOT EXISTS property_listings (
   last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- bumped each sync run
   active        BOOLEAN NOT NULL DEFAULT true,        -- false once no longer on-market
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- migration 015: normalised lifecycle
+  lifecycle_status    TEXT NOT NULL DEFAULT 'active' CHECK (lifecycle_status IN ('active', 'under_offer', 'sold', 'withdrawn')),
+  miss_count          SMALLINT NOT NULL DEFAULT 0,   -- consecutive verified full sweeps that missed the row; closed at 2
+  miss_marked_at      TIMESTAMPTZ,
+  removed_at          TIMESTAMPTZ,                   -- run start of the sweep that closed the row
+  campaign_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), -- days-on-market basis; reset on reopen
+  listed_date_source  TEXT,
+  enquiry_count       INTEGER,                       -- reserved; no writer yet
+  view_count          INTEGER,                       -- reserved; no writer yet
+  sale_method         TEXT NOT NULL DEFAULT 'unknown' CHECK (sale_method IN ('auction', 'private', 'unknown')),
+  auction_date        DATE,
   UNIQUE (raw_address, source)
 );
 
@@ -418,6 +429,8 @@ CREATE INDEX IF NOT EXISTS idx_property_listings_suburb ON property_listings (su
 CREATE INDEX IF NOT EXISTS idx_property_listings_geo    ON property_listings (latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_property_listings_active ON property_listings (suburb, state, active);
 CREATE INDEX IF NOT EXISTS idx_property_listings_slug   ON property_listings (address_slug);
+CREATE INDEX IF NOT EXISTS idx_property_listings_active_suburb ON property_listings (suburb, state) WHERE active;
+CREATE INDEX IF NOT EXISTS idx_property_listings_sweep  ON property_listings (source, suburb, active, last_seen_at);
 
 ALTER TABLE property_listings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read access"       ON property_listings FOR SELECT USING (true);
@@ -455,6 +468,16 @@ CREATE TABLE IF NOT EXISTS property_rentals (
   last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- bumped each sync run
   active        BOOLEAN NOT NULL DEFAULT true,        -- false once no longer listed
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- migration 015: normalised lifecycle
+  lifecycle_status    TEXT NOT NULL DEFAULT 'active' CHECK (lifecycle_status IN ('active', 'under_offer', 'sold', 'withdrawn')),
+  miss_count          SMALLINT NOT NULL DEFAULT 0,
+  miss_marked_at      TIMESTAMPTZ,
+  removed_at          TIMESTAMPTZ,
+  campaign_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  listed_date_source  TEXT,
+  enquiry_count       INTEGER,
+  view_count          INTEGER,
+  leased_at           TIMESTAMPTZ,                   -- rental analogue of removed_at
   UNIQUE (raw_address, source)
 );
 
@@ -462,6 +485,8 @@ CREATE INDEX IF NOT EXISTS idx_property_rentals_suburb ON property_rentals (subu
 CREATE INDEX IF NOT EXISTS idx_property_rentals_geo    ON property_rentals (latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_property_rentals_active ON property_rentals (suburb, state, active);
 CREATE INDEX IF NOT EXISTS idx_property_rentals_slug   ON property_rentals (address_slug);
+CREATE INDEX IF NOT EXISTS idx_property_rentals_active_suburb ON property_rentals (suburb, state) WHERE active;
+CREATE INDEX IF NOT EXISTS idx_property_rentals_sweep  ON property_rentals (source, suburb, active, last_seen_at);
 
 ALTER TABLE property_rentals ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public read access"       ON property_rentals FOR SELECT USING (true);
@@ -487,3 +512,73 @@ CREATE INDEX IF NOT EXISTS idx_suburb_medians_suburb_type ON suburb_medians (sub
 
 ALTER TABLE suburb_medians ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role full access" ON suburb_medians FOR ALL USING (auth.role() = 'service_role');
+
+-- ============================================================================
+-- listing_price_history — one row per price observation per listing identity (migration 015)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS listing_price_history (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  table_name    TEXT NOT NULL CHECK (table_name IN ('listings', 'rentals')),
+  raw_address   TEXT NOT NULL,
+  source        TEXT NOT NULL,
+  listing_url   TEXT,
+  observed_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  display_price TEXT,
+  price_low     NUMERIC(14,2),
+  price_high    NUMERIC(14,2)
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_price_history_identity ON listing_price_history (table_name, raw_address, source, observed_at DESC);
+
+ALTER TABLE listing_price_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON listing_price_history FOR ALL USING (auth.role() = 'service_role');
+
+-- ============================================================================
+-- feed_runs — one row per crawl run with sweep counts and cost (migration 015)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS feed_runs (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  category        TEXT NOT NULL,
+  source          TEXT NOT NULL,
+  mode            TEXT,
+  run_start       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  run_end         TIMESTAMPTZ,
+  status          TEXT NOT NULL DEFAULT 'running',
+  seen            INTEGER NOT NULL DEFAULT 0,
+  new_rows        INTEGER NOT NULL DEFAULT 0,
+  priced          INTEGER NOT NULL DEFAULT 0,
+  miss1           INTEGER NOT NULL DEFAULT 0,
+  closed          INTEGER NOT NULL DEFAULT 0,
+  skipped_suburbs INTEGER NOT NULL DEFAULT 0,
+  fetched         INTEGER NOT NULL DEFAULT 0,
+  dated           INTEGER NOT NULL DEFAULT 0,
+  failed          INTEGER NOT NULL DEFAULT 0,
+  est_cost_usd    NUMERIC(10,4),
+  notes           JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_feed_runs_source_start ON feed_runs (source, run_start DESC);
+
+ALTER TABLE feed_runs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON feed_runs FOR ALL USING (auth.role() = 'service_role');
+
+-- ============================================================================
+-- suburb_stats_history — frozen per-period suburb statistics (migration 015)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS suburb_stats_history (
+  id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  suburb         TEXT NOT NULL,
+  state          TEXT NOT NULL DEFAULT 'VIC',
+  period_type    TEXT NOT NULL CHECK (period_type IN ('week', 'month')),
+  period_start   DATE NOT NULL,
+  period_end     DATE NOT NULL,
+  stats          JSONB NOT NULL,
+  provisional    BOOLEAN NOT NULL DEFAULT true,
+  reconstructed  BOOLEAN NOT NULL DEFAULT false,
+  computed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  schema_version SMALLINT NOT NULL DEFAULT 1,
+  UNIQUE (suburb, state, period_type, period_start)
+);
+
+ALTER TABLE suburb_stats_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON suburb_stats_history FOR ALL USING (auth.role() = 'service_role');

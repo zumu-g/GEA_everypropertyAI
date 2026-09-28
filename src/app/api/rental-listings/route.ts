@@ -5,6 +5,9 @@ import {
   haversineKm,
   type PropertyRentalRecord,
 } from '@/lib/db/queries';
+import { getRentalsForSuburbAll } from '@/lib/db/listings-inactive';
+import { getPriceHistoryFor, priceHistoryKey, type PriceHistoryEntry } from '@/lib/db/price-history';
+import { daysOnMarket, type DaysOnMarketBasis, type LifecycleColumns } from '@/lib/listings/days-on-market';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -36,7 +39,17 @@ interface RentalListingResult {
   imageUrl: string | null;
   source: string;
   listedDate: string | null;
+  // Lifecycle (migration 015; R6, R9, R12, R22). Additive only.
+  lifecycleStatus: string | null;
+  removedAt: string | null;
+  leasedAt: string | null;
+  daysOnMarket: number | null;
+  daysOnMarketBasis: DaysOnMarketBasis;
+  priceHistory: PriceHistoryEntry[];
 }
+
+// Migration-015 columns; typed here until PropertyRentalRecord carries them.
+type RentalRow = PropertyRentalRecord & LifecycleColumns & { lifecycle_status?: string | null };
 
 /**
  * GET /api/rental-listings
@@ -52,6 +65,7 @@ interface RentalListingResult {
  *   lat,lng — radius mode: centre point
  *   radius  — radius mode: km (default 2)
  *   limit   — optional, max rows (default 200, capped at 1000)
+ *   includeInactive — optional ('true' | '1'): also return closed/leased rows (active=false)
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -71,6 +85,7 @@ export async function GET(request: NextRequest) {
   const minRent = posNum(searchParams.get('minRent'));
   const maxRent = posNum(searchParams.get('maxRent'));
   const limit = Math.min(searchParams.get('limit') ? Number(searchParams.get('limit')) : 200, 1000);
+  const includeInactive = ['true', '1'].includes(searchParams.get('includeInactive') ?? '');
 
   // Predicates for geo mode (suburb mode pushes these into the DB query).
   const sinceMs = sinceDays && sinceDays > 0 ? Date.now() - sinceDays * 86_400_000 : null;
@@ -99,16 +114,20 @@ export async function GET(request: NextRequest) {
     if (hasGeo) {
       const box = await getRowsNearby<PropertyRentalRecord>('property_rentals', lat!, lng!, radius);
       rows = box
-        .filter((r) => r.active !== false)
+        .filter((r) => includeInactive || r.active !== false)
         .filter(matchesFilters)
         .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number'
           && haversineKm(lat!, lng!, r.latitude, r.longitude) <= radius)
         .slice(0, limit);
+    } else if (includeInactive) {
+      rows = (await getRentalsForSuburbAll(suburb, state, limit)).filter(matchesFilters);
     } else {
       rows = await getRentalsForSuburb(suburb, state, limit, { sinceDays, minRent, maxRent });
     }
 
-    const results: RentalListingResult[] = rows.map((r) => ({
+    const history = await getPriceHistoryFor('rentals', rows);
+    const now = new Date();
+    const results: RentalListingResult[] = (rows as RentalRow[]).map((r) => ({
       rawAddress: r.raw_address,
       suburb: r.suburb ?? null,
       postcode: r.postcode ?? null,
@@ -128,6 +147,11 @@ export async function GET(request: NextRequest) {
       imageUrl: r.image_url ?? null,
       source: r.source,
       listedDate: r.listed_date ?? null,
+      lifecycleStatus: r.lifecycle_status ?? null,
+      removedAt: r.removed_at ?? null,
+      leasedAt: r.leased_at ?? null,
+      ...daysOnMarket(r, now),
+      priceHistory: history.get(priceHistoryKey(r)) ?? [],
     }));
 
     return NextResponse.json(

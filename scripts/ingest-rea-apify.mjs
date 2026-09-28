@@ -20,8 +20,14 @@
 //
 // Env (from .env.local or process.env): NEXT_PUBLIC_SUPABASE_URL,
 //   SUPABASE_SERVICE_ROLE_KEY, APIFY_API_TOKEN.
-// Optional tuning env: REA_RESULT_COUNT (default 25), REA_PAGES (default 1),
-//   REA_MODE = 'new' (default) | 'full', SLUGS (comma-separated slugs to override the set).
+// Optional tuning env: REA_RESULT_COUNT (default 10 new / 200 full), REA_PAGES
+//   (default 1 new / 3 full), REA_MODE = 'new' (default) | 'full', SLUGS (comma-separated
+//   slugs to override the set).
+//
+// FULL MODE = the weekly verified full sweep (KTD2/KTD9): the actor pages each suburb
+// up to pages × resultCount (600) so every suburb reaches a short page; a suburb that
+// returns the full 600 is reported truncated and excluded from the miss-count sweep.
+// The actor bills per dataset item, not per page, so deep paging of a small suburb is free.
 //
 // COST: the actor bills US$0.003 per dataset item and has no memory of what we hold,
 // so a 'Recommended'-sorted 25/suburb page re-bills ~760 already-known listings daily
@@ -34,6 +40,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
+import { writeFeedBatch, sweepSource, recordRun, assertMigration } from './lib/feed-write.mjs';
+import { saleMethodFromText } from './lib/lifecycle-status.mjs';
+import { slugToSuburb, titleCase } from './lib/slugs.mjs';
+export { slugToSuburb };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -53,8 +63,8 @@ const APIFY_BASE = 'https://api.apify.com/v2';
 const ACTOR_ID = 'one-api~realestate-com-au-scraper';
 const SOURCE = 'rea-apify-one-api';
 const MODE = process.env.REA_MODE === 'full' ? 'full' : 'new';
-const RESULT_COUNT = Number(process.env.REA_RESULT_COUNT) || (MODE === 'new' ? 10 : 25);
-const PAGES = Number(process.env.REA_PAGES) || 1;
+const RESULT_COUNT = Number(process.env.REA_RESULT_COUNT) || (MODE === 'new' ? 10 : 200);
+const PAGES = Number(process.env.REA_PAGES) || (MODE === 'new' ? 1 : 3);
 // Each scheduled service (e.g. Railway cron) sets its own Healthchecks.io check UUID.
 const HEALTHCHECK_UUID = process.env.HEALTHCHECK_UUID;
 
@@ -88,11 +98,11 @@ const SERVICE_AREA = new Set([
 ]);
 const inArea = (s) => !!s && SERVICE_AREA.has(String(s).trim().toLowerCase());
 
-const titleCase = (s) => s ? String(s).trim().split(/\s+/).map(w=>w?w[0].toUpperCase()+w.slice(1).toLowerCase():'').join(' ') : null;
 const dollarAmts = (d) => [...String(d||'').matchAll(/\$\s?([\d,]+)/g)].map(m=>Number(m[1].replace(/,/g,''))).filter(n=>Number.isFinite(n)&&n>0);
 const priceRange = (d) => { const a=dollarAmts(d); return a.length?{low:Math.min(...a),high:Math.max(...a)}:{low:null,high:null}; };
 const num = (v) => { const n=Number(v); return Number.isFinite(n)?n:null; };
 const smallint = (v) => { const n=Number(v); return Number.isInteger(n)?n:null; };
+
 
 /** 'narre-warren-south-vic-3805' → 'Narre Warren South, VIC 3805' (actor search input). */
 function slugToSearchInput(slug) {
@@ -138,12 +148,38 @@ export function mapOnMarket(x) {
     price_low: low,
     price_high: high,
     status: x['Status'] ?? null,
+    ...saleMethodFromText(x['Price'], x['Status']),
     source: SOURCE,
   };
 }
 
+// KTD2: only a full-mode run is a verified full sweep; never sweep off a blocked run.
+export function shouldSweep({ mode, blocked }) {
+  return mode === 'full' && !blocked;
+}
+
+// Per-suburb coverage for sweepSource. One actor run covers every slug, so a suburb is
+// complete unless its RAW dataset item count reached the pages × resultCount ceiling
+// (more may exist). Judged before mapping/inArea filters, which would under-count.
+export function buildCoverage(slugs, items, { pages = PAGES, resultCount = RESULT_COUNT } = {}) {
+  const counts = new Map();
+  for (const x of items) {
+    const suburb = titleCase(x.Suburb ?? x.suburb ?? '');
+    counts.set(suburb, (counts.get(suburb) || 0) + 1);
+  }
+  const cov = {};
+  for (const slug of slugs) {
+    const suburb = slugToSuburb(slug);
+    const seen = counts.get(suburb) || 0;
+    cov[suburb] = { seen, truncated: seen >= pages * resultCount };
+  }
+  return cov;
+}
+
 /** Actor input for the run. 'new' = Newest sort + REA's new-listing filter, small page. */
-export function buildInput(searchInputs, { mode = MODE, resultCount = RESULT_COUNT, pages = PAGES } = {}) {
+export function buildInput(searchInputs, { mode = MODE, resultCount, pages } = {}) {
+  resultCount ??= mode === 'new' ? 10 : 200;
+  pages ??= mode === 'new' ? 1 : 3;
   return {
     search_inputs: searchInputs,
     searchType: 'For_Sale',
@@ -197,32 +233,9 @@ async function pageDataset(datasetId) {
   return items;
 }
 
-// ─── Supabase upsert ─────────────────────────────────────────────────────────
-function dedupe(rows, conflict) {
-  const cols = conflict.split(',').map(c=>c.trim());
-  const by = new Map();
-  for (const r of rows) by.set(cols.map(c=>String(r[c]??'')).join(' '), r);
-  return [...by.values()];
-}
-
-async function upsert(table, conflict, rows) {
-  const deduped = dedupe(rows, conflict);
-  let ok = 0;
-  for (let i=0;i<deduped.length;i+=500) {
-    const chunk = deduped.slice(i,i+500);
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?on_conflict=${conflict}`, {
-      method:'POST',
-      headers:{ apikey:SERVICE_KEY, Authorization:`Bearer ${SERVICE_KEY}`, 'Content-Type':'application/json', Prefer:'resolution=merge-duplicates,missing=default,return=minimal' },
-      body: JSON.stringify(chunk),
-    });
-    if (!res.ok) console.error(`  upsert ${table} chunk error ${res.status}: ${(await res.text()).slice(0,200)}`);
-    else ok += chunk.length;
-  }
-  return ok;
-}
-
 async function main() {
   const startedAt = Date.now();
+  const runStart = new Date(startedAt).toISOString();
   const category = process.argv[2] || 'on-market';
   if (category !== 'on-market') {
     console.error(`Only 'on-market' is supported. Sold is deferred (this actor has no sold date — see header).`);
@@ -236,10 +249,11 @@ async function main() {
 
   console.log(`\n=== REA on-market via Apify ${ACTOR_ID} (${searchInputs.length} suburbs, mode=${MODE}, ${RESULT_COUNT}/pg × ${PAGES}pg) ===`);
 
+  await assertMigration({ table: 'property_listings' });
   await pingStart(HEALTHCHECK_UUID);
   const sbCfg = { supabaseUrl: SUPABASE_URL, serviceKey: SERVICE_KEY };
 
-  const input = buildInput(searchInputs);
+  const input = buildInput(searchInputs, { resultCount: RESULT_COUNT, pages: PAGES });
 
   console.log('Starting actor run...');
   const started = await startRun(input);
@@ -251,15 +265,32 @@ async function main() {
   const rows = items.map(mapOnMarket).filter(Boolean).filter(r => inArea(r.suburb));
   console.log(`Dataset: ${items.length} items → ${rows.length} in-area on-market rows.`);
 
-  const upserted = await upsert('property_listings', 'raw_address,source', rows);
-  console.log(`Upserted ${upserted} rows into property_listings (source=${SOURCE}).`);
+  // Shared feed-write path (KTD1): stamps last_seen_at/active/lifecycle, records price history.
+  const batch = await writeFeedBatch({ table: 'property_listings', source: SOURCE, runStart, rows });
+  const upserted = batch.seen;
+  console.log(`Upserted ${upserted} rows into property_listings (source=${SOURCE}; new ${batch.newRows}, priced ${batch.priced}).`);
 
   // An empty dataset across ~29 for-sale suburbs is not a real zero-yield day — treat
   // it as blocked so the monitor alerts rather than silently reporting success.
   const blocked = items.length === 0;
+
+  // Miss-counting sweep (KTD2): only the weekly full mode is a verified full sweep.
+  let sweep = { miss1: 0, closed: 0, sweptSuburbs: [], skippedSuburbs: [] };
+  if (shouldSweep({ mode: MODE, blocked })) {
+    sweep = await sweepSource({ table: 'property_listings', source: SOURCE, runStart, coverage: buildCoverage(slugs, items) });
+    console.log(`Sweep: miss1=${sweep.miss1} closed=${sweep.closed} swept=${sweep.sweptSuburbs.length} skipped=${sweep.skippedSuburbs.length}`);
+  }
+
   const status = deriveStatus({ blocked, items: upserted });
   const newestRowAt = await fetchNewestRowAt(sbCfg, 'property_listings');
   await writeFeedHealth(sbCfg, { category: 'on-market', source_used: SOURCE, items: upserted, newest_row_at: newestRowAt, status });
+  await recordRun({
+    category: 'on-market', source: SOURCE, mode: MODE, run_start: runStart, status,
+    seen: batch.seen, new_rows: batch.newRows, priced: batch.priced, miss1: sweep.miss1, closed: sweep.closed,
+    skipped_suburbs: sweep.skippedSuburbs.length, fetched: items.length, failed: 0,
+    est_cost_usd: run.usageTotalUsd ?? null,
+    notes: { apifyRunId: run.id, skippedSuburbs: sweep.skippedSuburbs, sweptSuburbs: sweep.sweptSuburbs },
+  });
 
   const durationS = ((Date.now() - startedAt) / 1000).toFixed(0);
   const summary = `category=on-market source=${SOURCE} status=${status} items=${upserted} dataset=${items.length} duration=${durationS}s`;

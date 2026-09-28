@@ -98,6 +98,8 @@ export const config = {
     '/api/sold-sales',
     '/api/market-segments',
     '/api/suburb-values',
+    '/api/suburb-stats',
+    '/api/price-changes',
     '/api/on-market-listings',
     '/api/rental-listings',
     '/api/vendor-report',

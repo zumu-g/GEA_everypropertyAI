@@ -70,7 +70,7 @@ server.tool(
 
 server.tool(
   "on_market_listings",
-  "Current on-market (for-sale) listings in a suburb or around a lat/lng point (Domain feed). sinceDays filters to listings listed within the last N days.",
+  "Current on-market (for-sale) listings in a suburb or around a lat/lng point (Domain feed). sinceDays filters to listings listed within the last N days. Each row carries lifecycleStatus, daysOnMarket, daysOnMarketBasis, priceHistory, saleMethod and auctionDate. includeInactive=true also returns closed (withdrawn/sold) rows.",
   {
     suburb: z.string().optional(),
     state: z.string().optional(),
@@ -78,6 +78,7 @@ server.tool(
     lng: z.number().optional(),
     radius: z.number().optional(),
     sinceDays: z.number().optional(),
+    includeInactive: z.boolean().optional().default(false),
     limit: z.number().optional(),
   },
   (args) => safe(() => client.onMarketListings(args)),
@@ -85,7 +86,7 @@ server.tool(
 
 server.tool(
   "rental_listings",
-  "Current on-market rental listings in a suburb or around a lat/lng point (Domain feed). Filter by weekly rent (minRent/maxRent) and recency (sinceDays = listed within the last N days).",
+  "Current on-market rental listings in a suburb or around a lat/lng point (Domain feed). Filter by weekly rent (minRent/maxRent) and recency (sinceDays = listed within the last N days). Each row carries lifecycleStatus, daysOnMarket, daysOnMarketBasis, priceHistory and leasedAt. includeInactive=true also returns closed (leased/withdrawn) rows.",
   {
     suburb: z.string().optional(),
     state: z.string().optional(),
@@ -95,6 +96,7 @@ server.tool(
     sinceDays: z.number().optional(),
     minRent: z.number().optional(),
     maxRent: z.number().optional(),
+    includeInactive: z.boolean().optional().default(false),
     limit: z.number().optional(),
   },
   (args) => safe(() => client.rentalListings(args)),
@@ -141,6 +143,29 @@ server.tool(
     excludeAddress: z.string().optional().describe("subject address to exclude from results"),
   },
   (args) => safe(() => client.vendorReport(args)),
+);
+
+server.tool(
+  "price_changes",
+  "Asking-price changes in a suburb over the last sinceDays (sale and rental listings). Each result pairs the latest observed price with its predecessor: previous/current display price, previous/current midpoint (mean of low and high; weekly rent for rentals), changePct on the midpoint (1 dp, never zero) and changedAt. Only listings whose price actually moved are returned. Fast DB query.",
+  {
+    suburb: z.string(),
+    state: z.string().default("VIC"),
+    sinceDays: z.number().int().min(1).max(365).default(30).describe("window in days, 1..365"),
+  },
+  (args) => safe(() => client.priceChanges(args)),
+);
+
+server.tool(
+  "suburb_stats",
+  "Suburb market statistics for the month or week containing asOf (default today), plus the same block for the prior period and one year earlier (null when no data). Block: active/new listings, median asking, median days on market, price cuts, withdrawals, sales count and medians, months of supply, sale-to-list ratio, auction clearance (auctions held in the period that sold within 14 days), private-sale conversion (private campaigns closed in the period that ended in a sale), rental listings and median rent, and sentimentIndex 0-100 = round(100 * mean of the scaled inputs saleToListRatio, monthsOfSupply, priceCutShare, medianDaysOnMarket, auctionClearanceRate), each scaled 0..1 against its trailing frozen monthly range (supply, cuts and days inverted); null with sentimentBasis.reason until six months of history exist. Casey/Cardinia suburbs only. Fast DB query.",
+  {
+    suburb: z.string(),
+    state: z.string().default("VIC"),
+    period: z.enum(["month", "week"]).default("month"),
+    asOf: z.string().optional().describe("ISO date (YYYY-MM-DD); defaults to today in Melbourne"),
+  },
+  (args) => safe(() => client.suburbStats(args)),
 );
 
 // ── Composites ───────────────────────────────────────────────────────────────

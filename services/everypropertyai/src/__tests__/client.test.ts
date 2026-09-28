@@ -141,3 +141,58 @@ describe('per-request timeouts', () => {
     expect(timeoutSpy).toHaveBeenCalledWith(130_000);
   });
 });
+
+describe('price_changes + suburb_stats client methods', () => {
+  it('priceChanges defaults state=VIC and passes sinceDays', async () => {
+    const calls = stubFetch(200, JSON.stringify({ count: 0, results: [] }));
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+    await client.priceChanges({ suburb: 'Berwick' });
+    let url = new URL(calls[0].url);
+    expect(url.pathname).toBe('/api/price-changes');
+    expect(url.searchParams.get('suburb')).toBe('Berwick');
+    expect(url.searchParams.get('state')).toBe('VIC');
+    expect(url.searchParams.get('sinceDays')).toBeNull();
+
+    await client.priceChanges({ suburb: 'Berwick', state: 'NSW', sinceDays: 14 });
+    url = new URL(calls[1].url);
+    expect(url.searchParams.get('state')).toBe('NSW');
+    expect(url.searchParams.get('sinceDays')).toBe('14');
+  });
+
+  it('onMarketListings serialises includeInactive=true and omits it by default', async () => {
+    const calls = stubFetch(200, JSON.stringify({ count: 0, results: [] }));
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+    await client.onMarketListings({ suburb: 'Berwick' });
+    expect(new URL(calls[0].url).searchParams.get('includeInactive')).toBeNull();
+    await client.onMarketListings({ suburb: 'Berwick', includeInactive: true });
+    const q = new URL(calls[1].url);
+    expect(q.pathname).toBe('/api/on-market-listings');
+    expect(q.searchParams.get('includeInactive')).toBe('true');
+  });
+
+  it('rentalListings serialises includeInactive=true and omits it by default', async () => {
+    const calls = stubFetch(200, JSON.stringify({ count: 0, results: [] }));
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+    await client.rentalListings({ suburb: 'Berwick' });
+    expect(new URL(calls[0].url).searchParams.get('includeInactive')).toBeNull();
+    await client.rentalListings({ suburb: 'Berwick', includeInactive: true });
+    const q = new URL(calls[1].url);
+    expect(q.pathname).toBe('/api/rental-listings');
+    expect(q.searchParams.get('includeInactive')).toBe('true');
+  });
+
+  it('suburbStats defaults state=VIC, omits period/asOf unless given, and passes asOf', async () => {
+    const calls = stubFetch(200, JSON.stringify({ suburb: 'Berwick', current: {} }));
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
+    await client.suburbStats({ suburb: 'Berwick' });
+    let q = new URL(calls[0].url);
+    expect(q.pathname).toBe('/api/suburb-stats');
+    expect(q.searchParams.get('state')).toBe('VIC');
+    expect(q.searchParams.get('asOf')).toBeNull();
+
+    await client.suburbStats({ suburb: 'Berwick', period: 'week', asOf: '2026-08-15' });
+    q = new URL(calls[1].url);
+    expect(q.searchParams.get('period')).toBe('week');
+    expect(q.searchParams.get('asOf')).toBe('2026-08-15');
+  });
+});

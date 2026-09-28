@@ -576,36 +576,44 @@ export async function getCachedProfilesBySlugs(
   }
 }
 
+/** One listing campaign's days-on-market basis for a sold-row match (R9/R21). */
+export interface ListedDateCandidate {
+  date: string;
+  basis: 'listed' | 'first_seen';
+}
+
 /**
- * Batch-fetch ALL candidate property_listings.listed_date values for many
- * slugs in one query (an address can have multiple listing campaigns).
- * Reads the raw listed_date column only — no created_at COALESCE, since
- * first-seen would approximate rather than record a listing date. Campaign
- * selection (closest preceding the sale) happens in src/lib/sold/enrich.ts.
+ * Batch lookup of listing campaigns by address slug for the sold-feed join.
+ * Basis per row = listed_date ?? campaign_started_at ?? created_at, labelled
+ * 'listed' when a real listed_date exists, else 'first_seen'.
  */
 export async function getListedDatesBySlugs(
   slugs: string[]
-): Promise<Map<string, string[]>> {
-  const result = new Map<string, string[]>();
+): Promise<Map<string, ListedDateCandidate[]>> {
+  const result = new Map<string, ListedDateCandidate[]>();
   if (!isSupabaseConfigured() || slugs.length === 0) return result;
 
   try {
-    const { data, error } = await supabase()
-      .from('property_listings')
-      .select('address_slug, listed_date')
-      .in('address_slug', slugs)
-      .not('listed_date', 'is', null);
+    const select = (cols: string) =>
+      supabase().from('property_listings').select(cols).in('address_slug', slugs);
+    let { data, error } = await select('address_slug, listed_date, campaign_started_at, created_at');
+    // Before migration 015 campaign_started_at does not exist (42703); fall back to created_at.
+    if (error?.code === '42703') {
+      ({ data, error } = await select('address_slug, listed_date, created_at'));
+    }
 
     if (error) {
       console.error('[getListedDatesBySlugs] Supabase error:', error.message);
       return result;
     }
 
-    for (const row of data ?? []) {
-      const slug = row.address_slug as string;
-      const dates = result.get(slug) ?? [];
-      dates.push(row.listed_date as string);
-      result.set(slug, dates);
+    for (const row of (data ?? []) as unknown as Record<string, unknown>[]) {
+      const slug = row.address_slug as string | null;
+      const date = (row.listed_date ?? row.campaign_started_at ?? row.created_at) as string | null;
+      if (!slug || !date) continue;
+      const list = result.get(slug) ?? [];
+      list.push({ date, basis: row.listed_date ? 'listed' : 'first_seen' });
+      result.set(slug, list);
     }
     return result;
   } catch (err) {
@@ -1295,12 +1303,15 @@ async function upsertRows(table: string, rows: object[], onConflict: string): Pr
   }
 }
 
+// Every crawl that sees a row stamps it active in the lifecycle (R3). The scripts'
+// shared feed-write path does the full stamping; this webhook path only needs the
+// uniform 'active' so the row never carries a stale lifecycle from a prior sweep.
 export function insertPropertyListings(rows: PropertyListingRecord[]): Promise<void> {
-  return upsertRows('property_listings', rows, 'raw_address,source');
+  return upsertRows('property_listings', rows.map((r) => ({ ...r, lifecycle_status: 'active', active: true, miss_count: 0, removed_at: null })), 'raw_address,source');
 }
 
 export function insertPropertyRentals(rows: PropertyRentalRecord[]): Promise<void> {
-  return upsertRows('property_rentals', rows, 'raw_address,source');
+  return upsertRows('property_rentals', rows.map((r) => ({ ...r, lifecycle_status: 'active', active: true, miss_count: 0, removed_at: null, leased_at: null })), 'raw_address,source');
 }
 
 // ─── Feed-seed lookup (per-property profile fallback) ────────────────────────
@@ -1489,21 +1500,24 @@ export async function getAgentListings(opts: {
 }
 
 /**
- * Expire on-market rows not seen in the latest sync: set active=false for rows in
- * the given suburbs whose last_seen_at predates the run start. Scoped to the
- * scraped suburbs so it never touches unrelated areas. `table` is
- * 'property_listings' | 'property_rentals'.
+ * Expire on-market rows not seen in the latest sync: set active=false for rows of
+ * ONE source in the given suburbs whose last_seen_at predates the run start. Scoped
+ * to the source (KTD2 — a Domain run must never deactivate REA/Homely rows) and to
+ * the scraped suburbs. `table` is 'property_listings' | 'property_rentals'.
  */
 export async function expireNotSeen(
   table: 'property_listings' | 'property_rentals',
+  source: string,
   suburbs: string[],
   sinceIso: string,
   state = 'VIC'
 ): Promise<number> {
+  if (!source) throw new Error('[expireNotSeen] source is required');
   if (!isSupabaseConfigured() || suburbs.length === 0) return 0;
   const { data, error } = await supabase()
     .from(table)
-    .update({ active: false })
+    .update({ active: false, lifecycle_status: 'withdrawn', [table === 'property_rentals' ? 'leased_at' : 'removed_at']: sinceIso })
+    .eq('source', source)
     .in('suburb', suburbs)
     .eq('state', state.toUpperCase())
     .eq('active', true)

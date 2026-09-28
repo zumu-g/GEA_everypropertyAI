@@ -34,7 +34,7 @@ d('everypropertyai MCP server (live)', () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name);
     expect(names).toEqual(
-      expect.arrayContaining(['search_address', 'sold_sales', 'agent_listings', 'vendor_report']),
+      expect.arrayContaining(['search_address', 'sold_sales', 'agent_listings', 'vendor_report', 'price_changes', 'suburb_stats']),
     );
     await client.close();
   });
@@ -55,6 +55,24 @@ d('everypropertyai MCP server (live)', () => {
     expect(Array.isArray(data.results)).toBe(true);
     expect(data.results.length).toBeGreaterThan(0);
     expect(data.results[0]).toHaveProperty('rawAddress');
+    await client.close();
+  });
+
+  it('suburb_stats returns a non-empty Berwick month block with a sentiment basis', async () => {
+    const client = await connectedClient();
+    const res = await client.callTool({ name: 'suburb_stats', arguments: { suburb: 'Berwick', state: 'VIC', period: 'month' } });
+    const data = parseToolResult(res as never);
+    expect(typeof data.current.activeListings).toBe('number');
+    expect(data.current.activeListings).toBeGreaterThan(0);
+    expect(data.current.sentimentBasis).toBeDefined();
+    await client.close();
+  });
+
+  it('price_changes returns a results array for Berwick', async () => {
+    const client = await connectedClient();
+    const res = await client.callTool({ name: 'price_changes', arguments: { suburb: 'Berwick' } });
+    const data = parseToolResult(res as never);
+    expect(Array.isArray(data.results)).toBe(true);
     await client.close();
   });
 });

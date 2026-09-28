@@ -9,9 +9,10 @@
 //
 // The merge semantics here deliberately duplicate the pure logic in
 // src/lib/sold/enrich.ts (zero-as-missing land area; sold value wins, profile
-// fills blanks; firstListedDate = own listed_date else latest candidate
-// listed_date ≤ sale_date; daysOnMarket = whole days when ≥ 0). If that file
-// changes, change this one.
+// fills blanks; firstListedDate = own listed_date else latest listing basis
+// (listed_date ?? campaign_started_at ?? created_at) within 0–400 days before
+// sale_date; daysOnMarket = whole days when ≥ 0). If that file changes, change
+// this one. Also prints settlement_date coverage by source (R20).
 //
 // Usage:
 //   node scripts/report-sold-coverage.mjs
@@ -97,15 +98,16 @@ function ymd(ms) {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/** Latest candidate listed_date ≤ sale_date, else null (mirrors selectFirstListedDate). */
+/** Latest candidate basis ≤ sale_date and ≤ 400 days before it, else null (mirrors selectFirstListedDate). */
 function selectFirstListedDate(saleDate, candidates) {
   if (!candidates?.length) return null;
   const saleMs = dayMs(saleDate);
   if (saleMs === null) return null;
+  const floorMs = saleMs - 400 * 86_400_000;
   let best = null;
   for (const c of candidates) {
     const t = dayMs(c);
-    if (t === null || t > saleMs) continue;
+    if (t === null || t > saleMs || t < floorMs) continue;
     if (best === null || t > best) best = t;
   }
   return best === null ? null : ymd(best);
@@ -125,8 +127,8 @@ function deriveDaysOnMarket(saleDate, firstListedDate) {
 async function fetchAllSales() {
   // When migration 008 is absent, omit the two columns that don't exist yet.
   const selectCols = migration008Missing
-    ? 'address_slug, raw_address, source, suburb, land_area_sqm, bedrooms, bathrooms, car_spaces, sale_date'
-    : 'address_slug, raw_address, source, suburb, land_area_sqm, building_area_sqm, bedrooms, bathrooms, car_spaces, listed_date, sale_date';
+    ? 'address_slug, raw_address, source, suburb, land_area_sqm, bedrooms, bathrooms, car_spaces, sale_date, settlement_date'
+    : 'address_slug, raw_address, source, suburb, land_area_sqm, building_area_sqm, bedrooms, bathrooms, car_spaces, listed_date, sale_date, settlement_date';
   const rows = [];
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
@@ -169,20 +171,20 @@ async function fetchProfiles(slugs) {
   return map;
 }
 
-/** slug → string[] of listed_date candidates (all campaigns). */
+/** slug → string[] of basis dates (listed_date ?? campaign_started_at ?? created_at), all campaigns. */
 async function fetchListedDates(slugs) {
   const map = new Map();
   for (const part of chunk(slugs, SLUG_CHUNK)) {
-    const { data, error } = await supabase
-      .from('property_listings')
-      .select('address_slug, listed_date')
-      .in('address_slug', part)
-      .not('listed_date', 'is', null);
+    const select = (cols) => supabase.from('property_listings').select(cols).in('address_slug', part);
+    let { data, error } = await select('address_slug, listed_date, campaign_started_at, created_at');
+    // Before migration 015 campaign_started_at does not exist (42703); fall back to created_at.
+    if (error?.code === '42703') ({ data, error } = await select('address_slug, listed_date, created_at'));
     if (error) throw new Error(`property_listings lookup: ${error.message}`);
     for (const row of data ?? []) {
-      if (!row.address_slug || !row.listed_date) continue;
+      const basis = row.listed_date ?? row.campaign_started_at ?? row.created_at;
+      if (!row.address_slug || !basis) continue;
       const list = map.get(row.address_slug) ?? [];
-      list.push(row.listed_date);
+      list.push(basis);
       map.set(row.address_slug, list);
     }
   }
@@ -290,8 +292,11 @@ async function main() {
   // Keyed on normalized raw_address: distinct sale dates per address.
   const addrDates = new Map(); // normalized address → Set of sale_date
   const sourceCounts = new Map(); // source → rows
+  const settlementBySource = new Map(); // source → rows with settlement_date (R20)
   for (const s of rows) {
-    sourceCounts.set(s.source ?? '(null)', (sourceCounts.get(s.source ?? '(null)') ?? 0) + 1);
+    const src = s.source ?? '(null)';
+    sourceCounts.set(src, (sourceCounts.get(src) ?? 0) + 1);
+    if (s.settlement_date) settlementBySource.set(src, (settlementBySource.get(src) ?? 0) + 1);
     const addr = (s.raw_address ?? '').trim().toLowerCase();
     if (!addr) continue;
     const set = addrDates.get(addr) ?? new Set();
@@ -307,6 +312,14 @@ async function main() {
   console.log('  rows per source:');
   for (const [src, n] of [...sourceCounts.entries()].sort((a, b) => b[1] - a[1])) {
     console.log(`    ${src.padEnd(24)} ${String(n).padStart(6)}`);
+  }
+
+  // ── settlement_date coverage by source (R20 verification) ──
+  console.log('\nsettlement_date coverage by source:');
+  console.log('  source                     rows  with-date       %');
+  for (const [src, n] of [...sourceCounts.entries()].sort((a, b) => b[1] - a[1])) {
+    const c = settlementBySource.get(src) ?? 0;
+    console.log(`  ${src.padEnd(24)} ${String(n).padStart(6)} ${String(c).padStart(10)} ${pct(c, n).padStart(7)}`);
   }
 
   // ── Sanity check ──
