@@ -93,18 +93,23 @@ export function selectFirstListedDate(
   const saleMs = dayMs(saleDate);
   if (saleMs === null) return null;
   const floorMs = saleMs - MAX_LISTED_BEFORE_SALE_DAYS * 86_400_000;
-  let best: ListedDateCandidate | null = null;
-  let bestMs = -Infinity;
-  for (const c of candidates) {
-    const cand: ListedDateCandidate = typeof c === 'string' ? { date: c, basis: 'listed' } : c;
-    const t = dayMs(cand.date);
-    if (t === null || t > saleMs || t < floorMs) continue;
-    if (t > bestMs) {
-      bestMs = t;
-      best = { date: ymd(t), basis: cand.basis };
+  const norm = candidates.map((c): ListedDateCandidate => (typeof c === 'string' ? { date: c, basis: 'listed' } : c));
+  // Real listed dates beat first-sight dates: only fall back to first_seen when no listed candidate is in the window.
+  for (const basis of ['listed', 'first_seen'] as const) {
+    let best: ListedDateCandidate | null = null;
+    let bestMs = -Infinity;
+    for (const cand of norm) {
+      if (cand.basis !== basis) continue;
+      const t = dayMs(cand.date);
+      if (t === null || t > saleMs || t < floorMs) continue;
+      if (t > bestMs) {
+        bestMs = t;
+        best = { date: ymd(t), basis: cand.basis };
+      }
     }
+    if (best) return best;
   }
-  return best;
+  return null;
 }
 
 /** Whole days between listed and sold; null when either is missing or diff < 0. */

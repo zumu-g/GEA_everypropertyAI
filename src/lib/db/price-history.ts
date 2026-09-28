@@ -24,15 +24,22 @@ export async function getPriceHistoryFor(
   const addresses = [...new Set(rows.map((r) => r.raw_address))];
   const sources = [...new Set(rows.map((r) => r.source))];
   // ponytail: address IN + source IN over-fetches across sources; exact pair filter if it ever matters.
-  const { data, error } = await getSupabaseServerClient()
-    .from('listing_price_history')
-    .select('raw_address, source, observed_at, display_price, price_low, price_high')
-    .eq('table_name', table)
-    .in('raw_address', addresses)
-    .in('source', sources)
-    .order('observed_at', { ascending: true });
-  if (error) { console.error('[getPriceHistoryFor]', error.message); return out; }
-  for (const h of data ?? []) {
+  const PAGE = 1000;
+  const data: { raw_address: string; source: string; observed_at: string; display_price: string | null; price_low: number | null; price_high: number | null }[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data: page, error } = await getSupabaseServerClient()
+      .from('listing_price_history')
+      .select('raw_address, source, observed_at, display_price, price_low, price_high')
+      .eq('table_name', table)
+      .in('raw_address', addresses)
+      .in('source', sources)
+      .order('observed_at', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) { console.error('[getPriceHistoryFor]', error.message); return out; }
+    data.push(...(page ?? []));
+    if (!page || page.length < PAGE) break;
+  }
+  for (const h of data) {
     const key = priceHistoryKey(h);
     if (!out.has(key)) out.set(key, []);
     out.get(key)!.push({

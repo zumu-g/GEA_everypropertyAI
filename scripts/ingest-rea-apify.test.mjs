@@ -80,4 +80,11 @@ describe('sweep gating (REA sweeps only on a full-mode, unblocked run)', () => {
       Clyde: { seen: 0, truncated: false },
     });
   });
+  it('coverage judges truncation from raw dataset items, not mapped in-area rows', () => {
+    // 6 raw Berwick items hit the 3×2 ceiling even though only 2 survive mapping.
+    const items = [...Array(6)].map(() => ({ Suburb: 'BERWICK' }));
+    const mapped = [{ suburb: 'Berwick' }, { suburb: 'Berwick' }];
+    expect(buildCoverage(['berwick-vic-3806'], items, { pages: 3, resultCount: 2 })).toEqual({ Berwick: { seen: 6, truncated: true } });
+    expect(buildCoverage(['berwick-vic-3806'], mapped, { pages: 3, resultCount: 2 })).toEqual({ Berwick: { seen: 2, truncated: false } });
+  });
 });

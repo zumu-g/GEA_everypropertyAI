@@ -122,6 +122,9 @@ export async function GET(request: NextRequest) {
     return Number.isFinite(t) && t >= sinceMs;
   };
 
+  // Sold rows are never on-market, whatever `active` says.
+  const notSold = (r: PropertyListingRecord) => includeInactive || (r as ListingRow).lifecycle_status !== 'sold';
+
   const hasGeo = lat !== undefined && lng !== undefined && Number.isFinite(lat) && Number.isFinite(lng);
   if (!suburb && !hasGeo) {
     return NextResponse.json(
@@ -136,6 +139,7 @@ export async function GET(request: NextRequest) {
       const box = await getRowsNearby<PropertyListingRecord>('property_listings', lat!, lng!, radius);
       rows = box
         .filter((r) => includeInactive || r.active !== false)
+        .filter(notSold)
         .filter(withinWindow)
         .filter((r) => typeof r.latitude === 'number' && typeof r.longitude === 'number'
           && haversineKm(lat!, lng!, r.latitude, r.longitude) <= radius)
@@ -148,7 +152,7 @@ export async function GET(request: NextRequest) {
       rows = (await getListingsForSuburbAll(suburb, state, limit)).filter(withinWindow);
     } else {
       // Suburb mode pushes the sinceDays window into the DB query (before the limit).
-      rows = await getListingsForSuburb(suburb, state, limit, { sinceDays });
+      rows = (await getListingsForSuburb(suburb, state, limit, { sinceDays })).filter(notSold);
     }
 
     const page = dedupeByAddress(rows)

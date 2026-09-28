@@ -100,11 +100,13 @@ export function computeBlock(input: BlockInput): SuburbStatsBlock {
   const inPeriodDate = (d: string | null | undefined) => d != null && d >= bounds.start && d <= bounds.end;
 
   // ── Listings ──
-  const activeAtEnd = listings.filter((l) => {
+  const openAtEnd = (l: { lifecycle_status?: string | null } & Parameters<typeof firstSeen>[0] & Parameters<typeof closedAt>[0]) => {
+    if (l.lifecycle_status === 'sold') return false;
     const seen = firstSeen(l);
     const closed = closedAt(l);
     return seen != null && ms(seen) < endExMs && (closed == null || ms(closed) >= endExMs);
-  });
+  };
+  const activeAtEnd = listings.filter(openAtEnd);
   const newListings = listings.filter((l) => inPeriod(firstSeen(l))).length;
   const medianAsking = median(activeAtEnd.map((l) => midpoint(l.price_low, l.price_high)).filter((v): v is number => v != null));
   const medianDaysOnMarket = median(
@@ -179,9 +181,11 @@ export function computeBlock(input: BlockInput): SuburbStatsBlock {
     const deadlineMs = melbourneEndExclusive(deadline).getTime();
     const c = closedAt(l);
     if (l.lifecycle_status === 'sold' && (c == null || ms(c) < deadlineMs)) return true;
+    // A sale clears the auction only if it lands inside the campaign: on/after
+    // campaign start (else first sight, else auction − 30 days) and by the deadline.
     const seen = firstSeen(l);
-    return (salesBySlug.get(slugOf(l)) ?? []).some((s) =>
-      s.sale_date! <= deadline && (seen == null || ms(s.sale_date!) >= ms(seen) - R21_MAX_DAYS * DAY_MS) && s.sale_date! >= addDays(l.auction_date!, -R21_MAX_DAYS));
+    const campaignStart = seen != null ? melbourneDate(new Date(seen)) : addDays(l.auction_date!, -30);
+    return (salesBySlug.get(slugOf(l)) ?? []).some((s) => s.sale_date! >= campaignStart && s.sale_date! <= deadline);
   });
 
   // ── Private sales (R26) ──
@@ -190,11 +194,7 @@ export function computeBlock(input: BlockInput): SuburbStatsBlock {
   const privateSold = privateClosed.filter((l) => l.lifecycle_status === 'sold');
 
   // ── Rentals ──
-  const rentalsAtEnd = rentals.filter((r) => {
-    const seen = firstSeen(r);
-    const closed = closedAt(r);
-    return seen != null && ms(seen) < endExMs && (closed == null || ms(closed) >= endExMs);
-  });
+  const rentalsAtEnd = rentals.filter(openAtEnd);
 
   const auctionClearanceRate = ratio(cleared.length, auctions.length);
   const block = {

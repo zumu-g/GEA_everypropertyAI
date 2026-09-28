@@ -159,10 +159,14 @@ export function shouldSweep({ mode, blocked }) {
 }
 
 // Per-suburb coverage for sweepSource. One actor run covers every slug, so a suburb is
-// complete unless its item count reached the pages × resultCount ceiling (more may exist).
-export function buildCoverage(slugs, rows, { pages = PAGES, resultCount = RESULT_COUNT } = {}) {
+// complete unless its RAW dataset item count reached the pages × resultCount ceiling
+// (more may exist). Judged before mapping/inArea filters, which would under-count.
+export function buildCoverage(slugs, items, { pages = PAGES, resultCount = RESULT_COUNT } = {}) {
   const counts = new Map();
-  for (const r of rows) counts.set(r.suburb, (counts.get(r.suburb) || 0) + 1);
+  for (const x of items) {
+    const suburb = titleCase(x.Suburb ?? x.suburb ?? '');
+    counts.set(suburb, (counts.get(suburb) || 0) + 1);
+  }
   const cov = {};
   for (const slug of slugs) {
     const suburb = slugToSuburb(slug);
@@ -273,7 +277,7 @@ async function main() {
   // Miss-counting sweep (KTD2): only the weekly full mode is a verified full sweep.
   let sweep = { miss1: 0, closed: 0, sweptSuburbs: [], skippedSuburbs: [] };
   if (shouldSweep({ mode: MODE, blocked })) {
-    sweep = await sweepSource({ table: 'property_listings', source: SOURCE, runStart, coverage: buildCoverage(slugs, rows) });
+    sweep = await sweepSource({ table: 'property_listings', source: SOURCE, runStart, coverage: buildCoverage(slugs, items) });
     console.log(`Sweep: miss1=${sweep.miss1} closed=${sweep.closed} swept=${sweep.sweptSuburbs.length} skipped=${sweep.skippedSuburbs.length}`);
   }
 

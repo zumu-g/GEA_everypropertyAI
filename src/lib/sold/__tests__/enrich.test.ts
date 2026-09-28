@@ -145,6 +145,22 @@ describe('selectFirstListedDate', () => {
     expect(selectFirstListedDate('2026-05-01', ['2025-06-01', '2026-04-10'])?.date).toBe('2026-04-10');
   });
 
+  it('prefers an in-window listed candidate over a later first_seen candidate', () => {
+    const picked = selectFirstListedDate('2026-05-01', [
+      { date: '2026-04-20', basis: 'first_seen' },
+      { date: '2026-03-01', basis: 'listed' },
+    ]);
+    expect(picked).toEqual({ date: '2026-03-01', basis: 'listed' });
+  });
+
+  it('falls back to first_seen only when no listed candidate is in the window', () => {
+    const picked = selectFirstListedDate('2026-05-01', [
+      { date: '2026-04-20', basis: 'first_seen' },
+      { date: '2024-01-01', basis: 'listed' },
+    ]);
+    expect(picked).toEqual({ date: '2026-04-20', basis: 'first_seen' });
+  });
+
   it('returns null when all candidates post-date the sale', () => {
     expect(selectFirstListedDate('2026-05-01', ['2026-06-10'])).toBeNull();
   });
@@ -165,7 +181,7 @@ describe('selectFirstListedDate', () => {
   it('carries the basis label of the chosen candidate', () => {
     const picked = selectFirstListedDate('2026-05-01', [
       { date: '2026-03-17', basis: 'first_seen' },
-      { date: '2026-01-01', basis: 'listed' },
+      { date: '2026-02-01', basis: 'first_seen' },
     ]);
     expect(picked).toEqual({ date: '2026-03-17', basis: 'first_seen' });
     expect(selectFirstListedDate('2026-05-01', ['2026-03-17'])?.basis).toBe('listed');

@@ -94,6 +94,17 @@ describe('computeBlock — listings and sales fixture', () => {
   });
 });
 
+describe('computeBlock — sold rows are not active', () => {
+  it('a lifecycle sold row with no removed_at is excluded from activeListings and rentalListings', () => {
+    const blk = computeBlock(input({
+      listings: [listing(), listing({ lifecycle_status: 'sold' })],
+      rentals: [rental(), rental({ lifecycle_status: 'sold' } as Partial<StatsRentalRow>)],
+    }));
+    expect(blk.activeListings).toBe(1);
+    expect(blk.rentalListings).toBe(1);
+  });
+});
+
 describe('computeBlock — price cuts', () => {
   it('counts only negative midpoint changes observed inside the period', () => {
     const a = listing({ raw_address: 'A' });
@@ -134,6 +145,20 @@ describe('computeBlock — auctions and private sales (AE6, R26)', () => {
     expect(blk.auctionsCleared).toBe(8);
     expect(blk.auctionClearanceRate).toBe(0.67);
     expect(blk.privateSalesClosed).toBe(0); // auction rows never in the private denominator
+  });
+
+  it('a matching sale dated before the campaign start does not clear the auction', () => {
+    const rows = [0, 1, 2, 3, 4].map((i) => listing({
+      address_slug: `pre-${i}`, sale_method: 'auction', auction_date: '2026-08-15',
+      created_at: '2026-07-20T00:00:00Z', campaign_started_at: '2026-07-20T00:00:00Z',
+    }));
+    const sales = [
+      sale({ address_slug: 'pre-0', sale_date: '2026-07-10' }), // before campaign start → not cleared
+      sale({ address_slug: 'pre-1', sale_date: '2026-08-16' }), // within window → cleared
+    ];
+    const blk = computeBlock(input({ listings: rows, sales }));
+    expect(blk.auctionsHeld).toBe(5);
+    expect(blk.auctionsCleared).toBe(1);
   });
 
   it('three auctions → null rate with counts', () => {

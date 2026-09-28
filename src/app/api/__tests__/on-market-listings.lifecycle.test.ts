@@ -44,6 +44,20 @@ beforeEach(async () => {
 });
 
 describe('GET /api/on-market-listings lifecycle', () => {
+  it('active=true but lifecycle sold is excluded by default and included with includeInactive (suburb and geo)', async () => {
+    const soldRow = { ...base, raw_address: '3 Sold St', active: true, lifecycle_status: 'sold', listed_date: daysAgo(20), campaign_started_at: daysAgo(20) };
+    const q = await import('@/lib/db/queries');
+    const all = await import('@/lib/db/listings-inactive');
+    vi.mocked(q.getListingsForSuburb).mockResolvedValue([activeRow, soldRow] as never);
+    vi.mocked(all.getListingsForSuburbAll).mockResolvedValue([activeRow, soldRow] as never);
+    vi.mocked(q.getRowsNearby).mockResolvedValue([{ ...activeRow, latitude: -38, longitude: 145 }, { ...soldRow, latitude: -38, longitude: 145 }] as never);
+    const addrs = (b: { results: { rawAddress: string }[] }) => b.results.map((r) => r.rawAddress);
+    expect(addrs((await call('on-market-listings', 'suburb=Berwick')).body)).toEqual(['1 Test St']);
+    expect(addrs((await call('on-market-listings', 'suburb=Berwick&includeInactive=true')).body).sort()).toEqual(['1 Test St', '3 Sold St']);
+    expect(addrs((await call('on-market-listings', 'lat=-38&lng=145')).body)).toEqual(['1 Test St']);
+    expect(addrs((await call('on-market-listings', 'lat=-38&lng=145&includeInactive=1')).body).sort()).toEqual(['1 Test St', '3 Sold St']);
+  });
+
   it('default excludes active=false rows; includeInactive includes them with removedAt', async () => {
     const def = await call('on-market-listings', 'suburb=Berwick');
     expect(def.body.results.map((r: { rawAddress: string }) => r.rawAddress)).toEqual(['1 Test St']);
