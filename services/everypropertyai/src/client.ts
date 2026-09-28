@@ -5,6 +5,7 @@ import type {
   EnrichResponse,
   MergedPropertyProfile,
   OnMarketListing,
+  PriceChangesResponse,
   ProposalPropertyData,
   PropertyResponse,
   ReaSuggestion,
@@ -12,6 +13,7 @@ import type {
   SoldSaleResult,
   StreetRow,
   StructuredAddress,
+  SuburbStatsResponse,
   VendorReportResponse,
 } from "./types.js";
 
@@ -272,6 +274,21 @@ export class PropertyIQClient {
     excludeAddress?: string;
   }): Promise<VendorReportResponse> {
     return this.request("/api/vendor-report", { query: params });
+  }
+
+  /** Asking-price changes (sale + rental listings) in a suburb inside the last sinceDays (1..365, server default 30). */
+  priceChanges(params: { suburb: string; state?: string; sinceDays?: number }): Promise<PriceChangesResponse> {
+    return this.request("/api/price-changes", { query: { state: "VIC", ...params } });
+  }
+
+  /** Suburb market statistics for the month or week containing asOf (default today), with prior and year-ago blocks. */
+  suburbStats(params: {
+    suburb: string;
+    state?: string;
+    period?: "month" | "week";
+    asOf?: string;
+  }): Promise<SuburbStatsResponse> {
+    return this.request("/api/suburb-stats", { query: { state: "VIC", ...params } });
   }
 
   // ── Composites (everypropertyAI value-add) ────────────────────────────────

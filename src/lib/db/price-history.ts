@@ -1,4 +1,5 @@
 import { getSupabaseServerClient, isSupabaseConfigured } from './supabase';
+import { fetchListingsForStats, fetchRentalsForStats } from './stats-queries';
 
 export interface PriceHistoryEntry {
   observedAt: string;
@@ -42,4 +43,69 @@ export async function getPriceHistoryFor(
     });
   }
   return out;
+}
+
+export interface PriceChange {
+  listingUrl: string | null;
+  address: string;
+  suburb: string;
+  table: 'listings' | 'rentals';
+  previousDisplayPrice: string | null;
+  currentDisplayPrice: string | null;
+  previousMid: number;
+  currentMid: number;
+  /** Midpoint change, one decimal place. */
+  changePct: number;
+  changedAt: string;
+  priceHistory: PriceHistoryEntry[];
+}
+
+const midpoint = (h: PriceHistoryEntry) => (h.priceLow === null || h.priceHigh === null ? null : (h.priceLow + h.priceHigh) / 2);
+
+/**
+ * Asking-price changes in a suburb inside the last `sinceDays` (R13). Every
+ * listing identity (both feed tables, active and closed) with ≥2 observations
+ * whose latest observation is in the window; the latest row is paired with its
+ * predecessor and kept only when both midpoints exist and differ. Newest first.
+ */
+export async function getPriceChanges(suburb: string, state: string, sinceDays: number): Promise<PriceChange[]> {
+  const nowIso = new Date().toISOString();
+  const sinceMs = Date.now() - sinceDays * 86_400_000;
+  const [listings, rentals] = await Promise.all([
+    fetchListingsForStats(suburb, state, nowIso),
+    fetchRentalsForStats(suburb, state, nowIso),
+  ]);
+  const out: PriceChange[] = [];
+  for (const [table, rows] of [['listings', listings], ['rentals', rentals]] as const) {
+    const byKey = new Map(rows.map((r) => [priceHistoryKey(r), r]));
+    // ponytail: 200-address chunks, same as fetchPriceHistory; a suburb view would make this one query.
+    const rowList = [...byKey.values()];
+    for (let i = 0; i < rowList.length; i += 200) {
+      const history = await getPriceHistoryFor(table, rowList.slice(i, i + 200));
+      for (const [key, obs] of history) {
+        const row = byKey.get(key);
+        if (!row || obs.length < 2) continue;
+        const cur = obs[obs.length - 1];
+        const prev = obs[obs.length - 2];
+        if (new Date(cur.observedAt).getTime() < sinceMs) continue;
+        const curMid = midpoint(cur);
+        const prevMid = midpoint(prev);
+        if (curMid === null || prevMid === null || prevMid === 0 || curMid === prevMid) continue;
+        out.push({
+          listingUrl: row.listing_url ?? null,
+          address: row.raw_address,
+          suburb: row.suburb ?? suburb,
+          table,
+          previousDisplayPrice: prev.displayPrice,
+          currentDisplayPrice: cur.displayPrice,
+          previousMid: prevMid,
+          currentMid: curMid,
+          changePct: Math.round(((curMid - prevMid) / prevMid) * 1000) / 10,
+          changedAt: cur.observedAt,
+          priceHistory: obs,
+        });
+      }
+    }
+  }
+  return out.sort((a, b) => b.changedAt.localeCompare(a.changedAt));
 }

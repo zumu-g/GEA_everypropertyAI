@@ -246,3 +246,91 @@ export interface VendorReportResponse {
   listings: VendorReportRow[];
   [key: string]: unknown;
 }
+
+/** One observed asking price for a listing identity (oldest first in priceHistory). */
+export interface PriceHistoryEntry {
+  observedAt: string;
+  displayPrice: string | null;
+  priceLow: number | null;
+  priceHigh: number | null;
+}
+
+/** One asking-price change: latest observation paired with its predecessor. Rentals: low = high = weekly rent. */
+export interface PriceChange {
+  listingUrl: string | null;
+  address: string;
+  suburb: string;
+  table: "listings" | "rentals";
+  previousDisplayPrice: string | null;
+  currentDisplayPrice: string | null;
+  previousMid: number;
+  currentMid: number;
+  /** Percentage change on the midpoint, one decimal place; never null or zero. */
+  changePct: number;
+  changedAt: string;
+  priceHistory: PriceHistoryEntry[];
+}
+
+/** GET /api/price-changes — newest change first. */
+export interface PriceChangesResponse {
+  count: number;
+  results: PriceChange[];
+}
+
+export interface SentimentBasisInput {
+  name: "saleToListRatio" | "monthsOfSupply" | "priceCutShare" | "medianDaysOnMarket" | "auctionClearanceRate";
+  value: number;
+  rangeLow: number;
+  rangeHigh: number;
+  scaled: number;
+  weight: number;
+}
+
+export interface SentimentBasis {
+  formula: string;
+  window: number;
+  inputs: SentimentBasisInput[];
+  reason?: "insufficient-history";
+}
+
+/** One period block of suburb market statistics (R15). Nullable fields are null when the denominator is too small. */
+export interface SuburbStatsBlock {
+  activeListings: number;
+  newListings: number;
+  medianAsking: number | null;
+  medianDaysOnMarket: number | null;
+  priceCutCount: number;
+  priceCutMedianPct: number | null;
+  withdrawnCount: number;
+  salesCount: number;
+  medianSalePrice: number | null;
+  medianSalePriceHouse: number | null;
+  monthsOfSupply: number | null;
+  saleToListRatio: number | null;
+  auctionsHeld: number;
+  auctionsCleared: number;
+  auctionClearanceRate: number | null;
+  privateSalesClosed: number;
+  privateSalesSold: number;
+  privateSaleConversionRate: number | null;
+  rentalListings: number;
+  medianRent: number | null;
+  sentimentIndex: number | null;
+  sentimentBasis: SentimentBasis;
+}
+
+/** GET /api/suburb-stats — current period plus prior and year-ago blocks (null when no data). */
+export interface SuburbStatsResponse {
+  suburb: string;
+  state: string;
+  period: "month" | "week";
+  periodStart: string;
+  periodEnd: string;
+  current: SuburbStatsBlock;
+  prior: SuburbStatsBlock | null;
+  yearAgo: SuburbStatsBlock | null;
+  provisional: boolean;
+  reconstructed: boolean;
+  computedAt: string;
+  schemaVersion: number;
+}

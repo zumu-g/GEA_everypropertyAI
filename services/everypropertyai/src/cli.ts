@@ -127,6 +127,23 @@ program
   );
 
 program
+  .command("price-changes")
+  .description("Asking-price changes (sale + rental listings) in a suburb over the last N days")
+  .requiredOption("--suburb <suburb>")
+  .option("--state <state>", "state", "VIC")
+  .option("--since-days <n>", "window in days, 1..365 (default 30)", Number)
+  .action((o) => run(() => client.priceChanges({ suburb: o.suburb, state: o.state, sinceDays: o.sinceDays })));
+
+program
+  .command("suburb-stats")
+  .description("Suburb market statistics for the month or week containing --as-of, with prior and year-ago blocks")
+  .requiredOption("--suburb <suburb>")
+  .option("--state <state>", "state", "VIC")
+  .option("--period <period>", "month | week", "month")
+  .option("--as-of <date>", "ISO date YYYY-MM-DD (default today)")
+  .action((o) => run(() => client.suburbStats({ suburb: o.suburb, state: o.state, period: o.period, asOf: o.asOf })));
+
+program
   .command("rentals")
   .description("Current on-market rental listings in a suburb or around a point")
   .option("--suburb <suburb>")
