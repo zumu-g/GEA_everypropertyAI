@@ -31,8 +31,11 @@
 //
 // COST: the actor bills US$0.003 per dataset item and has no memory of what we hold,
 // so a 'Recommended'-sorted 25/suburb page re-bills ~760 already-known listings daily
-// (~4% new). 'new' mode sorts Newest + newListingOnly with a small page so we mostly
-// pay for genuinely new listings; 'full' mode (weekly) re-sweeps 25/suburb to catch
+// (~4% new). 'new' mode sorts Newest with a small page (10/suburb) so we buy only the
+// newest few per suburb; it is NOT a new-listing filter — the actor's newListingOnly
+// flag was verified to do nothing (2026-10-02: Tynong has 11 listings total and still
+// returned 10 "new"), so ~240 of the ~345 daily items are re-buys. The count is a cap,
+// not a signal: 30 suburbs hit 10, the rest are short. 'full' mode (weekly) re-sweeps 25/suburb to catch
 // removals and price changes. See docs/reviews (2026-09-19 Apify cost review).
 // ============================================================
 import { readFileSync } from 'node:fs';
@@ -176,7 +179,7 @@ export function buildCoverage(slugs, items, { pages = PAGES, resultCount = RESUL
   return cov;
 }
 
-/** Actor input for the run. 'new' = Newest sort + REA's new-listing filter, small page. */
+/** Actor input for the run. 'new' = Newest sort, small page (the newest N per suburb). */
 export function buildInput(searchInputs, { mode = MODE, resultCount, pages } = {}) {
   resultCount ??= mode === 'new' ? 10 : 200;
   pages ??= mode === 'new' ? 1 : 3;
@@ -187,7 +190,6 @@ export function buildInput(searchInputs, { mode = MODE, resultCount, pages } = {
     pages,
     resultCount,
     sortOrder: 'Newest',
-    newListingOnly: mode === 'new',
   };
 }
 

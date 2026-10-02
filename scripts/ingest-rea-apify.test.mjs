@@ -36,13 +36,15 @@ describe('mapOnMarket image_url', () => {
 });
 
 describe('buildInput cost controls', () => {
-  it('new mode: Newest sort, newListingOnly, small page', () => {
+  it('new mode: Newest sort, small page, no newListingOnly (actor ignores it)', () => {
     const i = buildInput(['Berwick, VIC 3806'], { mode: 'new', resultCount: 10, pages: 1 });
-    expect(i).toMatchObject({ sortOrder: 'Newest', newListingOnly: true, resultCount: 10, surroundingSuburbs: false });
+    expect(i).toMatchObject({ sortOrder: 'Newest', resultCount: 10, surroundingSuburbs: false });
+    expect(i).not.toHaveProperty('newListingOnly');
   });
-  it('full mode: Newest sort, no new-only filter, 25/page', () => {
+  it('full mode: Newest sort, 25/page', () => {
     const i = buildInput(['Berwick, VIC 3806'], { mode: 'full', resultCount: 25, pages: 1 });
-    expect(i).toMatchObject({ sortOrder: 'Newest', newListingOnly: false, resultCount: 25 });
+    expect(i).toMatchObject({ sortOrder: 'Newest', resultCount: 25 });
+    expect(i).not.toHaveProperty('newListingOnly');
   });
   it('full mode defaults page deep enough to reach a short page for every suburb (KTD9)', () => {
     const i = buildInput(['Berwick, VIC 3806'], { mode: 'full' });

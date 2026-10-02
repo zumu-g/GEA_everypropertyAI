@@ -24,8 +24,8 @@ name: Daily REA scrape (Casey/Cardinia)
 #
 # COST (2026-09-19 review): the actor bills per result and has no memory of what we
 # hold, so a daily 25/suburb 'Recommended' sweep re-bought ~760 known listings a day
-# (~US$70/mo, ~4% new). Six days a week we now run REA_MODE=new (Newest sort +
-# newListingOnly, 10/suburb) Tue–Fri Melbourne; the Sunday-UTC run (Monday 7:37am
+# (~US$70/mo, ~4% new). We now run REA_MODE=new (Newest sort, 10/suburb — a cap, so
+# the dataset is ~345 items every day; newListingOnly is NOT sent, the actor ignores it) Tue–Fri Melbourne; the Sunday-UTC run (Monday 7:37am
 # Melbourne) is a REA_MODE=full 25/suburb sweep for removals, price changes and the
 # weekend's new listings. No weekend runs.
 
@@ -36,7 +36,7 @@ on:
   workflow_dispatch:      # manual "Run workflow" from the Actions tab
     inputs:
       mode:
-        description: "new (cheap, newest+newListingOnly) or full (25/suburb sweep)"
+        description: "new (cheap, newest 10/suburb) or full (25/suburb sweep)"
         default: new
         type: choice
         options: [new, full]
