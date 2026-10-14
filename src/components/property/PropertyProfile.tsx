@@ -1643,7 +1643,18 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.error ?? 'Could not parse the text');
               }
-              return (await res.json()).records;
+              return await res.json();
+            } : undefined}
+            onSaveDetails={addressSlug ? async (details) => {
+              for (const [field, value] of Object.entries(details)) {
+                const res = await fetch(`/api/property/${addressSlug}/override`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ field, value: String(value) }),
+                });
+                if (!res.ok) throw new Error(`Could not save ${field}`);
+              }
+              await fetchProperty();
             } : undefined}
           />
         </section>

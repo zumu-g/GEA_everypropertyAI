@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserId } from '@/lib/auth/session';
 import { parseHistoryText, type ParsedHistoryRecord } from '@/lib/extraction/history-text';
+import { parseDetailsText } from '@/lib/extraction/details-text';
 import { callLLM } from '@/lib/extraction/extractor';
 
 /**
- * POST /api/property/[slug]/history/parse — turn pasted history text into records
- * for review. Regex parser first (free); the LLM cascade only when it finds nothing.
+ * POST /api/property/[slug]/history/parse — turn pasted property text into history
+ * records and attribute details for review. Regex parser first (free); the LLM cascade only when it finds nothing.
  * Nothing is saved here — the client posts each accepted row to ../history.
  */
 const SYSTEM = `Extract property transaction history from pasted text. Return ONLY JSON:
@@ -22,8 +23,9 @@ export async function POST(req: NextRequest) {
   if (text.length > 20_000) return NextResponse.json({ error: 'Paste is too long' }, { status: 400 });
 
   let records = parseHistoryText(text);
+  const details = parseDetailsText(text);
   let via: 'regex' | 'llm' = 'regex';
-  if (records.length === 0) {
+  if (records.length === 0 && Object.keys(details).length === 0) {
     const raw = await callLLM(SYSTEM, text, 2048);
     const m = raw?.match(/\{[\s\S]*\}/);
     try {
@@ -34,5 +36,5 @@ export async function POST(req: NextRequest) {
       via = 'llm';
     } catch { records = []; }
   }
-  return NextResponse.json({ records, via });
+  return NextResponse.json({ records, details, via });
 }
