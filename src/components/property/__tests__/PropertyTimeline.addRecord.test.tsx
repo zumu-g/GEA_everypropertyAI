@@ -17,15 +17,15 @@ vi.stubGlobal('matchMedia', () => ({
 describe('PropertyTimeline — paste history', () => {
   it('shows no add box without onAdd/onParse', () => {
     render(<PropertyTimeline sales={[]} rentals={[]} />);
-    expect(screen.queryByText('Add sale or lease records')).toBeNull();
+    expect(screen.queryByText('Paste property data')).toBeNull();
   });
 
   it('surfaces a save failure with progress instead of closing', async () => {
     const onAdd = vi.fn().mockRejectedValue(new Error('Sign in to add property records'));
-    const onParse = vi.fn().mockResolvedValue([{ kind: 'sale', date: '2024-03-12', amount: 850000 }]);
+    const onParse = vi.fn().mockResolvedValue({ records: [{ kind: 'sale', date: '2024-03-12', amount: 850000 }], details: {} });
     render(<PropertyTimeline sales={[]} rentals={[]} onAdd={onAdd} onParse={onParse} />);
-    fireEvent.click(screen.getByText('Add sale or lease records'));
-    fireEvent.change(screen.getByLabelText(/Sales and leases/), { target: { value: 'Sold $850,000 12 Mar 2024' } });
+    fireEvent.click(screen.getByText('Paste property data'));
+    fireEvent.change(screen.getByLabelText(/Property details, sales and leases/), { target: { value: 'Sold $850,000 12 Mar 2024' } });
     fireEvent.click(screen.getByText('Parse'));
     fireEvent.click(await screen.findByText('Save 1 record'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Sign in to add property records (0 of 1 saved)');
@@ -34,15 +34,15 @@ describe('PropertyTimeline — paste history', () => {
 
   it('parses pasted text, ticks storable rows, and saves each via onAdd', async () => {
     const onAdd = vi.fn().mockResolvedValue(undefined);
-    const onParse = vi.fn().mockResolvedValue([
+    const onParse = vi.fn().mockResolvedValue({ details: {}, records: [
       { kind: 'sale', date: '2013-01-10', amount: 450000, agency: "Grant's Estate Agents - Berwick" },
       { kind: 'listing', date: '2013-01-07' },
       { kind: 'sale', date: '2004-05-29', amount: 165000 },
-    ]);
+    ] });
     render(<PropertyTimeline sales={[]} rentals={[]} onAdd={onAdd} onParse={onParse} />);
 
-    fireEvent.click(screen.getByText('Add sale or lease records'));
-    fireEvent.change(screen.getByLabelText(/Sales and leases/), { target: { value: 'Sold $450,000 10 Jan 2013' } });
+    fireEvent.click(screen.getByText('Paste property data'));
+    fireEvent.change(screen.getByLabelText(/Property details, sales and leases/), { target: { value: 'Sold $450,000 10 Jan 2013' } });
     fireEvent.click(screen.getByText('Parse'));
 
     await waitFor(() => expect(onParse).toHaveBeenCalledWith('Sold $450,000 10 Jan 2013'));
@@ -54,5 +54,21 @@ describe('PropertyTimeline — paste history', () => {
     expect(onAdd).toHaveBeenNthCalledWith(1, { kind: 'sale', date: '2013-01-10', amount: 450000, agency: "Grant's Estate Agents - Berwick" });
     expect(onAdd).toHaveBeenNthCalledWith(2, { kind: 'sale', date: '2004-05-29', amount: 165000, agency: undefined });
     await waitFor(() => expect(screen.queryByLabelText('Paste property history')).toBeNull());
+  });
+
+  it('saves reviewed property details through onSaveDetails before the records', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    const onSaveDetails = vi.fn().mockResolvedValue(undefined);
+    const onParse = vi.fn().mockResolvedValue({
+      records: [],
+      details: { propertyType: 'House', bedrooms: 3, bathrooms: 2, landArea: 696 },
+    });
+    render(<PropertyTimeline sales={[]} rentals={[]} onAdd={onAdd} onParse={onParse} onSaveDetails={onSaveDetails} />);
+    fireEvent.click(screen.getByText('Paste property data'));
+    fireEvent.change(screen.getByLabelText(/Property details, sales and leases/), { target: { value: 'House 3 2' } });
+    fireEvent.click(screen.getByText('Parse'));
+    fireEvent.click(await screen.findByText('Save 0 records + details'));
+    await waitFor(() => expect(onSaveDetails).toHaveBeenCalledWith({ propertyType: 'House', bedrooms: 3, bathrooms: 2, landArea: 696 }));
+    expect(onAdd).not.toHaveBeenCalled();
   });
 });
