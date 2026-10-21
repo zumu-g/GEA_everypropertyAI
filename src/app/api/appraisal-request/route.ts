@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendAppraisalRequest } from '@/lib/email/send-report-lead-notification';
-import { isValidEmail } from '@/lib/utils/report-download';
+import { isValidEmail, isValidAuPhone } from '@/lib/utils/report-download';
 
 export const runtime = 'nodejs';
+
+const MAX_FIELD = 200;
 
 /**
  * POST /api/appraisal-request — public, same-origin (called from AppraisalCta).
@@ -16,16 +18,23 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
+  if (!body || typeof body !== 'object') {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+  // Honeypot: the hidden "website" field is only ever filled by bots. Pretend success.
+  if (typeof body.website === 'string' && body.website) return NextResponse.json({ ok: true });
 
   const field = (k: string) => (typeof body[k] === 'string' ? (body[k] as string).trim() : '');
   const name = field('name');
   const phone = field('phone');
   const email = field('email') || undefined;
   const address = field('address');
+  if ([name, phone, email ?? '', address].some((v) => v.length > MAX_FIELD)) {
+    return NextResponse.json({ error: 'field too long' }, { status: 400 });
+  }
 
   if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 });
-  // AU numbers: digits only after stripping spaces, dashes, brackets and a leading +.
-  if (!/^\d{8,12}$/.test(phone.replace(/[\s\-()]/g, '').replace(/^\+/, ''))) {
+  if (!isValidAuPhone(phone)) {
     return NextResponse.json({ error: 'a valid phone number is required' }, { status: 400 });
   }
   if (email && !isValidEmail(email)) {

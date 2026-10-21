@@ -35,7 +35,7 @@ describe('AppraisalCta', () => {
     expect(await screen.findByText(/be in touch/i)).toBeInTheDocument();
     const [url, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe('/api/appraisal-request');
-    expect(JSON.parse(init.body)).toEqual({ name: 'Jane', phone: '0412 345 678', email: '', address: ADDRESS });
+    expect(JSON.parse(init.body)).toEqual({ name: 'Jane', phone: '0412 345 678', email: '', address: ADDRESS, website: '' });
   });
 
   it('shows an error and no thank-you when the send fails', async () => {

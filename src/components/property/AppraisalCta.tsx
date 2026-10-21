@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { X, Clock, Loader2, CheckCircle2 } from "lucide-react";
-import { isValidEmail } from "@/lib/utils/report-download";
+import { isValidEmail, isValidAuPhone } from "@/lib/utils/report-download";
 
 const inputClass =
   "w-full rounded-lg border border-[#E7E9EE] px-3 py-2.5 text-sm outline-none focus:border-[#2E5470] focus:ring-2 focus:ring-[#2E5470]/20";
@@ -34,6 +34,7 @@ function AppraisalModal({ address, onClose }: { address: string; onClose: () => 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [website, setWebsite] = useState(""); // honeypot
   const [errors, setErrors] = useState<{ name?: string; phone?: string; email?: string }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -52,8 +53,7 @@ function AppraisalModal({ address, onClose }: { address: string; onClose: () => 
     setSubmitError(null);
     const next = {
       name: name.trim() ? undefined : "Please enter your name.",
-      // Mirrors the route's AU phone check.
-      phone: /^\d{8,12}$/.test(phone.replace(/[\s\-()]/g, "").replace(/^\+/, ""))
+      phone: isValidAuPhone(phone)
         ? undefined
         : "Please enter a valid phone number.",
       email: !email.trim() || isValidEmail(email.trim()) ? undefined : "Please enter a valid email address.",
@@ -66,7 +66,7 @@ function AppraisalModal({ address, onClose }: { address: string; onClose: () => 
       const res = await fetch("/api/appraisal-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), phone: phone.trim(), email: email.trim(), address }),
+        body: JSON.stringify({ name: name.trim(), phone: phone.trim(), email: email.trim(), address, website }),
       });
       if (!res.ok) throw new Error(String(res.status));
       setSent(true);
@@ -80,7 +80,7 @@ function AppraisalModal({ address, onClose }: { address: string; onClose: () => 
   const field = (id: string, label: string, value: string, set: (v: string) => void, type: string, err?: string, ref?: React.Ref<HTMLInputElement>) => (
     <div>
       <label htmlFor={id} className="mb-1 block text-sm font-medium text-[#4A4E57]">{label}</label>
-      <input id={id} ref={ref} type={type} value={value} onChange={(e) => set(e.target.value)} className={inputClass} disabled={submitting} />
+      <input id={id} ref={ref} type={type} value={value} onChange={(e) => set(e.target.value)} maxLength={200} className={inputClass} disabled={submitting} />
       {err && <p className="mt-1 text-xs text-[#C5544A]">{err}</p>}
     </div>
   );
@@ -107,6 +107,7 @@ function AppraisalModal({ address, onClose }: { address: string; onClose: () => 
           <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-4">
             {field("appraisal-name", "Name", name, setName, "text", errors.name, nameRef)}
             {field("appraisal-phone", "Phone", phone, setPhone, "tel", errors.phone)}
+            <input type="text" name="website" value={website} onChange={(e) => setWebsite(e.target.value)} tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
             {field("appraisal-email", "Email (optional)", email, setEmail, "email", errors.email)}
             {submitError && <p className="rounded-lg bg-[#F7E7E5] px-3 py-2 text-sm text-[#C5544A]">{submitError}</p>}
             <button type="submit" disabled={submitting} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2E5470] px-4 py-3 text-sm font-medium text-white hover:bg-[#24435A] disabled:opacity-60">

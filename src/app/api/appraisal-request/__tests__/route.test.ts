@@ -30,6 +30,8 @@ describe('POST /api/appraisal-request', () => {
     ['phone with letters', { ...valid, phone: '0412 abc 678' }],
     ['bad email', { ...valid, email: 'not-an-email' }],
     ['blank address', { ...valid, address: ' ' }],
+    ['oversized name', { ...valid, name: 'x'.repeat(201) }],
+    ['null body', null],
   ])('returns 400 for %s and sends nothing', async (_label, body) => {
     const { POST } = await import('../route');
     const res = await POST(post(body));
@@ -47,6 +49,24 @@ describe('POST /api/appraisal-request', () => {
       email: undefined,
       address: '1 A St, Berwick VIC 3806',
     });
+  });
+
+  it('returns 400 for a non-JSON body', async () => {
+    const { POST } = await import('../route');
+    const req = new NextRequest(new URL('/api/appraisal-request', 'http://localhost:3000'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'not json',
+    });
+    expect((await POST(req)).status).toBe(400);
+    expect(sendAppraisalRequest).not.toHaveBeenCalled();
+  });
+
+  it('silently accepts but does not send when the honeypot is filled', async () => {
+    const { POST } = await import('../route');
+    const res = await POST(post({ ...valid, website: 'http://spam' }));
+    expect(res.status).toBe(200);
+    expect(sendAppraisalRequest).not.toHaveBeenCalled();
   });
 
   it('accepts +61 format', async () => {
