@@ -56,3 +56,45 @@ describe('sendReportLeadNotification', () => {
     ).rejects.toThrow('domain not verified');
   });
 });
+
+describe('sendAppraisalRequest', () => {
+  const originalEnv = { ...process.env };
+  const lead = { name: 'Jane Client', phone: '0412 345 678', email: 'jane@example.com', address: '1 A St, Berwick VIC 3806' };
+
+  beforeEach(() => {
+    send.mockReset();
+    send.mockResolvedValue({ data: { id: 'test' }, error: null });
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('emails stuart@grantsea.com.au an appraisal request with name, phone, email and address', async () => {
+    process.env.RESEND_API_KEY = 'test-key';
+    const { sendAppraisalRequest } = await import('../send-report-lead-notification');
+
+    await sendAppraisalRequest(lead);
+
+    const [payload] = send.mock.calls[0];
+    expect(payload.to).toBe('stuart@grantsea.com.au');
+    expect(payload.subject).toBe('Appraisal request: 1 A St, Berwick VIC 3806');
+    expect(payload.text).toContain('Jane Client');
+    expect(payload.text).toContain('0412 345 678');
+    expect(payload.text).toContain('jane@example.com');
+  });
+
+  it('throws when RESEND_API_KEY is unset — the request is the outcome, so it must not silently vanish', async () => {
+    delete process.env.RESEND_API_KEY;
+    const { sendAppraisalRequest } = await import('../send-report-lead-notification');
+    await expect(sendAppraisalRequest(lead)).rejects.toThrow();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('throws when Resend returns an error', async () => {
+    process.env.RESEND_API_KEY = 'test-key';
+    send.mockResolvedValue({ data: null, error: { message: 'domain not verified' } });
+    const { sendAppraisalRequest } = await import('../send-report-lead-notification');
+    await expect(sendAppraisalRequest(lead)).rejects.toThrow('domain not verified');
+  });
+});

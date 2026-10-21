@@ -65,3 +65,43 @@ export async function sendReportLeadNotification(
     throw new Error(`Resend send failed: ${error.message}`);
   }
 }
+
+export interface AppraisalRequest {
+  name: string;
+  phone: string;
+  email?: string;
+  address: string;
+}
+
+/**
+ * Emails stuart@grantsea.com.au a market-appraisal request from a property
+ * page. Unlike the report notification this throws when it can't send — the
+ * email IS the lead, so the caller must surface the failure, not swallow it.
+ */
+export async function sendAppraisalRequest(req: AppraisalRequest): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('RESEND_API_KEY not set — cannot send appraisal request');
+
+  const timestamp = new Date().toLocaleString('en-AU', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Australia/Melbourne',
+  });
+
+  const { error } = await new Resend(apiKey).emails.send({
+    from: NOTIFY_FROM,
+    to: NOTIFY_TO,
+    subject: `Appraisal request: ${req.address}`,
+    text: [
+      `Someone requested a free market appraisal.`,
+      ``,
+      `Name: ${req.name}`,
+      `Phone: ${req.phone}`,
+      `Email: ${req.email ?? '(not given)'}`,
+      `Property: ${req.address}`,
+      `Requested: ${timestamp} (Melbourne)`,
+    ].join('\n'),
+  });
+
+  if (error) throw new Error(`Resend send failed: ${error.message}`);
+}
