@@ -18,3 +18,8 @@ export function addressToReportSlug(address: string): string {
     .replace(/^-|-$/g, '');
   return slug || 'property';
 }
+
+/** AU phone: 8–12 digits after stripping spaces, dashes, brackets and a leading +. */
+export function isValidAuPhone(phone: string): boolean {
+  return /^\d{8,12}$/.test(phone.replace(/[\s\-()]/g, '').replace(/^\+/, ''));
+}

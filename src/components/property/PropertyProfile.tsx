@@ -46,6 +46,7 @@ import { QuadrantChartSection } from "./QuadrantChartSection";
 import { OnMarketNearby } from "./OnMarketNearby";
 import { TrackPropertyButton } from "./TrackPropertyButton";
 import { DownloadReportModal } from "./DownloadReportModal";
+import { AppraisalCta } from "./AppraisalCta";
 
 // Chart components pull in recharts (~the heaviest dep on this page). They render
 // below the fold, so load them lazily on the client — this evicts recharts (and
@@ -1604,6 +1605,9 @@ export function PropertyProfile({ address }: PropertyProfileProps) {
             </section>
           );
         })()}
+
+        {/* ─── Appraisal CTA ─── */}
+        <AppraisalCta address={displayAddress} />
 
         {/* ─── Property History ─── */}
         <section>
