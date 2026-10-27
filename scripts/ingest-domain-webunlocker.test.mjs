@@ -198,8 +198,8 @@ describe('listingsPage (soft-block guard)', () => {
 });
 
 describe('pageCapFor', () => {
-  it('sold fetches only the newest few pages — older sales are already stored', () => {
-    expect(pageCapFor('sold')).toBe(5);
+  it('sold fetches only the newest page — the job runs daily and older sales are stored', () => {
+    expect(pageCapFor('sold')).toBe(1);
   });
   it('on-market and rent keep the full 20-page sweep (lifecycle needs complete coverage)', () => {
     expect(pageCapFor('on-market')).toBe(20);

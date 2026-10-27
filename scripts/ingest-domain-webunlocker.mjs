@@ -32,10 +32,11 @@ export { slugToSuburb };
 const FETCH_CONCURRENCY = Number(process.env.FETCH_CONCURRENCY) || 4;
 // KTD9: at most this many search pages per suburb per run through Web Unlocker.
 const PAGE_CAP = Number(process.env.PAGE_CAP) || 20;
-// Sold is new-only: Domain lists newest sales first and older ones are already
-// stored, so a deep crawl only re-fetches history (and blew the 45-min job cap).
-// 5 pages (~100 sales/suburb) still covers a multi-week outage.
-const SOLD_PAGE_CAP = Number(process.env.SOLD_PAGE_CAP) || 5;
+// Sold is new-only: the job runs daily and Domain lists newest sales first, so page 1
+// (~20 sales/suburb) covers the last day; the upsert dedups what is already stored.
+// A deep crawl only re-fetched history and blew the 45-min job cap. Raise
+// SOLD_PAGE_CAP (workflow input sold_pages) once to catch up after an outage.
+const SOLD_PAGE_CAP = Number(process.env.SOLD_PAGE_CAP) || 1;
 export const pageCapFor = (category) => (category === 'sold' ? SOLD_PAGE_CAP : PAGE_CAP);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

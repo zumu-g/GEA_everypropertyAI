@@ -24,7 +24,12 @@ name: Daily Domain scrape (Casey/Cardinia)
 on:
   schedule:
     - cron: '23 21 * * *'   # off-peak minute, NOT ':00' — see note above
-  workflow_dispatch: {}   # allow manual "Run workflow" from the Actions tab
+  workflow_dispatch:      # allow manual "Run workflow" from the Actions tab
+    inputs:
+      sold_pages:
+        description: 'Sold pages per suburb (default 1 = newest ~20; raise once to catch up after an outage)'
+        required: false
+        default: '1'
 
 concurrency:
   group: daily-domain-scrape
@@ -58,6 +63,7 @@ jobs:
       BRIGHTDATA_WEB_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_WEB_UNLOCKER_ZONE }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SOLD_PAGE_CAP: ${{ github.event.inputs.sold_pages || '1' }}
       # The script reads HEALTHCHECK_UUID and no-ops the ping if it is empty.
       HEALTHCHECK_UUID: ${{ matrix.healthcheck_secret != '' && secrets[matrix.healthcheck_secret] || '' }}
     steps:
