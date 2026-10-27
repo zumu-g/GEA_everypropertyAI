@@ -32,6 +32,11 @@ export { slugToSuburb };
 const FETCH_CONCURRENCY = Number(process.env.FETCH_CONCURRENCY) || 4;
 // KTD9: at most this many search pages per suburb per run through Web Unlocker.
 const PAGE_CAP = Number(process.env.PAGE_CAP) || 20;
+// Sold is new-only: Domain lists newest sales first and older ones are already
+// stored, so a deep crawl only re-fetches history (and blew the 45-min job cap).
+// 5 pages (~100 sales/suburb) still covers a multi-week outage.
+const SOLD_PAGE_CAP = Number(process.env.SOLD_PAGE_CAP) || 5;
+export const pageCapFor = (category) => (category === 'sold' ? SOLD_PAGE_CAP : PAGE_CAP);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 try {
@@ -284,7 +289,7 @@ async function main() {
       // Follow ?page=N until a short page (full sweep) or PAGE_CAP (truncated → not swept).
       const { items: nodes, pages, truncated, error } = await paginateUntilShort(
         async (page) => listingsPage(await fetchPage(page === 1 ? url : `${url}?page=${page}`)),
-        { cap: PAGE_CAP, key: (n) => n?.listingModel?.url ?? JSON.stringify(n?.listingModel?.address ?? n) },
+        { cap: pageCapFor(category), key: (n) => n?.listingModel?.url ?? JSON.stringify(n?.listingModel?.address ?? n) },
       );
       const mapped = nodes.map(n=>mapListing(category, n)).filter(Boolean).filter(r=>inArea(r.suburb));
       console.log(`  ${slug}: ${nodes.length} listings over ${pages} page(s) → ${mapped.length} in-area${truncated ? ` (TRUNCATED${error ? `: ${error}` : ''})` : ''}`);

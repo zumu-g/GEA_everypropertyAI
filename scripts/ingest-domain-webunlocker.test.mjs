@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { looksLikeData, extractListings, mapListing, inArea, shouldSweep, buildCoverage, slugToSuburb, listingsPage } from './ingest-domain-webunlocker.mjs';
+import { looksLikeData, extractListings, mapListing, inArea, shouldSweep, pageCapFor, buildCoverage, slugToSuburb, listingsPage } from './ingest-domain-webunlocker.mjs';
 import { paginateUntilShort } from './lib/paginate.mjs';
 
 const rentNode = (overrides = {}) => ({
@@ -194,5 +194,15 @@ describe('listingsPage (soft-block guard)', () => {
   });
   it('returns the nodes of a genuine page', () => {
     expect(listingsPage(NEXT_DATA({ a: rentNode() }))).toHaveLength(1);
+  });
+});
+
+describe('pageCapFor', () => {
+  it('sold fetches only the newest few pages — older sales are already stored', () => {
+    expect(pageCapFor('sold')).toBe(5);
+  });
+  it('on-market and rent keep the full 20-page sweep (lifecycle needs complete coverage)', () => {
+    expect(pageCapFor('on-market')).toBe(20);
+    expect(pageCapFor('rent')).toBe(20);
   });
 });
