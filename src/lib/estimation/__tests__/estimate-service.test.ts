@@ -267,3 +267,31 @@ describe('getEstimate — bed-matched comp guarantee (8 Goodall Ct shape)', () =
     expect(getRowsNearby).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('getEstimate — acreage widening filters land size in the DB (King Rd Harkaway)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('finds similar holdings that an unfiltered 500-row box would never reach', async () => {
+    const ACRE_SUBJECT: EstimateSubjectInput = { ...HOUSE_SUBJECT, bedrooms: undefined, bathrooms: undefined, landAreaSqm: 91_569 };
+    // Unfiltered box = 500 suburban rows (the real 10km box holds 24k); the
+    // 9ha holdings only come back when the land-size range is pushed to the DB.
+    vi.mocked(getRowsNearby).mockImplementation(async (_t, _lat, _lng, _r, _limit, opts) => {
+      if (opts?.landMinSqm) {
+        return [0, 1, 2].map((i) =>
+          saleRow({ property_type: 'House', land_area_sqm: 93_000, sale_price: 5_000_000 }, 100 + i),
+        ) as never;
+      }
+      return Array.from({ length: 500 }, (_, i) =>
+        saleRow({ property_type: 'House', land_area_sqm: null, sale_price: 900_000 }, i), // real suburban rows mostly lack land size
+      ) as never;
+    });
+
+    const est = await getEstimate(ACRE_SUBJECT, NOW);
+
+    expect(getRowsNearby).toHaveBeenCalledWith(
+      'property_sales', LAT, LNG, 10, 500,
+      { landMinSqm: expect.closeTo(54_941, 0), landMaxSqm: expect.closeTo(146_510, 0) },
+    );
+    expect(est!.priceMid).toBeGreaterThan(3_000_000);
+  });
+});

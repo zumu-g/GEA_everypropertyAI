@@ -1537,19 +1537,24 @@ export async function getRowsNearby<T = Record<string, unknown>>(
   lat: number,
   lng: number,
   radiusKm: number,
-  limit = 500
+  limit = 500,
+  // Filter land size in the DB so the limit can't cut off the rows we want: a
+  // 10km box holds ~24k sales and an unfiltered 500 missed every acreage comp.
+  opts: { landMinSqm?: number; landMaxSqm?: number } = {}
 ): Promise<T[]> {
   if (!isSupabaseConfigured()) return [];
   const latDelta = radiusKm / 111;
   const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180) || 1);
-  const { data, error } = await supabase()
+  let query = supabase()
     .from(table)
     .select('*')
     .gte('latitude', lat - latDelta)
     .lte('latitude', lat + latDelta)
     .gte('longitude', lng - lngDelta)
-    .lte('longitude', lng + lngDelta)
-    .limit(limit);
+    .lte('longitude', lng + lngDelta);
+  if (opts.landMinSqm != null) query = query.gte('land_area_sqm', opts.landMinSqm);
+  if (opts.landMaxSqm != null) query = query.lte('land_area_sqm', opts.landMaxSqm);
+  const { data, error } = await query.limit(limit);
   if (error) { console.error(`[getRowsNearby ${table}]`, error.message); return []; }
   return (data ?? []) as T[];
 }

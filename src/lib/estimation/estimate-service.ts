@@ -24,6 +24,8 @@ import {
   estimateFromComparables,
   typeBucket,
   isLandSimilar,
+  LAND_SIMILAR_RATIO_LO,
+  LAND_SIMILAR_RATIO_HI,
   MIN_COMPS,
   IDEAL_COMPS,
   MIN_LAND_SIMILAR_COMPS,
@@ -234,7 +236,10 @@ export async function getEstimate(
         [...comps.values()].filter((c) => isLandSimilar(subject.landAreaSqm, c.landAreaSqm)).length;
       for (const radius of ACREAGE_RADIUS_LADDER_KM) {
         if (landSimilarCount() >= MIN_LAND_SIMILAR_COMPS) break;
-        const box = await getRowsNearby<PropertySaleRecord>('property_sales', lat, lng, radius, 500);
+        const box = await getRowsNearby<PropertySaleRecord>('property_sales', lat, lng, radius, 500, {
+          landMinSqm: subject.landAreaSqm * LAND_SIMILAR_RATIO_LO,
+          landMaxSqm: subject.landAreaSqm * LAND_SIMILAR_RATIO_HI,
+        });
         for (const r of box) {
           if (typeof r.latitude !== 'number' || typeof r.longitude !== 'number') continue;
           const dist = haversineKm(lat, lng, r.latitude, r.longitude);
@@ -245,6 +250,12 @@ export async function getEstimate(
           if (!isLandSimilar(subject.landAreaSqm, r.land_area_sqm)) continue;
           addComp(comps, toComparable(r, dist), subject.excludeAddress, own);
         }
+      }
+      // Enough similar holdings → price from them alone. Suburban comps mostly
+      // lack land size, so land-decay can't down-weight them and they swamp the
+      // few acreage sales (194-204 King Rd: $763k for a 9ha holding).
+      if (landSimilarCount() >= MIN_LAND_SIMILAR_COMPS) {
+        for (const [key, c] of comps) if (!isLandSimilar(subject.landAreaSqm, c.landAreaSqm)) comps.delete(key);
       }
     }
   }
