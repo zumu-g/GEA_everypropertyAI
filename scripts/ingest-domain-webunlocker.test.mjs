@@ -204,5 +204,13 @@ describe('pageCapFor', () => {
   it('on-market and rent keep the full 20-page sweep (lifecycle needs complete coverage)', () => {
     expect(pageCapFor('on-market')).toBe(20);
     expect(pageCapFor('rent')).toBe(20);
+
+describe('mapListing land units', () => {
+  const node = (features) => ({ listingModel: { address: { street: '194-204 King Road', suburb: 'Harkaway', state: 'VIC', postcode: '3806' }, features, price: '$11,000,000', url: '/k' } });
+  it('converts Domain hectares to m² (9.11 ha was stored as 9.11 m²)', () => {
+    expect(mapListing('on-market', node({ landSize: 9.11, landUnit: 'ha' })).land_area_sqm).toBe(91100);
+  });
+  it('keeps m² as-is', () => {
+    expect(mapListing('on-market', node({ landSize: 650, landUnit: 'm²' })).land_area_sqm).toBe(650);
   });
 });

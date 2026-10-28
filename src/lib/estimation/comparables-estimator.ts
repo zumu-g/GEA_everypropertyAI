@@ -115,8 +115,8 @@ const WEIGHT_EPSILON = 1e-4;
 /** Ratio band matching similarityWeight's land decay inflection zone (see
  * wLand below) — a comp within this band is "close enough in size to
  * matter" for the comp-gathering land-similar-comp guarantee. */
-const LAND_SIMILAR_RATIO_LO = 0.6;
-const LAND_SIMILAR_RATIO_HI = 1.6;
+export const LAND_SIMILAR_RATIO_LO = 0.6;
+export const LAND_SIMILAR_RATIO_HI = 1.6;
 
 /** Subjects at/above this land size (~1 acre) trade in a wider acreage market:
  * comp-gathering widens its radius ladder for them (estimate-service.ts) and

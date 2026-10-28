@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 import { writeFeedHealth, deriveStatus, fetchNewestRowAt } from './lib/feed-health.mjs';
 import { mapPool } from './lib/pool.mjs';
+import { normaliseAreaSqm } from './lib/area.mjs';
 import { paginateUntilShort } from './lib/paginate.mjs';
 import { writeFeedBatch, sweepSource, recordRun, assertMigration } from './lib/feed-write.mjs';
 import { saleMethodFromText } from './lib/lifecycle-status.mjs';
@@ -105,7 +106,7 @@ export function mapListing(category, node) {
     suburb: titleCase(a.suburb),
     state: (a.state||'VIC').toUpperCase(),
     postcode: a.postcode ?? null,
-    land_area_sqm: f.landSize>0 ? f.landSize : null,
+    land_area_sqm: normaliseAreaSqm(f.landSize, f.landUnit),
     property_type: f.propertyType ?? null,
     bedrooms: smallint(f.beds),
     bathrooms: smallint(f.baths),
