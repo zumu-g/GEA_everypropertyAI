@@ -4,8 +4,32 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { PropertyIQClient } from "./client.js";
+import type { StreetRow } from "./types.js";
 
 const client = new PropertyIQClient();
+
+const STREET_ROW_LIMIT = 50;
+
+/** Rows the cap must keep: Victoria (GEA's market) first, then addresses with sale or listing history. */
+const streetRank = (r: StreetRow) =>
+  Number(r.state === "VIC") * 2 + Number(r.lastSaleDate !== null || r.lastListedDate !== null);
+
+/** Trim a street result for an LLM caller: ranked, capped, without the page link or empty fields. */
+function compactStreet(result: { rows: StreetRow[]; streetLabel: string; locationLabel: string }) {
+  const all = result.rows ?? [];
+  const rows = [...all]
+    .sort((x, y) => streetRank(y) - streetRank(x))
+    .slice(0, STREET_ROW_LIMIT)
+    .map((row) => Object.fromEntries(Object.entries(row).filter(([k, v]) => k !== "propertyHref" && v !== null)));
+  return {
+    ...result,
+    rows,
+    totalRows: all.length,
+    ...(all.length > STREET_ROW_LIMIT && {
+      note: `Showing ${STREET_ROW_LIMIT} of ${all.length} rows. Add the suburb and state to the query to narrow the street.`,
+    }),
+  };
+}
 
 /** Build the MCP server with all tools registered. Exported so tests can connect it to an in-memory transport. */
 export function buildServer(): McpServer {
@@ -13,7 +37,8 @@ const server = new McpServer({ name: "everypropertyai", version: "0.1.0" });
 
 /** Wrap a client call so every tool returns JSON text content and never throws to the transport. */
 function json(result: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+  // Compact: callers are LLMs, and indentation alone can double a result's token cost.
+  return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
 }
 async function safe(fn: () => Promise<unknown>) {
   try {
@@ -116,9 +141,9 @@ server.tool(
 
 server.tool(
   "street_details",
-  "All known addresses on a street with last sale/listing data.",
-  { query: z.string().describe("e.g. 'Gloucester Ave, Berwick VIC'") },
-  ({ query }) => safe(() => client.streetDetails(query)),
+  "Addresses on a street with last sale/listing data. Include the suburb and state: a bare street name matches streets Australia-wide. Returns at most 50 rows: Victoria first, then addresses with sale or listing history.",
+  { query: z.string().describe("street, suburb and state, e.g. 'Gloucester Ave, Berwick VIC'") },
+  ({ query }) => safe(async () => compactStreet(await client.streetDetails(query))),
 );
 
 server.tool(
