@@ -59,6 +59,9 @@ export class PropertyIQError extends Error {
   }
 }
 
+/** GEA works in Victoria only, so every address lookup is limited to this state (Stuart, 5 Nov 2026). */
+export const GEA_STATE = "VIC";
+
 /** Read the first present, non-null field from a loose data map. */
 function pick<T = unknown>(data: Record<string, unknown>, keys: string[]): T | undefined {
   for (const k of keys) {
@@ -153,8 +156,10 @@ export class PropertyIQClient {
    * Address suggestions via /api/address-suggest (REA) — the same source the app's
    * UI uses, with clean suburb/state/postcode (unlike the Mapbox /api/search parse).
    */
-  suggestAddresses(query: string, state?: string): Promise<{ suggestions: ReaSuggestion[] }> {
-    return this.request("/api/address-suggest", { query: { q: query, state } });
+  async suggestAddresses(query: string, state: string = GEA_STATE): Promise<{ suggestions: ReaSuggestion[] }> {
+    const res = await this.request<{ suggestions: ReaSuggestion[] }>("/api/address-suggest", { query: { q: query, state } });
+    // The API only sorts the requested state first, so drop the rest here.
+    return { ...res, suggestions: (res.suggestions ?? []).filter((s) => s.state?.toUpperCase() === state) };
   }
 
   /** Resolve a free-text address to a clean StructuredAddress, matching the UI. */
