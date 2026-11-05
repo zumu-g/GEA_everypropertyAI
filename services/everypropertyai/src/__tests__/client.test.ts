@@ -65,7 +65,7 @@ describe('PropertyIQClient auth-failure hardening', () => {
   });
 
   it('a 200 response returns parsed JSON (the 401 branch does not intercept healthy calls)', async () => {
-    stubFetch(200, JSON.stringify({ suggestions: [{ fullAddress: '1 Test St' }] }));
+    stubFetch(200, JSON.stringify({ suggestions: [{ fullAddress: '1 Test St', state: 'VIC' }] }));
     const client = new PropertyIQClient({ baseUrl: 'http://x', token: 'epai_good' });
     const out = await client.suggestAddresses('Test');
     expect(out.suggestions).toHaveLength(1);
@@ -194,5 +194,42 @@ describe('price_changes + suburb_stats client methods', () => {
     q = new URL(calls[1].url);
     expect(q.searchParams.get('period')).toBe('week');
     expect(q.searchParams.get('asOf')).toBe('2026-08-15');
+  });
+});
+
+describe('Victorian addresses only', () => {
+  const suggestion = (suburb: string, state: string, postcode: string) => ({
+    streetAddress: '19 Sunview Pl',
+    suburb,
+    state,
+    postcode,
+    fullAddress: `19 Sunview Pl, ${suburb}, ${state} ${postcode}`,
+  });
+  const MIXED = JSON.stringify({
+    suggestions: [suggestion('Pie Creek', 'QLD', '4570'), suggestion('Berwick', 'VIC', '3806'), suggestion('Bouvard', 'WA', '6211')],
+  });
+
+  it('suggestAddresses asks for Victoria and drops interstate suggestions', async () => {
+    const calls = stubFetch(200, MIXED);
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 't' });
+
+    const { suggestions } = await client.suggestAddresses('19 Sunview');
+
+    expect(calls[0].url).toContain('state=VIC');
+    expect(suggestions.map((s) => s.suburb)).toEqual(['Berwick']);
+  });
+
+  it('resolveAddress picks the Victorian match, not the first suggestion', async () => {
+    stubFetch(200, MIXED);
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 't' });
+
+    expect(await client.resolveAddress('19 Sunview')).toMatchObject({ suburb: 'Berwick', state: 'VIC' });
+  });
+
+  it('resolveAddress reports no match when only interstate addresses exist', async () => {
+    stubFetch(200, JSON.stringify({ suggestions: [suggestion('Pie Creek', 'QLD', '4570')] }));
+    const client = new PropertyIQClient({ baseUrl: 'http://x', token: 't' });
+
+    await expect(client.resolveAddress('19 Sunview')).rejects.toThrow(/No address match/);
   });
 });

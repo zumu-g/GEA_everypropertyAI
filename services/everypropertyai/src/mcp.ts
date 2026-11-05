@@ -3,22 +3,21 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import { PropertyIQClient } from "./client.js";
+import { GEA_STATE, PropertyIQClient } from "./client.js";
 import type { StreetRow } from "./types.js";
 
 const client = new PropertyIQClient();
 
 const STREET_ROW_LIMIT = 50;
 
-/** Rows the cap must keep: Victoria (GEA's market) first, then addresses with sale or listing history. */
-const streetRank = (r: StreetRow) =>
-  Number(r.state === "VIC") * 2 + Number(r.lastSaleDate !== null || r.lastListedDate !== null);
+/** Rows the cap must keep first: addresses with sale or listing history. */
+const hasHistory = (r: StreetRow) => r.lastSaleDate !== null || r.lastListedDate !== null;
 
-/** Trim a street result for an LLM caller: ranked, capped, without the page link or empty fields. */
+/** Trim a street result for an LLM caller: Victorian rows only, capped, without the page link or empty fields. */
 function compactStreet(result: { rows: StreetRow[]; streetLabel: string; locationLabel: string }) {
-  const all = result.rows ?? [];
+  const all = (result.rows ?? []).filter((r) => r.state === GEA_STATE);
   const rows = [...all]
-    .sort((x, y) => streetRank(y) - streetRank(x))
+    .sort((x, y) => Number(hasHistory(y)) - Number(hasHistory(x)))
     .slice(0, STREET_ROW_LIMIT)
     .map((row) => Object.fromEntries(Object.entries(row).filter(([k, v]) => k !== "propertyHref" && v !== null)));
   return {
@@ -26,7 +25,7 @@ function compactStreet(result: { rows: StreetRow[]; streetLabel: string; locatio
     rows,
     totalRows: all.length,
     ...(all.length > STREET_ROW_LIMIT && {
-      note: `Showing ${STREET_ROW_LIMIT} of ${all.length} rows. Add the suburb and state to the query to narrow the street.`,
+      note: `Showing ${STREET_ROW_LIMIT} of ${all.length} rows. Add the suburb to the query to narrow the street.`,
     }),
   };
 }
@@ -53,7 +52,7 @@ async function safe(fn: () => Promise<unknown>) {
 
 server.tool(
   "search_address",
-  "Resolve a free-text Australian address to structured address suggestions.",
+  "Resolve a free-text Victorian address to structured address suggestions. Interstate addresses are not returned.",
   { query: z.string().describe("e.g. '9 Gloucester Ave, Berwick VIC 3806'") },
   ({ query }) => safe(() => client.suggestAddresses(query)),
 );
@@ -141,7 +140,7 @@ server.tool(
 
 server.tool(
   "street_details",
-  "Addresses on a street with last sale/listing data. Include the suburb and state: a bare street name matches streets Australia-wide. Returns at most 50 rows: Victoria first, then addresses with sale or listing history.",
+  "Victorian addresses on a street with last sale/listing data. Include the suburb: a bare street name matches streets across Victoria. Returns at most 50 rows, addresses with sale or listing history first.",
   { query: z.string().describe("street, suburb and state, e.g. 'Gloucester Ave, Berwick VIC'") },
   ({ query }) => safe(async () => compactStreet(await client.streetDetails(query))),
 );

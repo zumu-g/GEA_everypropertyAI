@@ -28,7 +28,7 @@ async function connectedClient() {
   return client;
 }
 
-// Offline: a bare street name once returned 89 rows (72,480 chars) and filled an LLM caller's context.
+// Offline: a bare street name once returned 89 rows Australia-wide (72,480 chars) and filled an LLM caller's context.
 describe('street_details keeps its result small', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -50,7 +50,7 @@ describe('street_details keeps its result small', () => {
     listedPrice: null,
   });
 
-  it('caps the rows, lists Victoria first and drops the link and empty fields', async () => {
+  it('returns Victorian rows only, without the link and empty fields', async () => {
     const rows = [
       ...Array.from({ length: 70 }, (_, i) => row(i + 1, 'NSW')),
       ...Array.from({ length: 19 }, (_, i) => row(i + 1, 'VIC')),
@@ -64,10 +64,10 @@ describe('street_details keeps its result small', () => {
     const data = parseToolResult(res);
     await client.close();
 
-    expect(data.rows).toHaveLength(50);
-    expect(data.totalRows).toBe(89);
-    expect(data.rows.slice(0, 19).every((r: { state: string }) => r.state === 'VIC')).toBe(true);
-    expect(data.note).toMatch(/suburb/i);
+    expect(data.rows).toHaveLength(19);
+    expect(data.totalRows).toBe(19);
+    expect(data.rows.every((r: { state: string }) => r.state === 'VIC')).toBe(true);
+    expect(data.note).toBeUndefined();
     expect(text).not.toContain('propertyHref');
     expect(text).not.toContain('null');
     expect(text.length).toBeLessThan(10_000);
@@ -84,6 +84,8 @@ describe('street_details keeps its result small', () => {
     await client.close();
 
     expect(data.rows).toHaveLength(50);
+    expect(data.totalRows).toBe(61);
+    expect(data.note).toMatch(/suburb/i);
     expect(data.rows[0]).toMatchObject({ streetAddress: '61 Rhinelander Cl', lastSalePrice: 910000 });
   });
 
