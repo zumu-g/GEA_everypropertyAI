@@ -8,6 +8,7 @@ import type {
 import type { CrawlJob } from '@/types/crawl';
 import { getSupabaseServerClient, isSupabaseConfigured } from './supabase';
 import { normaliseSuburbAlias } from '@/lib/utils/address';
+import { splitRentalCampaigns } from '@/lib/jobs/feed-seed';
 
 // ─── Types for DB records ───────────────────────────────────────────────────
 
@@ -1278,6 +1279,9 @@ export interface PropertyRentalRecord {
   source: string;
   last_seen_at?: string;
   created_at?: string;
+  campaign_started_at?: string;
+  leased_at?: string;
+  removed_at?: string;
   listed_date?: string;
   active?: boolean;
   raw_data?: Record<string, unknown>;
@@ -1730,7 +1734,7 @@ export async function getHistoryRowsForSlug(
         .limit(20),
       supabase()
         .from('property_rentals')
-        .select('raw_address, state, source, weekly_rent, display_price, listed_date, created_at, agency_name, agent_name')
+        .select('raw_address, state, source, weekly_rent, display_price, listed_date, created_at, agency_name, agent_name, listing_url, campaign_started_at, last_seen_at, leased_at, removed_at')
         .eq('address_slug', slug)
         .order('created_at', { ascending: false })
         .limit(20),
@@ -1745,11 +1749,27 @@ export async function getHistoryRowsForSlug(
     if (salesRes.error) console.warn('[getHistoryRowsForSlug] sales:', salesRes.error.message);
     if (rentalsRes.error) console.warn('[getHistoryRowsForSlug] rentals:', rentalsRes.error.message);
     if (leasesRes.error) console.warn('[getHistoryRowsForSlug] leases:', leasesRes.error.message);
+    const listed = (rentalsRes.data as PropertyRentalRecord[] | null) ?? [];
+    // Rent changes + earlier campaigns live in listing_price_history (migration 015).
+    const priceRes = listed.length
+      ? await supabase()
+          .from('listing_price_history')
+          .select('raw_address, source, listing_url, observed_at, price_low')
+          .eq('table_name', 'rentals')
+          .in('raw_address', [...new Set(listed.map((r) => r.raw_address))])
+          .order('observed_at', { ascending: true })
+          .limit(200)
+      : { data: [], error: null };
+    if (priceRes.error) console.warn('[getHistoryRowsForSlug] price history:', priceRes.error.message);
+    const prices = (priceRes.data ?? []) as Array<{ raw_address: string; source: string; listing_url: string | null; observed_at: string; price_low: number | null }>;
+    const campaigns = listed.flatMap((r) =>
+      splitRentalCampaigns(r, prices.filter((h) => h.raw_address === r.raw_address && h.source === r.source))
+    ) as PropertyRentalRecord[];
     const leases = ((leasesRes.data ?? []) as Array<PropertyRentalRecord & { lease_date: string }>)
       .map(({ lease_date, ...r }) => ({ ...r, listed_date: lease_date }));
     return {
       sales: (salesRes.data as PropertySaleRecord[] | null) ?? [],
-      rentals: [...((rentalsRes.data as PropertyRentalRecord[] | null) ?? []), ...leases],
+      rentals: [...campaigns, ...leases],
     };
   } catch (e) {
     console.warn('[getHistoryRowsForSlug] threw:', e);

@@ -186,7 +186,13 @@ interface DbSaleRow {
 interface DbRentalRow {
   weekly_rent?: number | null;
   listed_date?: string | null;
+  campaign_started_at?: string | null;
   created_at?: string | null;
+  leased_at?: string | null;
+  removed_at?: string | null;
+  last_seen_at?: string | null;
+  /** listing_price_history observations for this campaign, oldest first. */
+  price_history?: Array<{ observed_at: string; price_low?: number | null }>;
   agency_name?: string | null;
   agent_name?: string | null;
   source?: string;
@@ -195,6 +201,66 @@ interface DbRentalRow {
 /** Month+price dedup key — VG contract dates and portal dates drift within a month. */
 const saleKey = (date?: string | null, price?: number | null) =>
   `${(date ?? '').slice(0, 7)}:${price ?? ''}`;
+
+type PriceObs = { listing_url?: string | null; observed_at: string; price_low?: number | null };
+
+/**
+ * A rental row is one identity (raw_address, source); a relist reopens it and
+ * resets campaign_started_at, so earlier campaigns survive only in price
+ * history. Split that history by listing_url (oldest first): earlier URLs
+ * become their own campaigns, the row's own URL keeps the row's lifecycle.
+ */
+export function splitRentalCampaigns<R extends DbRentalRow & { listing_url?: string | null }>(
+  row: R,
+  history: PriceObs[]
+): Array<R | DbRentalRow> {
+  const groups = new Map<string, PriceObs[]>();
+  for (const h of history) {
+    const key = h.listing_url && h.listing_url !== row.listing_url ? h.listing_url : '';
+    groups.set(key, [...(groups.get(key) ?? []), h]);
+  }
+  const prior: DbRentalRow[] = [...groups].filter(([k]) => k).map(([, obs]) => ({
+    campaign_started_at: obs[0].observed_at,
+    last_seen_at: obs[obs.length - 1].observed_at,
+    weekly_rent: obs[obs.length - 1].price_low,
+    source: row.source,
+    price_history: obs,
+  }));
+  return [...prior, { ...row, price_history: groups.get('') ?? [] }];
+}
+
+const DAY_MS = 86_400_000;
+const fmtRent = (n: number) => `$${n.toLocaleString('en-AU')}/wk`;
+
+/** One rental campaign → its listing event (opening rent + days on market) and one event per rent change. */
+function rentalEvents(r: DbRentalRow) {
+  const start = r.listed_date ?? r.campaign_started_at ?? r.created_at;
+  const date = (start ?? '').slice(0, 10);
+  const prices = (r.price_history ?? []).filter((h) => h.price_low != null && h.price_low > 0);
+  const opening = prices[0]?.price_low ?? r.weekly_rent;
+  if (!date || opening == null) return [];
+
+  const end = r.leased_at ?? r.removed_at ?? r.last_seen_at;
+  const days = end ? (Date.parse(end.slice(0, 10)) - Date.parse(date)) / DAY_MS : NaN; // calendar days
+  const who = {
+    ...(r.agency_name ? { agency: r.agency_name } : {}),
+    ...(r.agent_name ? { agentName: r.agent_name } : {}),
+  };
+  const events: Array<{ date: string; weeklyRent: number; daysOnMarket?: number; description?: string; agency?: string; agentName?: string }> = [
+    { date, weeklyRent: opening, ...(days >= 0 ? { daysOnMarket: days } : {}), ...who },
+  ];
+  for (let i = 1; i < prices.length; i++) {
+    const [prev, cur] = [prices[i - 1].price_low!, prices[i].price_low!];
+    if (cur === prev) continue;
+    events.push({
+      date: prices[i].observed_at.slice(0, 10),
+      weeklyRent: cur,
+      description: `Rent ${cur < prev ? 'reduced' : 'increased'} from ${fmtRent(prev)} to ${fmtRent(cur)}`,
+      ...who,
+    });
+  }
+  return events;
+}
 
 /**
  * Merge our own sold/rental feed rows for this address into the profile's
@@ -238,14 +304,8 @@ export function applyDbHistory(
       : [];
     const seen = new Set(existing.map((r) => saleKey(r.date, r.weeklyRent)));
     const extra = rentals
-      .map((r) => ({ ...r, date: (r.listed_date ?? r.created_at ?? '').slice(0, 10) }))
-      .filter((r) => r.date && r.weekly_rent != null && !seen.has(saleKey(r.date, r.weekly_rent)))
-      .map((r) => ({
-        date: r.date,
-        weeklyRent: r.weekly_rent!,
-        ...(r.agency_name ? { agency: r.agency_name } : {}),
-        ...(r.agent_name ? { agentName: r.agent_name } : {}),
-      }));
+      .flatMap((r) => rentalEvents(r))
+      .filter((e) => !seen.has(saleKey(e.date, e.weeklyRent)));
     if (extra.length > 0) {
       profile.data.rentalHistory = [...existing, ...extra].sort((a, b) =>
         String(b.date ?? '').localeCompare(String(a.date ?? ''))

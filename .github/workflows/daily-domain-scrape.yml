@@ -74,3 +74,25 @@ jobs:
       # The runner uses only Node built-ins (fetch/fs/url/path) — no npm install needed.
       - name: Scrape ${{ matrix.category }}
         run: node scripts/ingest-domain-webunlocker.mjs ${{ matrix.category }}
+
+  # The scraper writes rows without address_slug, and Property History looks rows
+  # up by slug — so fill new nulls once the scrape legs finish (even if one was
+  # cancelled at the cap). Reuses the app's own address parser for slug parity.
+  slugs:
+    needs: scrape
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+      # ws is not in the lockfile; the backfill needs it as the realtime transport on Node 20.
+      - run: npm ci && npm i --no-save ws@8
+      - name: Backfill address slugs
+        run: npx -y tsx scripts/backfill-address-slugs.ts
