@@ -197,6 +197,20 @@ interface DbRentalRow {
   agent_name?: string | null;
   source?: string;
 }
+/** A for-sale campaign from property_listings — listed, then withdrawn or sold. */
+interface DbListingRow {
+  listed_date?: string | null;
+  campaign_started_at?: string | null;
+  created_at?: string | null;
+  lifecycle_status?: string | null;
+  removed_at?: string | null;
+  last_seen_at?: string | null;
+  display_price?: string | null;
+  price_low?: number | null;
+  agency_name?: string | null;
+  agent_name?: string | null;
+  source?: string;
+}
 
 /** Month+price dedup key — VG contract dates and portal dates drift within a month. */
 const saleKey = (date?: string | null, price?: number | null) =>
@@ -259,7 +273,30 @@ function rentalEvents(r: DbRentalRow) {
       ...who,
     });
   }
+  if (r.leased_at) {
+    events.push({ date: r.leased_at.slice(0, 10), weeklyRent: prices.at(-1)?.price_low ?? opening, description: 'Leased', ...who });
+  }
   return events;
+}
+
+const daysBetween = (start: string, end?: string | null) =>
+  end ? (Date.parse(end.slice(0, 10)) - Date.parse(start)) / DAY_MS : NaN;
+
+/** One for-sale campaign → a 'listed' (still on market) or 'withdrawn' sale-history event. */
+function listingEvent(r: DbListingRow) {
+  const date = (r.listed_date ?? r.campaign_started_at ?? r.created_at ?? '').slice(0, 10);
+  if (!date) return null;
+  const days = daysBetween(date, r.removed_at ?? r.last_seen_at);
+  return {
+    date,
+    type: r.lifecycle_status === 'withdrawn' ? 'withdrawn' : 'listed',
+    ...(r.price_low != null && r.price_low > 0 ? { listingPrice: r.price_low } : {}),
+    ...(r.display_price ? { description: `Listed for sale: ${r.display_price}` } : {}),
+    ...(days >= 0 ? { daysOnMarket: days } : {}),
+    ...(r.agency_name ? { agency: r.agency_name } : {}),
+    ...(r.agent_name ? { agentName: r.agent_name } : {}),
+    source: r.source ?? 'property-feed',
+  };
 }
 
 /**
@@ -271,16 +308,17 @@ function rentalEvents(r: DbRentalRow) {
 export function applyDbHistory(
   profile: Pick<MergedPropertyProfile, 'data'>,
   sales: DbSaleRow[],
-  rentals: DbRentalRow[]
+  rentals: DbRentalRow[],
+  listings: DbListingRow[] = []
 ): boolean {
   let added = false;
 
-  if (sales.length > 0) {
+  if (sales.length > 0 || listings.length > 0) {
     const existing = Array.isArray(profile.data.saleHistory)
-      ? (profile.data.saleHistory as Array<{ date?: string; price?: number }>)
+      ? (profile.data.saleHistory as Array<{ date?: string; price?: number; listingPrice?: number }>)
       : [];
-    const seen = new Set(existing.map((s) => saleKey(s.date, s.price)));
-    const extra = sales
+    const seen = new Set(existing.map((s) => saleKey(s.date, s.price ?? s.listingPrice)));
+    const extra: Array<Record<string, unknown> & { date: string }> = sales
       .filter((r) => r.sale_date && !seen.has(saleKey(r.sale_date, r.sale_price)))
       .map((r) => ({
         date: r.sale_date!,
@@ -290,6 +328,10 @@ export function applyDbHistory(
         type: 'sold',
         source: r.source ?? 'property-feed',
       }));
+    for (const r of listings) {
+      const e = listingEvent(r);
+      if (e && !seen.has(saleKey(e.date, e.listingPrice))) extra.push(e);
+    }
     if (extra.length > 0) {
       profile.data.saleHistory = [...existing, ...extra].sort((a, b) =>
         String(b.date ?? '').localeCompare(String(a.date ?? ''))

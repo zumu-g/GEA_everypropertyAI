@@ -1253,6 +1253,9 @@ export interface PropertyListingRecord {
   created_at?: string;
   listed_date?: string;
   active?: boolean;
+  lifecycle_status?: string | null;
+  campaign_started_at?: string | null;
+  removed_at?: string | null;
   raw_data?: Record<string, unknown>;
 }
 
@@ -1721,10 +1724,10 @@ export async function isPropertyClaimed(userId: string, slug: string): Promise<b
  */
 export async function getHistoryRowsForSlug(
   slug: string
-): Promise<{ sales: PropertySaleRecord[]; rentals: PropertyRentalRecord[] }> {
-  if (!isSupabaseConfigured() || !slug) return { sales: [], rentals: [] };
+): Promise<{ sales: PropertySaleRecord[]; rentals: PropertyRentalRecord[]; listings: PropertyListingRecord[] }> {
+  if (!isSupabaseConfigured() || !slug) return { sales: [], rentals: [], listings: [] };
   try {
-    const [salesRes, rentalsRes, leasesRes] = await Promise.all([
+    const [salesRes, rentalsRes, leasesRes, listingsRes] = await Promise.all([
       supabase()
         .from('property_sales')
         .select('raw_address, state, source, sale_price, sale_date, agency_name, agent_name, listing_url')
@@ -1745,8 +1748,17 @@ export async function getHistoryRowsForSlug(
         .eq('address_slug', slug)
         .order('lease_date', { ascending: false })
         .limit(20),
+      // For-sale campaigns (listed / withdrawn) — a property that was advertised
+      // but never sold has no property_sales row, so this is its only trace.
+      supabase()
+        .from('property_listings')
+        .select('raw_address, state, source, display_price, price_low, listed_date, created_at, campaign_started_at, last_seen_at, removed_at, lifecycle_status, agency_name, agent_name, listing_url')
+        .eq('address_slug', slug)
+        .order('created_at', { ascending: false })
+        .limit(20),
     ]);
     if (salesRes.error) console.warn('[getHistoryRowsForSlug] sales:', salesRes.error.message);
+    if (listingsRes.error) console.warn('[getHistoryRowsForSlug] listings:', listingsRes.error.message);
     if (rentalsRes.error) console.warn('[getHistoryRowsForSlug] rentals:', rentalsRes.error.message);
     if (leasesRes.error) console.warn('[getHistoryRowsForSlug] leases:', leasesRes.error.message);
     const listed = (rentalsRes.data as PropertyRentalRecord[] | null) ?? [];
@@ -1770,10 +1782,11 @@ export async function getHistoryRowsForSlug(
     return {
       sales: (salesRes.data as PropertySaleRecord[] | null) ?? [],
       rentals: [...campaigns, ...leases],
+      listings: (listingsRes.data as PropertyListingRecord[] | null) ?? [],
     };
   } catch (e) {
     console.warn('[getHistoryRowsForSlug] threw:', e);
-    return { sales: [], rentals: [] };
+    return { sales: [], rentals: [], listings: [] };
   }
 }
 

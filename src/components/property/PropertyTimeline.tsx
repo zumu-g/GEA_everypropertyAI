@@ -38,6 +38,8 @@ const SALE_TYPE_LABELS: Record<string, string> = {
   "expression-of-interest": "EOI",
   tender: "Tender",
   "off-market": "Off Market",
+  listed: "Listed",
+  withdrawn: "Withdrawn",
   unknown: "Unknown",
 };
 
@@ -563,12 +565,14 @@ function SaleEventCard({
   growth: { pct: number; sinceYear: string } | null;
 }) {
   const saleTypeLabel = event.type ? (SALE_TYPE_LABELS[event.type] ?? event.type) : null;
+  // A campaign that did not (or has not yet) sold: no sale price to headline.
+  const isListing = event.type === "listed" || event.type === "withdrawn";
   const isPositive = growth && growth.pct >= 0;
 
   return (
     <>
       <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-[#2E5470]">
-        Sale
+        {isListing ? "Listing" : "Sale"}
       </div>
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div>
@@ -578,7 +582,11 @@ function SaleEventCard({
             >
               {event.price != null && !event.isConfidential
                 ? fmtCurrency(event.price)
-                : "Price Withheld"}
+                : isListing && event.listingPrice != null
+                  ? `From ${fmtCurrency(event.listingPrice)}`
+                  : isListing
+                    ? "Listed"
+                    : "Price Withheld"}
             </span>
             {event.date && (
               <span className="text-sm text-[#6B7077]">{fmtDate(event.date)}</span>

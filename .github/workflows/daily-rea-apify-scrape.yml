@@ -20,7 +20,7 @@ name: Daily REA scrape (Casey/Cardinia)
 #   APIFY_API_TOKEN, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 #   HEALTHCHECK_REA_UUID (Healthchecks.io dead-man's-switch check ID; the script no-ops
 #     the ping when HEALTHCHECK_UUID is unset, so this is safe to add before it exists.)
-# Optional repo variables: REA_RESULT_COUNT (default 10 new / 25 full), REA_PAGES (default 1)
+# Optional repo variables: REA_RESULT_COUNT (default 10 new / 200 full), REA_PAGES (default 1 new / 4 full)
 #
 # COST (2026-09-19 review): the actor bills per result and has no memory of what we
 # hold, so a daily 25/suburb 'Recommended' sweep re-bought ~760 known listings a day
@@ -56,7 +56,10 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       REA_MODE: ${{ github.event.inputs.mode || (github.event.schedule == '37 21 * * 0' && 'full' || 'new') }}
       REA_RESULT_COUNT: ${{ vars.REA_RESULT_COUNT || '' }}
-      REA_PAGES: ${{ vars.REA_PAGES || '1' }}
+      # Full runs need pages × resultCount above the biggest suburb's active count
+      # (Berwick ~650) or sweepSource skips it as 'truncated' and nothing there is
+      # ever marked withdrawn (66A Duncan Dr Pakenham sat 'active' 5 weeks, 2026-11).
+      REA_PAGES: ${{ vars.REA_PAGES || (github.event.inputs.mode || (github.event.schedule == '37 21 * * 0' && 'full' || 'new')) == 'full' && '4' || '1' }}
       # Healthchecks.io dead-man's-switch; the script no-ops the ping if this is empty.
       HEALTHCHECK_UUID: ${{ secrets.HEALTHCHECK_REA_UUID }}
     steps:
