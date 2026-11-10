@@ -49,10 +49,10 @@ function applyOverrides(
  */
 async function topUpHistory(profile: PropertyProfile, slug: string): Promise<PropertyProfile> {
   try {
-    const { sales, rentals } = await getHistoryRowsForSlug(slug);
-    if (sales.length === 0 && rentals.length === 0) return profile;
+    const { sales, rentals, listings } = await getHistoryRowsForSlug(slug);
+    if (sales.length === 0 && rentals.length === 0 && listings.length === 0) return profile;
     const patched = { ...profile, data: { ...profile.data } };
-    applyDbHistory(patched, sales, rentals);
+    applyDbHistory(patched, sales, rentals, listings);
     return patched;
   } catch {
     return profile;

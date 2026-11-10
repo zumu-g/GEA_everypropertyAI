@@ -61,7 +61,7 @@ describe('applyDbHistory', () => {
       { listed_date: '2026-03-01', leased_at: '2026-03-22T00:00:00Z', last_seen_at: '2026-03-30T00:00:00Z', weekly_rent: 700 },
     ]);
     const rh = p.data.rentalHistory as Array<{ date: string; daysOnMarket?: number }>;
-    expect(rh.map((r) => [r.date, r.daysOnMarket])).toEqual([['2026-09-29', 5], ['2026-03-01', 21]]);
+    expect(rh.map((r) => [r.date, r.daysOnMarket])).toEqual([['2026-09-29', 5], ['2026-03-22', undefined], ['2026-03-01', 21]]); // middle row is the Leased event
   });
 
   it('adds one event per rent change from listing price history', () => {
@@ -78,6 +78,43 @@ describe('applyDbHistory', () => {
     expect(rh).toHaveLength(2);
     expect(rh[0]).toMatchObject({ date: '2026-09-20', weeklyRent: 720, description: 'Rent reduced from $750/wk to $720/wk' });
     expect(rh[1]).toMatchObject({ date: '2026-09-01', weeklyRent: 750, daysOnMarket: 39 });
+  });
+
+  it('adds a Leased event dated leased_at so the campaign shows its outcome', () => {
+    const p = profileWith({});
+    applyDbHistory(p, [], [
+      { campaign_started_at: '2026-10-14T00:00:00Z', leased_at: '2026-11-07T00:00:00Z', last_seen_at: '2026-11-05T00:00:00Z', weekly_rent: 530, agent_name: 'Melissa Stiles' },
+    ]);
+    const rh = p.data.rentalHistory as Array<{ date: string; weeklyRent: number; description?: string; agentName?: string }>;
+    expect(rh).toHaveLength(2);
+    expect(rh[0]).toEqual({ date: '2026-11-07', weeklyRent: 530, description: 'Leased', agentName: 'Melissa Stiles' });
+    expect(rh[1]).toMatchObject({ date: '2026-10-14', weeklyRent: 530, daysOnMarket: 24 });
+  });
+
+  it('adds for-sale listing campaigns (listed / withdrawn) to sale history', () => {
+    const p = profileWith({ saleHistory: [{ date: '2019-04-10', price: 423_000, type: 'sold' }] });
+    const added = applyDbHistory(p, [], [], [
+      // Withdrawn without selling — the case a sold-only history can never show.
+      { campaign_started_at: '2026-09-14T23:58:07Z', last_seen_at: '2026-10-05T00:08:08Z', removed_at: '2026-10-12T00:00:00Z', lifecycle_status: 'withdrawn', display_price: '$600,000-$660,000', price_low: 600_000, agency_name: 'Craig Currie', source: 'rea-apify-one-api' },
+      // Still on the market: open-ended, days counted to last_seen_at.
+      { listed_date: '2026-11-01', last_seen_at: '2026-11-09T00:00:00Z', lifecycle_status: 'active', display_price: 'Contact agent', price_low: null, source: 'domain-web-unlocker' },
+    ]);
+    expect(added).toBe(true);
+    const sh = p.data.saleHistory as Array<Record<string, unknown>>;
+    expect(sh).toHaveLength(3);
+    expect(sh[0]).toEqual({ date: '2026-11-01', type: 'listed', description: 'Listed for sale: Contact agent', daysOnMarket: 8, source: 'domain-web-unlocker' });
+    expect(sh[1]).toEqual({ date: '2026-09-14', type: 'withdrawn', listingPrice: 600_000, description: 'Listed for sale: $600,000-$660,000', daysOnMarket: 28, agency: 'Craig Currie', source: 'rea-apify-one-api' });
+    expect(sh[2]).toMatchObject({ date: '2019-04-10', type: 'sold' });
+  });
+
+  it('skips listings with no start date and dedups a listing already in the profile', () => {
+    const p = profileWith({ saleHistory: [{ date: '2026-09-20', type: 'listed', listingPrice: 600_000 }] });
+    const added = applyDbHistory(p, [], [], [
+      { lifecycle_status: 'active', price_low: 600_000 },
+      { listed_date: '2026-09-14', lifecycle_status: 'active', price_low: 600_000 }, // same month + price → dup
+    ]);
+    expect(added).toBe(false);
+    expect(p.data.saleHistory).toHaveLength(1);
   });
 
   it('skips rentals with no rent or no date', () => {
