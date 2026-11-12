@@ -40,7 +40,7 @@ function test1(row, col, expr) {
 }
 function matches(row, params) {
   for (const [k, v] of params) {
-    if (['select', 'order', 'limit', 'on_conflict'].includes(k)) continue;
+    if (['select', 'order', 'limit', 'offset', 'on_conflict'].includes(k)) continue;
     if (k === 'or') {
       const parts = v.slice(1, -1).split(',');
       if (!parts.some((p) => { const [col, ...rest] = p.split('.'); return test1(row, col, rest.join('.')); })) return false;
@@ -50,6 +50,8 @@ function matches(row, params) {
   }
   return true;
 }
+const MAX_ROWS = 1000;
+
 function fakeDb(seed = {}) {
   const tables = { property_listings: [], property_rentals: [], listing_price_history: [], feed_runs: [], ...seed };
   const calls = [];
@@ -66,8 +68,9 @@ function fakeDb(seed = {}) {
       let out = rows.filter((r) => matches(r, u.searchParams));
       const order = u.searchParams.get('order');
       if (order) { const [col, dir] = order.split('.'); out = [...out].sort((a, b) => (dir === 'desc' ? -1 : 1) * cmp(a[col], b[col])); }
-      const lim = u.searchParams.get('limit');
-      if (lim) out = out.slice(0, Number(lim));
+      const off = Number(u.searchParams.get('offset') || 0);
+      const lim = Math.min(Number(u.searchParams.get('limit') || MAX_ROWS), MAX_ROWS); // Supabase max-rows cap
+      out = out.slice(off, off + lim);
       return json(out);
     }
     if (method === 'POST') {
@@ -271,6 +274,14 @@ describe('sweepSource', () => {
     ]);
     expect(res.sweptSuburbs).toEqual(['Cranbourne']);
     expect(db.tables.property_listings.filter((r) => r.miss_count === 1).map((r) => r.suburb)).toEqual(['Cranbourne']);
+  });
+
+  it('coverage guard counts every active row past the 1,000-row PostgREST cap', async () => {
+    const rows = Array.from({ length: 1200 }, (_, i) => seeded({ id: i + 1, raw_address: `${i} A St, Berwick VIC 3806` }));
+    const db = fakeDb({ property_listings: rows });
+    const res = await sweep(db, { coverage: { Berwick: { seen: 550 } } });
+    expect(res.skippedSuburbs).toEqual([{ suburb: 'Berwick', reason: 'low-coverage', seen: 550, active: 1200 }]);
+    expect(res.miss1).toBe(0);
   });
 
   it('never touches another source or an uncovered suburb (filter string asserted)', async () => {

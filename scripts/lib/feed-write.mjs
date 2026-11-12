@@ -43,6 +43,15 @@ export function client({ fetch = globalThis.fetch, env = process.env } = {}) {
       if (!res.ok) throw new Error(`[feed-write] GET ${path.split('?')[0]} ${res.status}: ${(await res.text()).slice(0, 200)}`);
       return res.json();
     },
+    /** GET every row, paging past the PostgREST max-rows cap (1,000 on Supabase). */
+    async getAll(path, page = 1000) {
+      const out = [];
+      for (let offset = 0; ; offset += page) {
+        const rows = await this.get(`${path}&order=id&limit=${page}&offset=${offset}`);
+        out.push(...rows);
+        if (rows.length < page) return out;
+      }
+    },
     async post(path, body, prefer) {
       const res = await fetch(`${base}/rest/v1/${path}`, { method: 'POST', headers: { ...headers, Prefer: prefer }, body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) });
       if (!res.ok) throw new Error(`[feed-write] POST ${path.split('?')[0]} ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -196,7 +205,7 @@ export async function sweepSource({ table, source, runStart, coverage, fetch, en
   // Coverage guard: active rows per suburb for this source before the sweep.
   const activeBy = new Map();
   for (const filter of inChunks(suburbs)) {
-    for (const r of await db.get(`${table}?select=suburb&${src}&active=eq.true&suburb=${filter}`)) activeBy.set(r.suburb, (activeBy.get(r.suburb) || 0) + 1);
+    for (const r of await db.getAll(`${table}?select=suburb&${src}&active=eq.true&suburb=${filter}`)) activeBy.set(r.suburb, (activeBy.get(r.suburb) || 0) + 1);
   }
   const sweptSuburbs = [], skippedSuburbs = [];
   for (const suburb of suburbs) {
