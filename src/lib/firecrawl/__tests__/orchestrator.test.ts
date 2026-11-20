@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { raceToFirstSuccess } from '../orchestrator';
+import { raceToFirstSuccess, fetchUntilParsed } from '../orchestrator';
 import type { CrawlResult } from '@/types/crawl';
 
 function result(status: CrawlResult['status'], source: string, delayMs: number): Promise<CrawlResult> {
@@ -58,5 +58,32 @@ describe('resolvePrimaryBackend', () => {
     expect(resolvePrimaryBackend({}, false)).toBe('stealth');
     expect(resolvePrimaryBackend({ fetchBackend: 'stealth' }, false)).toBe('stealth');
     expect(resolvePrimaryBackend({ options: { apifyActorId: 'x/y' } }, false)).toBe('apify');
+  });
+});
+
+describe('fetchUntilParsed', () => {
+  const ok = (html: string): CrawlResult => ({ source: 's', url: '', status: 'success', html, crawledAt: new Date() });
+  const parse = (html: string) => (html.includes('DATA') ? 'md:' + html : null);
+
+  it('re-fetches when a successful fetch returns a shell page the parser rejects', async () => {
+    const pages = ['shell', 'DATA'];
+    let calls = 0;
+    const r = await fetchUntilParsed(async () => ok(pages[calls++]), parse, 3);
+    expect(calls).toBe(2);
+    expect(r.markdown).toBe('md:DATA');
+  });
+
+  it('stops after maxAttempts shell pages and returns null markdown', async () => {
+    let calls = 0;
+    const r = await fetchUntilParsed(async () => { calls++; return ok('shell'); }, parse, 3);
+    expect(calls).toBe(3);
+    expect(r.markdown).toBeNull();
+  });
+
+  it('does not re-fetch a failed fetch (the client already retried)', async () => {
+    let calls = 0;
+    const r = await fetchUntilParsed(async () => { calls++; return { source: 's', url: '', status: 'failed', crawledAt: new Date() }; }, parse, 3);
+    expect(calls).toBe(1);
+    expect(r.result.status).toBe('failed');
   });
 });

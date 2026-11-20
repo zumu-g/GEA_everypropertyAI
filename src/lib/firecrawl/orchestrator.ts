@@ -108,6 +108,26 @@ export function raceToFirstSuccess(
  * - One source failing does not affect the others
  * - Returns array of CrawlResults with source attribution
  */
+/**
+ * Fetch, then parse; re-fetch when a "successful" fetch is a shell page the
+ * parser rejects. Web Unlocker returns Domain's data-less variant (no
+ * __NEXT_DATA__) on roughly half of requests, and a fresh exit node usually
+ * gets the real page. Failed fetches are returned as-is (the client retried).
+ */
+export async function fetchUntilParsed(
+  fetchOnce: () => Promise<CrawlResult>,
+  parse: (html: string) => string | null,
+  maxAttempts = 3
+): Promise<{ result: CrawlResult; markdown: string | null }> {
+  let result: CrawlResult = await fetchOnce();
+  for (let attempt = 1; ; attempt++) {
+    if (result.status !== 'success' || !result.html) return { result, markdown: null };
+    const markdown = parse(result.html);
+    if (markdown || attempt >= maxAttempts) return { result, markdown };
+    result = await fetchOnce();
+  }
+}
+
 export async function crawlProperty(
   address: StructuredAddress,
   options?: { includeAgencies?: boolean; fast?: boolean; softDeadlineMs?: number }
@@ -177,13 +197,16 @@ export async function crawlProperty(
         // sites are AU-geofenced, client-rendered Next.js apps). Convert to
         // markdown via the source's parser — a shell/404 page (parser returns
         // null) is a failure so the fallback chain continues.
-        const wu = await scrapeWithWebUnlocker(target, source.name, {
-          timeout: scrapeOptions?.timeout,
-          render: true,
-          country: 'au',
-        });
+        const { result: wu, markdown } = await fetchUntilParsed(
+          () =>
+            scrapeWithWebUnlocker(target, source.name, {
+              timeout: scrapeOptions?.timeout,
+              render: true,
+              country: 'au',
+            }),
+          (html) => (source.htmlToMarkdown ? source.htmlToMarkdown(html) : html)
+        );
         if (wu.status !== 'success' || !wu.html) return wu;
-        const markdown = source.htmlToMarkdown ? source.htmlToMarkdown(wu.html) : wu.html;
         if (!markdown) {
           return {
             ...wu,
