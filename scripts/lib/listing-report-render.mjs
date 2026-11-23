@@ -20,7 +20,7 @@ const KIND = {
 
 function rowHtml(r, k) {
   const cut = r.cut?.cuts ? `${r.cut.cuts} cut${r.cut.cuts > 1 ? 's' : ''}, ${r.cut.pct}%` : '–';
-  return `<tr class="l"><td><b>${esc(r.raw_address)}</b><br><span class="m">${esc(r.property_type)} · ${spec(r)} · ${esc(r.agency_name)}${r.agent_name ? ' · ' + esc(r.agent_name) : ''}</span></td>`
+  return `<tr class="l"><td><b>${esc(r.raw_address)}</b><br><span class="m">${[r.property_type, spec(r), r.agency_name, r.agent_name].filter(Boolean).map(esc).join(' · ')}</span></td>`
     + `<td>${esc(r.display_price) || '–'}<br><span class="m">${cut}</span></td>`
     + `<td class="n">${r.daysOnMarket}${r.firstSeen ? '<br><span class="m">first seen</span>' : ''}</td>`
     + `<td>${r.listing_url ? `<a href="${esc(r.listing_url)}">View</a>` : ''}</td></tr>`;

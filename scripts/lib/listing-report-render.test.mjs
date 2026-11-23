@@ -26,6 +26,10 @@ describe('renderReport', () => {
     expect(html).toContain('None today');
     expect(html).toContain('7');
   });
+  it('skips missing agency/agent without a double separator', () => {
+    expect(renderReport('55day', [['Berwick', [r({ agency_name: null })]]], meta)).not.toContain('·  ·');
+    expect(renderReport('55day', [['Berwick', [r({ agency_name: null })]]], meta)).toContain('4 / 2 / 2 · Stuart Grant');
+  });
   it('escapes HTML in source data', () => {
     expect(renderReport('55day', [['Berwick', [r({ agency_name: '<b>x</b>' })]]], meta)).toContain('&lt;b&gt;x&lt;/b&gt;');
   });
