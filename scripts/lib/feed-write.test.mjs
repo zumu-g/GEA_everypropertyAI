@@ -211,6 +211,13 @@ describe('writeFeedBatch — reopen (AE5) and sticky auction', () => {
     expect(row.auction_date).toBeNull();
   });
 
+  it('a row the 21-day backstop closed keeps its campaign start when seen again (we lost track; the campaign never ended)', async () => {
+    const db = fakeDb({ property_listings: [{ id: 1, raw_address: '1 A St, Berwick VIC 3806', suburb: 'Berwick', source: SRC, active: false, lifecycle_status: 'withdrawn', close_reason: 'stale', miss_count: 0, removed_at: '2026-11-01T00:00:00.000Z', campaign_started_at: '2026-08-01T00:00:00.000Z' }] });
+    const res = await write(db, [listing('1 A St, Berwick VIC 3806', 'Contact agent')]);
+    expect(res.reopened).toBe(1);
+    expect(db.tables.property_listings[0]).toMatchObject({ active: true, close_reason: null, removed_at: null, campaign_started_at: '2026-08-01T00:00:00.000Z' });
+  });
+
   it('a still-open row keeps campaign_started_at; auction sticks when the text later says "Contact agent"', async () => {
     const db = fakeDb();
     await write(db, [listing('1 A St, Berwick VIC 3806', 'Auction Sat 14 Nov')]);
