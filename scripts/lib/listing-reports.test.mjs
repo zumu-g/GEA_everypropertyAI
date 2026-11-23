@@ -29,6 +29,16 @@ describe('select55Day', () => {
     expect(out[0].display_price).toBe('$800k');
     expect(out[0].daysOnMarket).toBe(55);
   });
+  it('uses the earliest start across portals, so the chosen copy cannot flip the crossing day', () => {
+    const rows = [
+      row({ source: 'domain-web-unlocker', last_seen_at: NOW, campaign_started_at: daysBefore(NOW, 10) }),
+      row({ source: 'rea-apify-one-api', last_seen_at: daysBefore(NOW, 1), campaign_started_at: daysBefore(NOW, 55.5) }),
+    ];
+    const out = select55Day(rows, SINCE, NOW);
+    expect(out).toHaveLength(1);
+    expect(out[0].source).toBe('domain-web-unlocker');
+    expect(out[0].daysOnMarket).toBe(55);
+  });
   it('skips listings that crossed before the window, not yet 55, or are no longer active', () => {
     expect(select55Day([row({ campaign_started_at: daysBefore(NOW, 60) })], SINCE, NOW)).toHaveLength(0);
     expect(select55Day([row({ campaign_started_at: daysBefore(NOW, 54) })], SINCE, NOW)).toHaveLength(0);

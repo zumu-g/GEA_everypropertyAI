@@ -22,6 +22,7 @@ import { pingStart, pingSuccess, pingFail } from './lib/healthcheck.mjs';
 
 export const CATEGORY = 'listing-reports';
 const DAY_MS = 86_400_000;
+const enc = encodeURIComponent; // Postgres returns +00:00 offsets; a bare + decodes to a space
 const COLS = 'id,address_slug,raw_address,suburb,source,active,lifecycle_status,close_reason,listed_date,campaign_started_at,created_at,last_seen_at,removed_at,'
   + 'bedrooms,bathrooms,car_spaces,property_type,display_price,agency_name,agent_name,listing_url';
 const MEL = 'Australia/Melbourne';
@@ -61,8 +62,8 @@ export async function run({ fetch = globalThis.fetch, env = process.env, now = n
 
   const [active, closed, feedRuns] = await Promise.all([
     db.getAll(`property_listings?select=${COLS}&active=eq.true`),
-    db.get(`property_listings?select=${COLS}&active=eq.false&removed_at=gt.${since}&removed_at=lte.${now}`),
-    db.get(`feed_runs?select=source,status&category=eq.on-market&status=neq.ok&run_start=gte.${new Date(Date.parse(now) - 18 * 3600_000).toISOString()}`),
+    db.getAll(`property_listings?select=${COLS}&active=eq.false&removed_at=gt.${enc(since)}&removed_at=lte.${enc(now)}`),
+    db.get(`feed_runs?select=source,status&category=eq.on-market&status=neq.ok&run_start=gte.${enc(new Date(Date.parse(now) - 18 * 3600_000).toISOString())}`),
   ]);
   const rows55 = select55Day(active, since, now);
   const withdrawn = selectWithdrawn([...active, ...closed], since, now);
@@ -99,7 +100,10 @@ export async function run({ fetch = globalThis.fetch, env = process.env, now = n
     + (feedIssues.length ? `<p>Feed problem this morning: ${feedIssues.join(', ')}. The reports may be incomplete.</p>` : '')
     + (out.new55 + out.withdrawn === 0 ? '<p>None today.</p>' : '');
   await sendEmail(fetch, env, { subject: `Listing reports ${date}: ${out.new55} at 55 days, ${out.withdrawn} withdrawn`, html: note, attachments: files });
-  await recordRun({ category: CATEGORY, source: 'listing-reports', run_start: now, status: 'ok', seen: out.new55 + out.withdrawn, closed: 0, notes: out }, { fetch, env });
+  // recordRun never throws; a lost watermark would re-send these rows tomorrow, so fail the job instead.
+  if (!await recordRun({ category: CATEGORY, source: 'listing-reports', run_start: now, status: 'ok', seen: out.new55 + out.withdrawn, closed: 0, notes: out }, { fetch, env })) {
+    throw new Error('[listing-reports] email sent but the watermark write failed; tomorrow repeats these rows');
+  }
   return out;
 }
 

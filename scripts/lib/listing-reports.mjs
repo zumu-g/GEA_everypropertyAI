@@ -26,9 +26,17 @@ export function dedupeBySlug(rows) {
 
 /** Active listings whose day 55 falls in (since, now]. */
 export function select55Day(rows, since, now) {
+  const active = rows.filter((x) => x.active);
+  // Earliest start across an address's portal copies (a real listed date first), so the
+  // latest-seen copy changing day to day cannot skip or repeat the crossing.
+  const basisBySlug = new Map();
+  for (const r of active) {
+    const b = domBasis(r), cur = basisBySlug.get(r.address_slug);
+    if (!cur || (cur.firstSeen && !b.firstSeen) || (cur.firstSeen === b.firstSeen && ms(b.date) < ms(cur.date))) basisBySlug.set(r.address_slug, b);
+  }
   const out = [];
-  for (const r of dedupeBySlug(rows.filter((x) => x.active))) {
-    const b = domBasis(r);
+  for (const r of dedupeBySlug(active)) {
+    const b = basisBySlug.get(r.address_slug);
     const crossed = ms(b.date) + DAYS * DAY_MS;
     if (crossed > ms(since) && crossed <= ms(now)) {
       out.push({ ...r, daysOnMarket: Math.floor((ms(now) - ms(b.date)) / DAY_MS), firstSeen: b.firstSeen });
