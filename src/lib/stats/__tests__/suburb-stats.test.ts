@@ -273,3 +273,20 @@ describe('computeAndPersist — freeze gate', () => {
     expect(r.freezeGate).toEqual({ feedsOk: true, notEmpty: true });
   });
 });
+
+describe('computeBlock — cross-source duplicates', () => {
+  it('counts one active listing per address when REA, Domain and Homely all carry it', () => {
+    const slug = '9-dupe-st-berwick-vic-3806';
+    const b = computeBlock(input({
+      listings: [
+        listing({ address_slug: slug, source: 'rea-apify-one-api', price_low: 700_000, price_high: 700_000, last_seen_at: '2026-08-01T00:00:00Z' }),
+        listing({ address_slug: slug, source: 'domain-web-unlocker', price_low: 750_000, price_high: 750_000, last_seen_at: '2026-08-20T00:00:00Z' }),
+        listing({ address_slug: slug, source: 'homely', price_low: 720_000, price_high: 720_000, last_seen_at: '2026-08-05T00:00:00Z' }),
+        listing(),
+      ],
+    }));
+    expect(b.activeListings).toBe(2);
+    // the most recently seen copy wins, so its asking price feeds the median
+    expect(b.medianAsking).toBe(775_000);
+  });
+});

@@ -30,6 +30,9 @@ const PAGE = 1000;
 const MAX_PAGES = 50; // ponytail: 50k rows/run cap; raise or window by suburb if it ever trips
 const CLOSED = ['withdrawn', 'under_offer', 'sold'];
 const DAY_MS = 86_400_000;
+// Backstop: sweepSource never retires rows in truncated suburbs or for blocked sources,
+// so any active listing unseen by every crawl for this long is closed as withdrawn.
+export const STALE_DAYS = 21;
 
 const ymd = (d) => new Date(d).toISOString().slice(0, 10);
 
@@ -61,6 +64,10 @@ export function salesSinceQuery(sinceIso, pageNo) {
 export function closedListingsQuery(cutoffIso, pageNo) {
   const c = encodeURIComponent(cutoffIso);
   return `property_listings?select=${LISTING_COLS}&address_slug=not.is.null&lifecycle_status=in.(${CLOSED.join(',')})&or=(removed_at.gte.${c},last_seen_at.gte.${c})&order=id.asc&${page(pageNo)}`;
+}
+
+export function staleActiveQuery(cutoffIso) {
+  return `property_listings?active=eq.true&last_seen_at=lt.${encodeURIComponent(cutoffIso)}`;
 }
 
 function client({ fetch = globalThis.fetch, env = process.env }) {
@@ -98,6 +105,11 @@ export async function reconcile({ fetch, env, runStart = new Date().toISOString(
   const [last] = await db.get(`feed_runs?select=run_start&category=eq.${CATEGORY}&status=eq.ok&order=run_start.desc&limit=1`);
   const since = last?.run_start ?? cutoff;
 
+  // Close stale rows first so the sold matching below can still reclassify them.
+  const staleCutoff = new Date(Date.parse(runStart) - STALE_DAYS * DAY_MS).toISOString();
+  const staleClosed = dryRun ? 0
+    : (await db.patch(staleActiveQuery(staleCutoff), { active: false, lifecycle_status: 'withdrawn', removed_at: runStart })).length;
+
   const [newSales, closedListings] = await Promise.all([
     db.getAll((p) => salesSinceQuery(since, p)),
     db.getAll((p) => closedListingsQuery(cutoff, p)),
@@ -127,6 +139,7 @@ export async function reconcile({ fetch, env, runStart = new Date().toISOString(
     if (sale && l.lifecycle_status !== 'sold') toSold.push({ id: l.id, slug: l.address_slug, was: l.lifecycle_status, sale_date: sale.sale_date });
   }
   const out = { candidates: listings.size, sales: sales.size, matched: toSold.length, since };
+  console.log(`[reconcile] staleClosed=${staleClosed} (unseen since ${staleCutoff})`);
   console.log(`[reconcile] since=${since} candidates=${out.candidates} sales=${out.sales} matched=${out.matched}${dryRun ? ' (dry-run)' : ''}`);
   if (dryRun) { for (const t of toSold) console.log(`  ${t.was} → sold  ${t.slug}  sale ${t.sale_date}`); return out; }
 
@@ -135,7 +148,7 @@ export async function reconcile({ fetch, env, runStart = new Date().toISOString(
     patched += (await db.patch(`property_listings?id=${f}&lifecycle_status=neq.active`, { lifecycle_status: 'sold' })).length;
   }
   await recordRun({ category: CATEGORY, source: 'reconcile', run_start: runStart, status: 'ok', seen: out.candidates, closed: patched,
-    notes: { sales: out.sales, matched: out.matched, patched, since } }, { fetch, env });
+    notes: { sales: out.sales, matched: out.matched, patched, since, staleClosed } }, { fetch, env });
   return out;
 }
 
