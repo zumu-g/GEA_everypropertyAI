@@ -106,7 +106,13 @@ export function computeBlock(input: BlockInput): SuburbStatsBlock {
     const closed = closedAt(l);
     return seen != null && ms(seen) < endExMs && (closed == null || ms(closed) >= endExMs);
   };
-  const activeAtEnd = listings.filter(openAtEnd);
+  // One listing per address: REA, Domain and Homely each carry their own row; keep the latest-seen copy.
+  const latestBySlug = new Map<string, StatsListingRow>();
+  for (const l of listings.filter(openAtEnd)) {
+    const k = slugOf(l), cur = latestBySlug.get(k);
+    if (!cur || (l.last_seen_at ?? '') > (cur.last_seen_at ?? '')) latestBySlug.set(k, l);
+  }
+  const activeAtEnd = [...latestBySlug.values()];
   const newListings = listings.filter((l) => inPeriod(firstSeen(l))).length;
   const medianAsking = median(activeAtEnd.map((l) => midpoint(l.price_low, l.price_high)).filter((v): v is number => v != null));
   const medianDaysOnMarket = median(

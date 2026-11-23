@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickSale, basisDate, salesSinceQuery, closedListingsQuery, reconcile } from './reconcile-lifecycle.mjs';
+import { pickSale, basisDate, salesSinceQuery, closedListingsQuery, staleActiveQuery, STALE_DAYS, reconcile } from './reconcile-lifecycle.mjs';
 
 const day = (iso, n) => new Date(new Date(iso).getTime() + n * 86_400_000).toISOString().slice(0, 10);
 const closed = (over = {}) => ({
@@ -64,6 +64,7 @@ describe('reconcile (fake PostgREST)', () => {
       calls.push({ method: init.method || 'GET', table, url: u.search, body: init.body ? JSON.parse(init.body) : null });
       if (init.method === 'POST') return new Response(null, { status: 201 });
       if (init.method === 'PATCH') {
+        if (!u.searchParams.has('id')) return Response.json(tables.stale || []);
         const ids = decodeURIComponent(u.searchParams.get('id')).match(/"([^"]+)"/g).map((s) => s.slice(1, -1));
         return Response.json(tables.property_listings.filter((r) => ids.includes(r.id)));
       }
@@ -86,7 +87,7 @@ describe('reconcile (fake PostgREST)', () => {
     });
     const out = await reconcile({ fetch: db.fetch, env: db.env, runStart: '2026-09-28T00:00:00.000Z' });
     expect(out.matched).toBe(1);
-    const patches = db.calls.filter((c) => c.method === 'PATCH');
+    const patches = db.calls.filter((c) => c.method === 'PATCH' && c.body.lifecycle_status === 'sold');
     expect(patches).toHaveLength(1);
     expect(patches[0].url).toContain('id=in.(%22L1%22)');
     expect(patches[0].url).toContain('lifecycle_status=neq.active');
@@ -102,5 +103,46 @@ describe('reconcile (fake PostgREST)', () => {
     const out = await reconcile({ fetch: db.fetch, env: db.env, runStart: '2026-09-28T00:00:00.000Z', dryRun: true });
     expect(out.matched).toBe(1);
     expect(db.calls.filter((c) => c.method !== 'GET')).toHaveLength(0);
+  });
+});
+
+describe('staleness backstop', () => {
+  it('targets active listings not seen for STALE_DAYS, from any source', () => {
+    expect(STALE_DAYS).toBe(21);
+    const q = staleActiveQuery('2026-11-02T00:00:00.000Z');
+    expect(q).toContain('property_listings?');
+    expect(q).toContain('active=eq.true');
+    expect(q).toContain('last_seen_at=lt.2026-11-02T00%3A00%3A00.000Z');
+    expect(q).not.toContain('source=');
+  });
+
+  it('closes stale active rows as withdrawn before sold matching, so a sold one becomes sold', async () => {
+    const calls = [];
+    const stale = { ...closed({ id: 'L9', lifecycle_status: 'active' }) };
+    const fetch = async (url, init = {}) => {
+      const u = new URL(url); const table = u.pathname.split('/').pop();
+      calls.push({ method: init.method || 'GET', table, url: u.search, body: init.body ? JSON.parse(init.body) : null });
+      if (init.method === 'POST') return new Response(null, { status: 201 });
+      if (init.method === 'PATCH' && !u.searchParams.has('id')) { Object.assign(stale, JSON.parse(init.body)); return Response.json([stale]); }
+      if (init.method === 'PATCH') return Response.json([stale]);
+      if (table === 'property_listings') return Response.json(stale.lifecycle_status === 'withdrawn' ? [stale] : []);
+      if (table === 'property_sales') return Response.json([sale()]);
+      return Response.json([]);
+    };
+    const runStart = '2026-11-23T00:00:00.000Z';
+    await reconcile({ fetch, env: { NEXT_PUBLIC_SUPABASE_URL: 'http://db', SUPABASE_SERVICE_ROLE_KEY: 'k' }, runStart });
+    const patches = calls.filter((c) => c.method === 'PATCH');
+    expect(patches[0].url).toContain('last_seen_at=lt.2026-11-02');
+    expect(patches[0].body).toEqual({ active: false, lifecycle_status: 'withdrawn', removed_at: runStart });
+    expect(patches.at(-1).body).toEqual({ lifecycle_status: 'sold' });
+    const run = calls.find((c) => c.method === 'POST');
+    expect(run.body.notes.staleClosed).toBe(1);
+  });
+
+  it('dry run closes nothing', async () => {
+    const calls = [];
+    const fetch = async (url, init = {}) => { calls.push(init.method || 'GET'); return Response.json([]); };
+    await reconcile({ fetch, env: { NEXT_PUBLIC_SUPABASE_URL: 'http://db', SUPABASE_SERVICE_ROLE_KEY: 'k' }, dryRun: true });
+    expect(calls.filter((m) => m !== 'GET')).toHaveLength(0);
   });
 });
