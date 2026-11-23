@@ -206,7 +206,7 @@ describe('writeFeedBatch — reopen (AE5) and sticky auction', () => {
     const res = await write(db, [listing('1 A St, Berwick VIC 3806', 'Contact agent')]);
     expect(res.reopened).toBe(1);
     const row = db.tables.property_listings[0];
-    expect(row).toMatchObject({ active: true, miss_count: 0, miss_marked_at: null, removed_at: null, campaign_started_at: RUN, lifecycle_status: 'active' });
+    expect(row).toMatchObject({ active: true, miss_count: 0, miss_marked_at: null, removed_at: null, close_reason: null, campaign_started_at: RUN, lifecycle_status: 'active' });
     expect(row.sale_method).toBe('unknown'); // a reopen starts a fresh campaign: auction does not carry over
     expect(row.auction_date).toBeNull();
   });
@@ -248,7 +248,7 @@ describe('sweepSource', () => {
     const res = await sweep(db);
     expect(res).toMatchObject({ miss1: 0, closed: 3 });
     const [a, b, c] = db.tables.property_listings;
-    expect(a).toMatchObject({ active: false, removed_at: RUN, lifecycle_status: 'withdrawn', miss_count: 2 });
+    expect(a).toMatchObject({ active: false, removed_at: RUN, lifecycle_status: 'withdrawn', miss_count: 2, close_reason: 'sweep' });
     expect(b).toMatchObject({ active: false, removed_at: RUN, lifecycle_status: 'sold' });
     expect(c).toMatchObject({ active: false, removed_at: RUN, lifecycle_status: 'withdrawn' });
   });
@@ -309,7 +309,7 @@ describe('sweepSource', () => {
     const res = await sweep(db, { table: 'property_rentals' });
     expect(res.closed).toBe(1);
     const r = db.tables.property_rentals[0];
-    expect(r).toMatchObject({ active: false, leased_at: RUN, lifecycle_status: 'withdrawn' });
+    expect(r).toMatchObject({ active: false, leased_at: RUN, lifecycle_status: 'withdrawn', close_reason: 'sweep' });
     expect('removed_at' in r).toBe(false);
   });
 

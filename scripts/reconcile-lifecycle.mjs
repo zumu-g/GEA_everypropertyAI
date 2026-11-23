@@ -108,7 +108,7 @@ export async function reconcile({ fetch, env, runStart = new Date().toISOString(
   // Close stale rows first so the sold matching below can still reclassify them.
   const staleCutoff = new Date(Date.parse(runStart) - STALE_DAYS * DAY_MS).toISOString();
   const staleClosed = dryRun ? 0
-    : (await db.patch(staleActiveQuery(staleCutoff), { active: false, lifecycle_status: 'withdrawn', removed_at: runStart })).length;
+    : (await db.patch(staleActiveQuery(staleCutoff), { active: false, lifecycle_status: 'withdrawn', removed_at: runStart, close_reason: 'stale' })).length;
 
   const [newSales, closedListings] = await Promise.all([
     db.getAll((p) => salesSinceQuery(since, p)),

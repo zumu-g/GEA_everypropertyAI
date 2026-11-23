@@ -142,6 +142,7 @@ export async function writeFeedBatch({ table, source, runStart, rows, fetch, env
       miss_count: 0,
       miss_marked_at: null,
       [meta.closeCol]: null,
+      close_reason: null,
       // Same campaign keeps its start; new identity or reopen starts at this run (R24).
       campaign_started_at: prev?.active && prev.campaign_started_at ? prev.campaign_started_at : runStart,
     };
@@ -221,7 +222,7 @@ export async function sweepSource({ table, source, runStart, coverage, fetch, en
   for (const filter of inChunks(sweptSuburbs)) {
     const base = `${table}?${src}&suburb=${filter}&active=eq.true&last_seen_at=lt.${encodeURIComponent(runStart)}`
       + `&or=(miss_marked_at.is.null,miss_marked_at.lt.${encodeURIComponent(gate)})`;
-    const close = { active: false, miss_count: 2, miss_marked_at: runStart, [meta.closeCol]: runStart };
+    const close = { active: false, miss_count: 2, miss_marked_at: runStart, [meta.closeCol]: runStart, close_reason: 'sweep' };
     closed += (await db.patch(`${base}&miss_count=gte.1&lifecycle_status=eq.sold`, close)).length;
     closed += (await db.patch(`${base}&miss_count=gte.1&lifecycle_status=neq.sold`, { ...close, lifecycle_status: 'withdrawn' })).length;
     miss1 += (await db.patch(`${base}&miss_count=eq.0`, { miss_count: 1, miss_marked_at: runStart })).length;

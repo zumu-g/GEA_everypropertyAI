@@ -133,7 +133,7 @@ describe('staleness backstop', () => {
     await reconcile({ fetch, env: { NEXT_PUBLIC_SUPABASE_URL: 'http://db', SUPABASE_SERVICE_ROLE_KEY: 'k' }, runStart });
     const patches = calls.filter((c) => c.method === 'PATCH');
     expect(patches[0].url).toContain('last_seen_at=lt.2026-11-02');
-    expect(patches[0].body).toEqual({ active: false, lifecycle_status: 'withdrawn', removed_at: runStart });
+    expect(patches[0].body).toEqual({ active: false, lifecycle_status: 'withdrawn', removed_at: runStart, close_reason: 'stale' });
     expect(patches.at(-1).body).toEqual({ lifecycle_status: 'sold' });
     const run = calls.find((c) => c.method === 'POST');
     expect(run.body.notes.staleClosed).toBe(1);
